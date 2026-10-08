@@ -68,8 +68,28 @@ It runs every view — `inspector`, `render`, `element`, `frontend`,
 | `has rects, parser misses them` | the geometry is in the text but in a format the rect parser does not know. It prints a sample line — that is a small fix |
 | `no geometry` | nothing rect-shaped at all in that view |
 
-If no view carries them, `-RsProbe` is the fallback: render_service has layer
-bounds because it cannot composite without them.
+`-FindRects` also tries **`uitest`**, which is not a hidumper view but the
+UI-test harness that ships with the system. Its `dumpLayout` walks the live
+accessibility tree and writes JSON with `bounds`, `type`, `text`, `id`,
+`description` and `hostWindowId` per node — everything the inspector withholds
+on a build that serialises names only. If it answers:
+
+```bat
+scene_class.cmd -Window -Screen -Classify -DumpOpt uitest
+```
+
+and `-Screen` starts differing from `-Window` for the first time, along with
+real text content, which brings the label-vs-snippet rules back.
+
+Two honest caveats. It reads the **accessibility projection** of the tree, not
+the tree itself: decorative nodes may be absent, and a node marked
+accessibility-hidden will not appear. And it is a test harness — heavier than a
+dump, and it perturbs more. For building a labelled dictionary that is a good
+trade; for the collector it is moot, since in-process the real tree is there.
+
+If nothing carries node rects, `-RsProbe` is the last fallback: render_service
+has layer bounds because it cannot composite without them. But those are layer
+bounds, so it answers for opaque surfaces and never for ordinary nodes.
 
 Everything below this section is detail. You can ignore it until one of these
 two commands tells you something you want to chase.
@@ -247,7 +267,7 @@ your correlation on `margin`, not on `scene`.
 | `-RsFps <layer>` | none | submit rate for one composited layer |
 | `-Deep` | off | process evidence: threads, libraries, device nodes. No verdict |
 | `-Services` | off | list what `hidumper` exposes, then exit |
-| `-DumpOpt <opt>` | `inspector` | hidumper view: `inspector`, `element`, `render`, `frontend`, `navigation` |
+| `-DumpOpt <opt>` | `inspector` | tree source: the hidumper views `inspector`, `element`, `render`, `frontend`, `navigation`, or `uitest` |
 | `-Explain` | off | first 25 parsed nodes with tag, indent, rect, on/off |
 | `-Raw` | off | write `tree_w<id>.txt` and print the tag tally |
 | `-ShowCmd` | off | print each hdc command before running it |

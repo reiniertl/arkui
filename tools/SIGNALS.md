@@ -104,6 +104,27 @@ a governor oscillate — the exact failure this project exists to avoid.
 | `modifiers` | Pipe-separated state flags (see below) |
 | `stable_ticks` | Consecutive ticks in this class. Low values mean the classifier is flickering, which matters because a flickering signal causes policy oscillation |
 
+## Where the tree comes from
+
+`-DumpOpt` selects the source, and the sources are not equivalent.
+
+| Source | Carries |
+|---|---|
+| `inspector` | the component tree. On some builds, names and structure only — no rects, no text, no attributes |
+| `render`, `element`, `frontend`, `navigation` | on some builds, the window header and nothing else |
+| `uitest` | `bounds`, `type`, `text`, `id`, `description`, `hostWindowId` per node, from the UI-test harness |
+
+`-FindRects` reports which of them answers on the device in front of you. A
+build that serialises names only is not a broken device: the layout results
+exist, nothing in the window manager's dumps prints them. `uitest` prints them
+because that is what it exists for — at the cost of reading the accessibility
+projection of the tree rather than the tree itself, so accessibility-hidden and
+purely decorative nodes are absent.
+
+The window header carries `WindowRect` even when the window table has no
+geometry columns, so window share, occlusion and the panel size are recovered
+from there and cached for the session.
+
 ## Parse and viewport
 
 | Column | Description |
