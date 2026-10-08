@@ -1614,6 +1614,23 @@ function Get-Features {
     # as a component called Toggle. Counting only the type reported zero
     # switches on every Settings page on the device, which is why the rule
     # that was supposed to find a preferences page never fired once.
+    # A row with a thumbnail on the left and a card with a banner across it
+    # have the same image COUNT and completely different cost: one decodes a
+    # 100px avatar per row, the other a full-width bitmap. Counts cannot tell
+    # them apart; position and width can, now that there are rects.
+    $iconLeft = 0; $wideImg = 0; $imgGeo = 0
+    if ($vpW -gt 1) {
+        foreach ($n in $vis) {
+            if ($n.Tag -notmatch '^(Image|SymbolGlyph|Symbol|ImageSpan|ImageAnimator)$') { continue }
+            if (-not $n.Rect) { continue }
+            $imgGeo++
+            $w = $n.Rect.R - $n.Rect.L
+            $cx = ($n.Rect.L + $n.Rect.R) / 2.0 - $vp.L
+            if ($w -ge ($vpW * 0.5)) { $wideImg++ }
+            elseif ($w -le ($vpW * 0.2) -and $cx -le ($vpW * 0.3)) { $iconLeft++ }
+        }
+    }
+
     $checkable = 0
     foreach ($n in $vis) {
         if ($n.Text -match '(?i)"checkable"\s*:\s*"?true') { $checkable++ }
@@ -1709,6 +1726,9 @@ function Get-Features {
         # only where the surrounding shape already rules that out.
         Toggle     = (C 'Toggle') + (C 'Checkbox') + (C 'Radio') + (C 'Switch')
         Checkable  = $checkable
+        IconLeft   = $iconLeft      # small images hugging the left edge
+        WideImg    = $wideImg       # images spanning half the width or more
+        ImgGeo     = $imgGeo        # images we had a rect for at all
         Editable   = (C 'TextInput') + (C 'TextArea') + (C 'Search') + (C 'RichEditor')
         ListLike   = (C 'List') + (C 'ListItem')
         GridLike   = (C 'Grid') + (C 'GridItem') + (C 'WaterFlow')
@@ -1891,6 +1911,7 @@ $script:ClassInfo = @{
     GALLERY_GRID      = @{ Cand=@("GALLERY","MEDIA_GRID");                 Resolve="-" }
     LIST              = @{ Cand=@("LIST","CONTACTS","INBOX");             Resolve="-" }
     SETTINGS          = @{ Cand=@("SETTINGS","PREFERENCES","ACCOUNT");     Resolve="-" }
+    ICON_LIST         = @{ Cand=@("ICON_LIST","CONTACTS","CONVERSATIONS");  Resolve="-" }
     MAP               = @{ Cand=@("MAP","NAVIGATION");                     Resolve="bound producer on the surface" }
     CHAT              = @{ Cand=@("CHAT");                                 Resolve="IME state separates composing from reading" }
     FORM              = @{ Cand=@("FORM");                                 Resolve="IME state" }
@@ -2156,6 +2177,33 @@ function Get-SceneClass {
         Score "LIST" (-2.0) "a surface dominates the frame - the rows are chrome"
     }
 
+    # ---- three kinds of row -----------------------------------------------
+    #
+    # All three are a scroller full of rows, and their node counts barely
+    # differ. What differs is where the pixels are, which is a cost
+    # difference before it is a taxonomy:
+    #
+    #   LIST       text only. No decode per row at all.
+    #   ICON_LIST  a small image hugging the left edge of each row. One small
+    #              decode per row, and the row height is text-driven.
+    #   FEED       an image spanning the row with text around or below it.
+    #              A full-width decode per card, and the item is tall.
+    if ($scrollers -ge 1 -and $F.ListLike -ge 3 -and $geo) {
+        $rows_ = [double][math]::Max(1, $F.ListLike)
+        if ($F.IconLeft -ge ($rows_ * 0.5) -and $F.WideImg -le ($rows_ * 0.25)) {
+            Score "ICON_LIST" 4.5 "$($F.IconLeft) small images on the left edge across $($F.ListLike) rows"
+            if ($textKnown -and $F.AvgText -lt $P.SnippetChars) {
+                Score "ICON_LIST" 1.0 "label-length text beside them (avg $([int]$F.AvgText))"
+            }
+        }
+        if ($F.WideImg -ge ($rows_ * 0.4)) {
+            Score "FEED" 4.0 "$($F.WideImg) images spanning the row - cards, not rows"
+        }
+        if ($iconish -le ($rows_ * 0.2)) {
+            Score "LIST" 2.0 "rows carry text and almost no images"
+        }
+    }
+
     # ---- feed vs list ------------------------------------------------------
     # Both have icons and labels. What separates a feed is LARGE items and
     # SNIPPETS; a list has small icons and short labels. Counts cannot tell
@@ -2338,6 +2386,7 @@ function Convert-RowToFeatures {
         Total = N $Row.total; Text = N $Row.text; Image = N $Row.image; Icon = N $Row.icon
         Button = N $Row.button; Slider = N $Row.slider; Progress = N $Row.progress
         Toggle = N $Row.toggle; Checkable = N $Row.checkable; Editable = N $Row.editable
+        IconLeft = N $Row.icon_left; WideImg = N $Row.wide_img; ImgGeo = N $Row.img_geo
         ListLike = N $Row.listlike; GridLike = N $Row.gridlike
         Swiper = N $Row.swiper; Scroll = N $Row.scroll
         Web = N $Row.web; XComponent = N $Row.xcomponent; Video = N $Row.video
@@ -2597,6 +2646,7 @@ function Invoke-Classify {
         button = $F.Button
         slider = $F.Slider; progress = $F.Progress; toggle = $F.Toggle
         checkable = $F.Checkable
+        icon_left = $F.IconLeft; wide_img = $F.WideImg; img_geo = $F.ImgGeo
         editable = $F.Editable; listlike = $F.ListLike; gridlike = $F.GridLike
         swiper = $F.Swiper; scroll = $F.Scroll; scrollers = $scrollers
         web = $F.Web; xcomponent = $F.XComponent; video = $F.Video; canvas = $F.Canvas
