@@ -898,9 +898,14 @@ function Show-Scope {
     # and what else was on screen. A silent filter is as misleading as none.
     if ($DumpOpt -eq "uitest") {
         $wins = if ($script:UiTestWindows) { $script:UiTestWindows -join "  " } else { "none reported" }
-        Write-Host ("  source     uitest, display-wide: window:nodes = {0}" -f $wins) -ForegroundColor DarkGray
-        if ($script:UiTestScope -eq "ALL") {
-            Write-Host ("  WARNING    no uitest root claims window {0}; counts cover EVERY window above" -f $Id) -ForegroundColor Yellow
+        Write-Host ("  source     uitest, display-wide: {0}" -f $wins) -ForegroundColor DarkGray
+        switch ($script:UiTestScope) {
+            "WIN" { Write-Host ("             scoped to window {0}" -f $Id) -ForegroundColor DarkGray }
+            "ALL" { Write-Host ("  WARNING    no node claims window {0}; counts cover every window above" -f $Id) -ForegroundColor Yellow }
+            "UNLABELLED" {
+                Write-Host "             this build's uitest does not label nodes by window, so this is" -ForegroundColor DarkGray
+                Write-Host "             the composed screen, not one window. Fine when one app fills it." -ForegroundColor DarkGray
+            }
         }
     }
 
@@ -1110,52 +1115,71 @@ function Get-UiTestTree {
     return (Select-UiTestWindow -Lines $flat -Id $Id)
 }
 
-# uitest dumps the WHOLE DISPLAY, not one window: its top level is a list of
-# window roots, each carrying hostWindowId. Handing all of them to a
-# per-window classifier would merge the app, the shell and the keyboard into
-# one tree - the exact confusion the scene scoping exists to prevent.
+# uitest dumps the WHOLE DISPLAY, not one window, so its nodes have to be
+# attributed before a per-window classifier sees them - otherwise the app, the
+# shell and the keyboard merge into one tree.
 #
-# Each root and its descendants form one window's subtree, delimited by the
-# next line back at the root indent.
+# How they are attributed differs by build. Some emit a list of window roots
+# each carrying hostWindowId; some carry it on inner nodes only; some do not
+# emit it at all, and then the dump is simply whatever was in front of the
+# user. All three happen, all three are handled, and which one happened is
+# reported rather than assumed.
 function Select-UiTestWindow {
     param([string[]] $Lines, [int] $Id)
 
     if (-not $Lines -or $Lines.Count -eq 0) { return ,@() }
 
-    $minIndent = 1e9
-    foreach ($l in $Lines) {
-        $ind = $l.Length - $l.TrimStart().Length
-        if ($ind -lt $minIndent) { $minIndent = $ind }
-    }
+    $winPat = '(?i)"(?:host[_ ]?window[_ ]?id|window[_ ]?id|winId)"\s*:\s*"?(\d+)'
 
-    # Root positions, and the host window each root claims.
-    $roots = @()
+    $indent = New-Object int[] $Lines.Count
+    $owner  = New-Object int[] $Lines.Count
+    $anyWin = $false
     for ($i = 0; $i -lt $Lines.Count; $i++) {
-        $ind = $Lines[$i].Length - $Lines[$i].TrimStart().Length
-        if ($ind -ne $minIndent) { continue }
-        $m = [regex]::Match($Lines[$i], '(?i)"hostWindowId"\s*:\s*"?(\d+)')
-        $roots += [PSCustomObject]@{ Start = $i; Win = $(if ($m.Success) { [int]$m.Groups[1].Value } else { -1 }) }
-    }
-    if ($roots.Count -eq 0) { return ,$Lines }
-
-    for ($r = 0; $r -lt $roots.Count; $r++) {
-        $roots[$r] | Add-Member -NotePropertyName End `
-            -NotePropertyValue $(if ($r + 1 -lt $roots.Count) { $roots[$r+1].Start - 1 } else { $Lines.Count - 1 }) -Force
+        $indent[$i] = $Lines[$i].Length - $Lines[$i].TrimStart().Length
+        $m = [regex]::Match($Lines[$i], $winPat)
+        if ($m.Success) { $owner[$i] = [int]$m.Groups[1].Value; $anyWin = $true }
+        else { $owner[$i] = -1 }
     }
 
-    $script:UiTestWindows = @($roots | ForEach-Object { "{0}:{1}" -f $_.Win, ($_.End - $_.Start + 1) })
+    if (-not $anyWin) {
+        # Nothing to attribute by. That is NOT the same as "every window
+        # merged into one tree": it is one dump with no window labelling,
+        # which on a single-app screen is the whole truth and on a layered one
+        # is a limitation. Saying which is the difference between a warning
+        # worth acting on and noise.
+        $script:UiTestWindows = @("no window attribute in this dump")
+        $script:UiTestScope = "UNLABELLED"
+        return ,$Lines
+    }
 
-    $hit = @($roots | Where-Object { $_.Win -eq $Id })
-    if ($hit.Count -eq 0) {
-        # No root claims this window. Returning everything is wrong in a
-        # different way than returning nothing, so say which it is.
+    # Inherit downward: a node without the attribute belongs to the nearest
+    # ancestor that has one.
+    $stack = @{}
+    for ($i = 0; $i -lt $Lines.Count; $i++) {
+        if ($owner[$i] -ge 0) { $stack[$indent[$i]] = $owner[$i]; continue }
+        $best = -1; $bestInd = -1
+        foreach ($k in @($stack.Keys)) {
+            if ($k -lt $indent[$i] -and $k -gt $bestInd) { $bestInd = $k; $best = $stack[$k] }
+        }
+        $owner[$i] = $best
+    }
+
+    $counts = @{}
+    foreach ($o in $owner) {
+        if ($o -lt 0) { continue }
+        if ($counts.ContainsKey($o)) { $counts[$o] = $counts[$o] + 1 } else { $counts[$o] = 1 }
+    }
+    $script:UiTestWindows = @($counts.GetEnumerator() | Sort-Object Value -Descending |
+                              ForEach-Object { "{0}:{1}" -f $_.Key, $_.Value })
+
+    $keep = @()
+    for ($i = 0; $i -lt $Lines.Count; $i++) { if ($owner[$i] -eq $Id) { $keep += $Lines[$i] } }
+    if ($keep.Count -eq 0) {
         $script:UiTestScope = "ALL"
         return ,$Lines
     }
     $script:UiTestScope = "WIN"
-    $out = @()
-    foreach ($h in $hit) { $out += $Lines[$h.Start..$h.End] }
-    return ,$out
+    return ,$keep
 }
 
 # ------------------------------------------------------------------ geometry
@@ -1325,6 +1349,11 @@ function Show-ScopeClass {
     $R = Get-SceneClass -F $F
     $churn = [PSCustomObject]@{ Delta=0; Added=0; Removed=0; Net=0; Shape="NONE"; Rate=0.0; Dt=0.0; First=$true }
     $mods = Get-Modifiers -F $F -Churn $churn -Win $Win
+    # In window scope the clip is off BY REQUEST, so GEO_UNTRUSTED here would
+    # report a deliberate choice as a defect - and the same flag means a real
+    # problem everywhere else, which is exactly how a modifier stops being
+    # worth reading.
+    if ($Mode -eq "window") { $mods = @($mods | Where-Object { $_ -ne "GEO_UNTRUSTED" }) }
     $col = switch ($R.Conf) { "structural" {"Green"} "weak" {"Yellow"} default {"DarkYellow"} }
 
     Write-Host ""
