@@ -100,6 +100,25 @@ decorative nodes may be absent, and a node marked accessibility-hidden will not
 appear. Expect far fewer nodes than the inspector reports — a few hundred
 against several thousand — and that is the projection, not a failure.
 
+**It carries only what is on screen.** Scrolled-away nodes are not in the dump
+at all, so `0 scrolled out` from this source says nothing about the screen, and
+`-Window` cannot mean anything different from `-Screen`. The script says so
+instead of printing the same numbers twice under two headings, and supplements
+with the one thing window scope was for — whether the *inspector* tree still
+holds an opaque node you cannot currently see.
+
+The two sources are complements, not alternatives:
+
+| | inspector | uitest |
+|---|---|---|
+| scope | the whole window | only what is on screen |
+| geometry | none on this build | `bounds` per node |
+| text | none on this build | `text` per node |
+| attributes | none on this build | type, id, description |
+
+Their node counts are an order of magnitude apart, so a threshold fitted on
+one is wrong for the other. Keep a separate calibration file per source.
+
 And it is a **test harness** — heavier than a dump, and it perturbs more. For
 building a labelled dictionary that is a good trade; for the collector it is
 moot, since in-process the real tree is there.

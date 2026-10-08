@@ -869,14 +869,24 @@ function Get-TallyCount {
 # seekbar beside a hole is a statement about what is behind the hole, made by
 # the only part of the screen we can read.
 function Get-SiblingNote {
-    param($Rec)
+    param($Rec, $F)
     # Same-level siblings first, then anything under the same parent. A player
     # often wraps its controls one level down, and "no chrome" said about a
     # surface that has a seekbar two lines away is worse than saying nothing.
     $s = $Rec.Siblings
     $where = "beside it"
     if (-not $s) { $s = $Rec.Near; $where = "under the same parent" }
-    if (-not $s) { return "nothing around it in the tree - no chrome to read" }
+    if (-not $s) {
+        # Nothing adjacent. If the WINDOW has transport controls somewhere
+        # else, say so: the classifier scores that co-occurrence and the two
+        # lines reading differently is confusing unless the difference is
+        # named. Chrome far from the surface is also weaker evidence than
+        # chrome beside it, which is worth seeing.
+        if ($F -and ($F.Slider + $F.Progress) -ge 1) {
+            return "no chrome beside it, but the window has a slider/progress elsewhere"
+        }
+        return "nothing around it in the tree - no chrome to read"
+    }
     $notes = @()
     $btn = ([regex]::Matches($s, '(?i)\bButton\b')).Count
     if ($s -match '(?i)\bSlider\b' -and $btn -ge 2) { $notes += "seekbar + transport buttons: a player with controls" }
@@ -935,6 +945,38 @@ function Show-Scope {
             "UNLABELLED" {
                 Write-Host "             this build's uitest does not label nodes by window, so this is" -ForegroundColor DarkGray
                 Write-Host "             the composed screen, not one window. Fine when one app fills it." -ForegroundColor DarkGray
+            }
+        }
+    }
+
+    # uitest walks the ACCESSIBILITY tree, which contains only what is on
+    # screen. "0 scrolled out" from this source is a property of the source,
+    # not a statement about the screen - and window scope cannot come from it
+    # at all, because the nodes that are off screen were never in the dump.
+    #
+    # The inspector has the opposite shape: the whole window, no geometry, no
+    # text. So the one question window scope was for - does this window still
+    # contain a player when you cannot see one - is answered from there. Not
+    # the counts, which are on a different scale entirely and would be
+    # meaningless side by side; just what opaque nodes exist.
+    if (-not $screen -and $DumpOpt -eq "uitest") {
+        Write-Host ""
+        Write-Host "  NOTE       uitest carries only on-screen nodes, so WINDOW scope is not" -ForegroundColor DarkYellow
+        Write-Host "             available from this source. What follows is the screen." -ForegroundColor DarkYellow
+        $ins = @(Invoke-HdcRaw "shell `"hidumper -s WindowManagerService -a '-w $Id -inspector'`"")
+        if ($ins.Count -gt 5) {
+            $cnt = @{}
+            foreach ($tag in @('XComponent','Web','Video','SurfaceView')) {
+                $cnt[$tag] = @($ins | Where-Object { $_ -match ("\b" + $tag + "\b") }).Count
+            }
+            $tot = 0; foreach ($v in $cnt.Values) { $tot += $v }
+            $sum = (($cnt.GetEnumerator() | Where-Object { $_.Value -gt 0 } |
+                     ForEach-Object { "{0} {1}" -f $_.Value, $_.Key }) -join ", ")
+            Write-Host ("  whole tree {0} lines in the inspector dump; opaque nodes: {1}" -f `
+                        $ins.Count, $(if ($tot -gt 0) { $sum } else { "none" })) -ForegroundColor DarkCyan
+            $onNow = $F.XComponent + $F.Web + $F.Video
+            if ($tot -gt 0 -and $onNow -eq 0) {
+                Write-Host "             the window still holds a surface that is not on screen." -ForegroundColor DarkCyan
             }
         }
     }
@@ -1005,7 +1047,7 @@ function Show-Scope {
         if ($r.Parent)   { Write-Host ("         {0,-12} {1}" -f "parent", $r.Parent) }
         if ($r.Siblings) { Write-Host ("         {0,-12} {1}" -f "siblings", $r.Siblings) }
         if ($r.Near)     { Write-Host ("         {0,-12} {1}" -f "under parent", $r.Near) }
-        Write-Host     ("         {0,-12} {1}" -f "reads as", (Get-SiblingNote -Rec $r)) -ForegroundColor DarkCyan
+        Write-Host     ("         {0,-12} {1}" -f "reads as", (Get-SiblingNote -Rec $r -F $F)) -ForegroundColor DarkCyan
         if ($r.Extra.Count -gt 0) {
             Write-Host ("         {0,-12} {1}" -f "other keys", (($r.Extra | Select-Object -First 8) -join "  ")) -ForegroundColor DarkGray
         }
