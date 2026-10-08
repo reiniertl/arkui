@@ -2300,19 +2300,23 @@ function Invoke-Fit {
     # separate two classes that keep being confused.
     Write-Host ""
     Write-Host "feature ranges by labelled class:"
-    $cols = @("total","text","icon","toggle","editable","gridlike","listlike","swiper","avgtext","textmax","edit_pos","largest_frac")
-    Write-Host ("  {0,-16} {1}" -f "class", (($cols | ForEach-Object { "{0,10}" -f $_ }) -join ""))
+    # image, button and the opaque count belong here: GALLERY_GRID and
+    # MEDIA_PLAYER are separated by them and by nothing else in this table,
+    # and a range table that omits the deciding feature sends you tuning the
+    # wrong number.
+    $cols = @("total","text","image","icon","button","slider","editable","gridlike","listlike","swiper","opaque","avgtext","textmax","largest_frac")
+    Write-Host ("  {0,-14} {1}" -f "class", (($cols | ForEach-Object { "{0,9}" -f $_ }) -join ""))
     foreach ($g in $byClass) {
         $cells = foreach ($c in $cols) {
             $vals = @($g.Group | ForEach-Object { $_.$c } | Where-Object { $_ -ne "" } | ForEach-Object { [double]$_ })
-            if ($vals.Count -eq 0) { "{0,10}" -f "-" }
+            if ($vals.Count -eq 0) { "{0,9}" -f "-" }
             else {
                 $lo = [math]::Round(($vals | Measure-Object -Minimum).Minimum,1)
                 $hi = [math]::Round(($vals | Measure-Object -Maximum).Maximum,1)
-                if ($lo -eq $hi) { "{0,10}" -f $lo } else { "{0,10}" -f "$lo-$hi" }
+                if ($lo -eq $hi) { "{0,9}" -f $lo } else { "{0,9}" -f "$lo-$hi" }
             }
         }
-        Write-Host ("  {0,-16} {1}" -f $g.Name, ($cells -join ""))
+        Write-Host ("  {0,-14} {1}" -f $g.Name, ($cells -join ""))
     }
 }
 
