@@ -81,11 +81,28 @@ scene_class.cmd -Window -Screen -Classify -DumpOpt uitest
 and `-Screen` starts differing from `-Window` for the first time, along with
 real text content, which brings the label-vs-snippet rules back.
 
-Two honest caveats. It reads the **accessibility projection** of the tree, not
-the tree itself: decorative nodes may be absent, and a node marked
-accessibility-hidden will not appear. And it is a test harness — heavier than a
-dump, and it perturbs more. For building a labelled dictionary that is a good
-trade; for the collector it is moot, since in-process the real tree is there.
+Three things to know about it.
+
+It **dumps the whole display**, not one window: the top level is a list of
+window roots each carrying `hostWindowId`. The script splits them and keeps the
+subtree for the window being examined, printing what it found:
+
+```
+  source     uitest, display-wide: window:nodes = 4:180  11:44  55:12
+```
+
+If no root claims your window it keeps everything and says so loudly, because
+silently merging the app, the shell and the keyboard into one tree is the exact
+confusion the scene scoping exists to prevent.
+
+It reads the **accessibility projection** of the tree, not the tree itself:
+decorative nodes may be absent, and a node marked accessibility-hidden will not
+appear. Expect far fewer nodes than the inspector reports — a few hundred
+against several thousand — and that is the projection, not a failure.
+
+And it is a **test harness** — heavier than a dump, and it perturbs more. For
+building a labelled dictionary that is a good trade; for the collector it is
+moot, since in-process the real tree is there.
 
 If nothing carries node rects, `-RsProbe` is the last fallback: render_service
 has layer bounds because it cannot composite without them. But those are layer

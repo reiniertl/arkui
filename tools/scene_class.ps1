@@ -333,11 +333,21 @@ function Resolve-Scene {
 }
 
 
+$script:KnownDumpOpts = @('inspector','element','render','frontend','navigation','uitest')
+
 function Get-Tree {
     param([int] $Id)
+    # A mistyped source used to reach hidumper as an unknown flag, which
+    # answers with the window header and nothing else: 29 lines, no rects, and
+    # an output that looks like a real degraded result instead of a typo.
+    if ($script:KnownDumpOpts -notcontains $DumpOpt) {
+        Write-Host ("error: -DumpOpt '{0}' is not a source. Use one of: {1}" -f `
+                    $DumpOpt, ($script:KnownDumpOpts -join ", ")) -ForegroundColor Red
+        exit 1
+    }
     # uitest is not a hidumper view; it is a different tool with a different
-    # shape, so it is fetched and flattened before anything else sees it.
-    if ($DumpOpt -eq "uitest") { return Get-UiTestTree }
+    # shape, so it is fetched, flattened and scoped before anything else sees it.
+    if ($DumpOpt -eq "uitest") { return Get-UiTestTree -Id $Id }
     return Invoke-HdcRaw "shell `"hidumper -s WindowManagerService -a '-w $Id -$DumpOpt'`""
 }
 
@@ -884,6 +894,16 @@ function Show-Scope {
         }
     }
 
+    # uitest sees the whole display, so say which window's subtree this is
+    # and what else was on screen. A silent filter is as misleading as none.
+    if ($DumpOpt -eq "uitest") {
+        $wins = if ($script:UiTestWindows) { $script:UiTestWindows -join "  " } else { "none reported" }
+        Write-Host ("  source     uitest, display-wide: window:nodes = {0}" -f $wins) -ForegroundColor DarkGray
+        if ($script:UiTestScope -eq "ALL") {
+            Write-Host ("  WARNING    no uitest root claims window {0}; counts cover EVERY window above" -f $Id) -ForegroundColor Yellow
+        }
+    }
+
     # ---- what the window itself declares ---------------------------------
     # Only in window scope: these are properties of the window, not of what
     # happens to be scrolled into view.
@@ -1072,6 +1092,7 @@ function ConvertFrom-UiTestLayout {
 }
 
 function Get-UiTestTree {
+    param([int] $Id = 0)
     $path = "/data/local/tmp/ark_layout.json"
     Invoke-HdcRaw "shell `"uitest dumpLayout -p $path`"" | Out-Null
     $raw = @(Invoke-HdcRaw "shell `"cat $path`"")
@@ -1085,7 +1106,56 @@ function Get-UiTestTree {
         Write-Host ("  " + $joined.Substring(0, [math]::Min(160, $joined.Length))) -ForegroundColor DarkGray
         return @()
     }
-    return ConvertFrom-UiTestLayout -Json $joined
+    $flat = ConvertFrom-UiTestLayout -Json $joined
+    return (Select-UiTestWindow -Lines $flat -Id $Id)
+}
+
+# uitest dumps the WHOLE DISPLAY, not one window: its top level is a list of
+# window roots, each carrying hostWindowId. Handing all of them to a
+# per-window classifier would merge the app, the shell and the keyboard into
+# one tree - the exact confusion the scene scoping exists to prevent.
+#
+# Each root and its descendants form one window's subtree, delimited by the
+# next line back at the root indent.
+function Select-UiTestWindow {
+    param([string[]] $Lines, [int] $Id)
+
+    if (-not $Lines -or $Lines.Count -eq 0) { return ,@() }
+
+    $minIndent = 1e9
+    foreach ($l in $Lines) {
+        $ind = $l.Length - $l.TrimStart().Length
+        if ($ind -lt $minIndent) { $minIndent = $ind }
+    }
+
+    # Root positions, and the host window each root claims.
+    $roots = @()
+    for ($i = 0; $i -lt $Lines.Count; $i++) {
+        $ind = $Lines[$i].Length - $Lines[$i].TrimStart().Length
+        if ($ind -ne $minIndent) { continue }
+        $m = [regex]::Match($Lines[$i], '(?i)"hostWindowId"\s*:\s*"?(\d+)')
+        $roots += [PSCustomObject]@{ Start = $i; Win = $(if ($m.Success) { [int]$m.Groups[1].Value } else { -1 }) }
+    }
+    if ($roots.Count -eq 0) { return ,$Lines }
+
+    for ($r = 0; $r -lt $roots.Count; $r++) {
+        $roots[$r] | Add-Member -NotePropertyName End `
+            -NotePropertyValue $(if ($r + 1 -lt $roots.Count) { $roots[$r+1].Start - 1 } else { $Lines.Count - 1 }) -Force
+    }
+
+    $script:UiTestWindows = @($roots | ForEach-Object { "{0}:{1}" -f $_.Win, ($_.End - $_.Start + 1) })
+
+    $hit = @($roots | Where-Object { $_.Win -eq $Id })
+    if ($hit.Count -eq 0) {
+        # No root claims this window. Returning everything is wrong in a
+        # different way than returning nothing, so say which it is.
+        $script:UiTestScope = "ALL"
+        return ,$Lines
+    }
+    $script:UiTestScope = "WIN"
+    $out = @()
+    foreach ($h in $hit) { $out += $Lines[$h.Start..$h.End] }
+    return ,$out
 }
 
 # ------------------------------------------------------------------ geometry
@@ -1108,7 +1178,7 @@ function Show-FindRects {
 
     $best = ""; $bestN = 0
     foreach ($opt in @('inspector','render','element','frontend','navigation','uitest')) {
-        $lines = if ($opt -eq 'uitest') { @(Get-UiTestTree) }
+        $lines = if ($opt -eq 'uitest') { @(Get-UiTestTree -Id $Id) }
                  else { @(Invoke-HdcRaw "shell `"hidumper -s WindowManagerService -a '-w $Id -$opt'`"") }
         $body  = @($lines | Where-Object { $_ -and $_.Trim() })
         if ($body.Count -eq 0) {
