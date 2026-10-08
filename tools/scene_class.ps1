@@ -1702,7 +1702,12 @@ function Get-Features {
         Button     = (C 'Button')
         Slider     = (C 'Slider')
         Progress   = (C 'Progress') + (C 'LoadingProgress')
-        Toggle     = [math]::Max((C 'Toggle') + (C 'Checkbox') + (C 'Radio') + (C 'Switch'), $checkable)
+        # Deliberately NOT folded together with $checkable. A like button, a
+        # bookmark and a follow control are all checkable, and treating them
+        # as switches gave a video feed twelve "toggles" and scored it as a
+        # preferences page. Checkable is kept as its own feature and used
+        # only where the surrounding shape already rules that out.
+        Toggle     = (C 'Toggle') + (C 'Checkbox') + (C 'Radio') + (C 'Switch')
         Checkable  = $checkable
         Editable   = (C 'TextInput') + (C 'TextArea') + (C 'Search') + (C 'RichEditor')
         ListLike   = (C 'List') + (C 'ListItem')
@@ -1993,7 +1998,9 @@ function Get-SceneClass {
     # widgets. Counting cells rather than captions is more direct, and it
     # survives a dump that carries no content strings at all.
     $manyIcons = ($iconish -ge $P.IconMin -or ($F.Total -gt 0 -and $iconish -ge $F.Total * $P.IconShare))
-    $cells = $F.GridLike
+    # uitest reports a launcher page as a List inside a pager as often as a
+    # Grid, so cells is whichever container is actually carrying the items.
+    $cells = [math]::Max($F.GridLike, $F.ListLike)
 
     if ($WinName -match '(?i)scbdesktop|launcher|home|workspace|negativescreen|appcenter|desktop') {
         if ($iconish -ge 3) {
@@ -2073,6 +2080,14 @@ function Get-SceneClass {
     # the two-sample classes as provisional: they are a hypothesis written
     # down, not a result.
 
+    # Checkable rows, but only where nothing else on screen explains them: no
+    # pager, no surface, few images. A like button is checkable too, so the
+    # gate does the work the attribute cannot.
+    if ($F.Checkable -ge 3 -and $scrollers -ge 1 -and $F.Swiper -eq 0 -and
+        $opaque -eq 0 -and $F.Image -le 8) {
+        Score "SETTINGS" 4.0 "$($F.Checkable) checkable rows, no pager and no media"
+    }
+
     # A preferences page is a SHORT scrolled list of labelled rows with no
     # media. The intended signal was the switch count, and uitest reports no
     # Toggle at all, so the shape has to come from size and composition.
@@ -2086,7 +2101,7 @@ function Get-SceneClass {
     # ...and a content list is long. Size is the separator in this corpus;
     # the ratios overlap almost exactly.
     if ($scrollers -ge 1 -and $F.Total -ge $P.SmallPage -and $F.ListLike -ge 8) {
-        Score "LIST" 2.0 "a long list ($($F.ListLike) rows in $($F.Total) nodes)"
+        Score "LIST" 1.5 "a long list ($($F.ListLike) rows in $($F.Total) nodes)"
     }
 
     # A thumbnail grid is not a Grid in this vocabulary - it comes through as
@@ -2105,21 +2120,40 @@ function Get-SceneClass {
     if ($F.Web -ge 1 -and $F.Text -le 2 -and $opaque -le 1) {
         Score "READING" 3.5 "one web view and almost no native text - an article, not a page of controls"
     }
+    # Images are what separate the two in this corpus: an article has almost
+    # none of its own, a web page is full of them.
+    if ($F.Web -ge 1 -and $F.Image -le 3 -and $F.ListLike -le 7 -and $F.GridLike -eq 0) {
+        Score "READING"     3.0 "a web view carrying text and almost no images"
+        Score "WEB_CONTENT" (-1.5) "almost no images for a web page"
+    }
+
+    # Video in a feed plays without visible transport: a dominant surface
+    # inside a pager is a player even with no seekbar on screen.
+    if ($opaque -ge 1 -and $F.LargestFrac -ge 850 -and $F.Swiper -ge 1 -and $F.GridLike -eq 0) {
+        Score "MEDIA_PLAYER" 3.0 "a dominant surface inside a pager - a video feed"
+    }
 
     # A viewfinder fills the panel completely and has no transport controls.
     # A player does not fill it and has a seekbar; a map fills most of it and
     # has neither.
     if ($opaque -ge 1 -and $F.LargestFrac -ge $P.FullBleed -and $F.Swiper -eq 0 -and
         $F.Slider -eq 0 -and $F.ListLike -ge 4) {
-        Score "CAPTURE" 3.5 "a full-bleed surface with a control strip and no transport"
+        Score "CAPTURE" 5.0 "a full-bleed surface with a control strip and no transport"
     }
     if ($opaque -ge 1 -and $F.ListLike -le 2 -and $F.Swiper -ge 2 -and $F.Slider -eq 0 -and
         $F.LargestFrac -ge 900 -and $F.LargestFrac -lt $P.FullBleed) {
-        Score "MAP" 2.5 "a near-full surface, no list and no transport controls"
+        Score "MAP" 4.0 "a near-full surface, no list and no transport controls"
     }
     if ($opaque -ge 1 -and $F.ListLike -eq 0 -and $F.GridLike -eq 0 -and $F.Swiper -eq 0 -and
         $F.Total -lt 100) {
         Score "IMMERSIVE_SURFACE" 3.0 "a surface with no containers around it at all"
+    }
+
+    # Rows wrapped around a surface are chrome, not content. Without this a
+    # viewfinder with a control strip outscores CAPTURE as a list, which it
+    # did four times out of four.
+    if ($opaque -ge 1 -and $F.LargestFrac -ge 900) {
+        Score "LIST" (-2.0) "a surface dominates the frame - the rows are chrome"
     }
 
     # ---- feed vs list ------------------------------------------------------
@@ -2127,13 +2161,13 @@ function Get-SceneClass {
     # SNIPPETS; a list has small icons and short labels. Counts cannot tell
     # them apart, these two tests can.
     if ($scrollers -ge 1) {
-        Score "LIST" 1.0 "a scroller is present"
+        Score "LIST" 0.5 "a scroller is present"
         if ($iconish -ge 4 -and $F.Text -ge 4) {
             if ($F.LargestFrac -ge $P.BigItemPermil) { Score "FEED" 3.0 "large media items ($($F.LargestFrac)/1000)" }
             if ($textKnown -and $F.AvgText -ge $P.SnippetChars) { Score "FEED" 3.0 "snippet-length text (avg $([int]$F.AvgText) chars)" }
-            if ($textKnown -and $F.AvgText -lt $P.LabelChars)    { Score "LIST" 2.0 "short labels (avg $([int]$F.AvgText) chars)" }
+            if ($textKnown -and $F.AvgText -lt $P.LabelChars)    { Score "LIST" 1.0 "short labels (avg $([int]$F.AvgText) chars)" }
         }
-        if ($F.ListLike -ge 2) { Score "LIST" 1.5 "List/ListItem structure" }
+        if ($F.ListLike -ge 2) { Score "LIST" 1.0 "List/ListItem structure" }
     }
     # A grid of cells is not an article, whatever the text:image ratio says.
     if ($F.Text -gt 0 -and $F.Text -ge ($iconish * $P.TextDominance) -and $F.GridLike -lt 4) {
