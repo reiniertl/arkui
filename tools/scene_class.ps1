@@ -1033,6 +1033,25 @@ function Show-Scope {
     Write-Host ("  containers list {0}   grid {1}   swiper/tabs {2}   scroll {3}" -f $list, $grid, $swiper, $scroll)
     Write-Host ("  media      XComponent {0}   Web {1}   Video {2}   slider/progress {3}" -f $xc, $web, $vid, $slider)
 
+    # The record stating its own completeness. Printed always, not only when
+    # it is bad, so that a low number is visible as reassurance rather than
+    # an absence that has to be assumed.
+    $cov = $F.CoverOpaque
+    $covCol = if ($cov -ge $P.OpaqueCover) { "Yellow" } elseif ($cov -ge 200) { "DarkYellow" } else { "DarkGray" }
+    Write-Host ("  coverage   {0} permille of the viewport is behind a surface (Web {1}, XComponent {2})" -f `
+                $cov, $F.CoverWeb, $F.CoverXc) -ForegroundColor $covCol
+    if ($cov -ge $P.OpaqueCover) {
+        Write-Host "  WARNING    most of what is on screen is NOT in this tree. What you can see" -ForegroundColor Yellow
+        Write-Host "             may be drawn inside the surface - an icon list, a feed, a map -" -ForegroundColor Yellow
+        Write-Host "             and ArkUI cannot tell. The counts below describe the chrome." -ForegroundColor Yellow
+        $need = @()
+        if ($F.CoverWeb -ge 1) { $need += "the ArkWeb producer" }
+        if ($F.CoverXc  -ge 1) { $need += "render_service (-RsProbe) for the surface" }
+        if ($need.Count -gt 0) {
+            Write-Host ("             this window needs {0} to be described." -f ($need -join " and ")) -ForegroundColor DarkCyan
+        }
+    }
+
     # ---- opaque nodes -----------------------------------------------------
     $vw = if ($clipOn) { $F.VpW } else { 0 }
     $vh = if ($clipOn) { $F.VpH } else { 0 }
@@ -1631,6 +1650,32 @@ function Get-Features {
         }
     }
 
+    # How much of the viewport is covered by regions ArkUI cannot look into.
+    # This is the record's own statement of how complete it is: at 20 permille
+    # the native counts are the whole story, at 900 they describe the chrome
+    # around a hole, and the scene the user is looking at may be drawn ENTIRELY
+    # inside that hole. A label given to such a screen describes pixels this
+    # tree never contained.
+    $coverWeb = 0.0; $coverXc = 0.0
+    if ($vpArea -gt 1) {
+        foreach ($n in $vis) {
+            if ($n.Tag -notmatch $script:OpaquePat) { continue }
+            $a = 0.0
+            if ($n.VisW -gt 0 -and $n.VisH -gt 0) { $a = $n.VisW * $n.VisH }
+            elseif ($n.Rect) {
+                $a = [math]::Max(0.0, ($n.Rect.R - $n.Rect.L)) * [math]::Max(0.0, ($n.Rect.B - $n.Rect.T))
+            }
+            if ($a -le 0) { continue }
+            # Nested surfaces would double count, so each is clamped to the
+            # viewport and the total is clamped again below.
+            $f = [math]::Min(1.0, $a / $vpArea)
+            if ($n.Tag -eq 'Web') { $coverWeb += $f } else { $coverXc += $f }
+        }
+    }
+    $coverWeb = [math]::Min(1.0, $coverWeb)
+    $coverXc  = [math]::Min(1.0, $coverXc)
+    $coverOpaque = [math]::Min(1.0, $coverWeb + $coverXc)
+
     $checkable = 0
     foreach ($n in $vis) {
         if ($n.Text -match '(?i)"checkable"\s*:\s*"?true') { $checkable++ }
@@ -1726,6 +1771,9 @@ function Get-Features {
         # only where the surrounding shape already rules that out.
         Toggle     = (C 'Toggle') + (C 'Checkbox') + (C 'Radio') + (C 'Switch')
         Checkable  = $checkable
+        CoverWeb   = [int]($coverWeb * 1000)     # permille of the viewport
+        CoverXc    = [int]($coverXc  * 1000)
+        CoverOpaque= [int]($coverOpaque * 1000)
         IconLeft   = $iconLeft      # small images hugging the left edge
         WideImg    = $wideImg       # images spanning half the width or more
         ImgGeo     = $imgGeo        # images we had a rect for at all
@@ -1814,6 +1862,12 @@ function Get-Modifiers {
         }
     }
     if ($opaque -ge 1 -and $F.Total -lt 60) { $mods += "OPAQUE_DOMINANT" }
+    # Not the same thing as OPAQUE_DOMINANT, which is about a thin tree. This
+    # is about AREA: most of what the user is looking at is not in this tree,
+    # whatever else the tree contains.
+    if ($F.CoverOpaque -ge $P.OpaqueCover) { $mods += "SCENE_BEHIND_SURFACE" }
+    if ($F.CoverWeb -ge $P.OpaqueCover)    { $mods += "NEEDS_ARKWEB" }
+    if ($F.CoverXc  -ge $P.OpaqueCover)    { $mods += "NEEDS_SURFACE_PRODUCER" }
     if ($mediaish -ge 1) {
         if ($F.Slider -ge 1 -or $F.Button -ge 2) { $mods += "CHROME_VISIBLE" }
         else                                     { $mods += "CHROME_HIDDEN" }
@@ -1856,6 +1910,8 @@ $script:P = @{
     GalleryCaption = 10.5   # avg chars: captions on a thumbnail grid, not sentences
     SmallPage      = 150    # a preferences page is far shorter than a content list
     FullBleed      = 980    # permille of panel: a viewfinder, not a player
+    OpaqueCover    = 500    # permille of viewport hidden behind surfaces before
+                            # the native structure stops describing the scene
     IconShare      = 0.15   # ...or this share of the tree, whichever hits first
     LabelChars     = 18     # avg content length that still reads as a label
     LabelMaxChars  = 40     # longest block that still reads as a label
@@ -2387,6 +2443,7 @@ function Convert-RowToFeatures {
         Button = N $Row.button; Slider = N $Row.slider; Progress = N $Row.progress
         Toggle = N $Row.toggle; Checkable = N $Row.checkable; Editable = N $Row.editable
         IconLeft = N $Row.icon_left; WideImg = N $Row.wide_img; ImgGeo = N $Row.img_geo
+        CoverOpaque = N $Row.cover_opaque; CoverWeb = N $Row.cover_web; CoverXc = N $Row.cover_xc
         ListLike = N $Row.listlike; GridLike = N $Row.gridlike
         Swiper = N $Row.swiper; Scroll = N $Row.scroll
         Web = N $Row.web; XComponent = N $Row.xcomponent; Video = N $Row.video
@@ -2437,6 +2494,24 @@ function Invoke-Fit {
     Write-Host "$($rows.Count) labelled screens from $Path"
     $byClass = $rows | Group-Object truth | Sort-Object Count -Descending
     Write-Host ("  " + (($byClass | ForEach-Object { "$($_.Name) x$($_.Count)" }) -join ", "))
+
+    # Rows whose screen was mostly inside a surface. Their label is about
+    # pixels the features never contained, so counting them in the accuracy
+    # figure measures the labeller, not the classifier.
+    $blind = @($rows | Where-Object { $_.cover_opaque -and [int]$_.cover_opaque -ge 500 })
+    if ($blind.Count -gt 0) {
+        Write-Host ""
+        Write-Host ("  {0} of {1} rows are mostly behind a surface (cover_opaque >= 500)." -f $blind.Count, $rows.Count) -ForegroundColor Yellow
+        $bc = @($blind | Group-Object truth | Sort-Object Count -Descending |
+                ForEach-Object { "$($_.Name) x$($_.Count)" })
+        Write-Host ("    {0}" -f ($bc -join ", ")) -ForegroundColor DarkGray
+        Write-Host  "    ArkUI could not see what you labelled there. Scored separately below." -ForegroundColor DarkGray
+        $rows = @($rows | Where-Object { -not $_.cover_opaque -or [int]$_.cover_opaque -lt 500 })
+        if ($rows.Count -lt 2) {
+            Write-Host "  nothing left to fit once those are set aside." -ForegroundColor Red
+            return
+        }
+    }
 
     $base = Measure-Fit $rows
     Write-Host ""
@@ -2500,6 +2575,15 @@ function Invoke-Fit {
     # Per-class feature ranges. This is what tells you WHICH feature could
     # separate two classes that keep being confused.
     Write-Host ""
+    if ($blind.Count -gt 0) {
+        $bm = Measure-Fit $blind
+        Write-Host ""
+        Write-Host ("behind-surface rows, scored separately: {0}/{1} ({2}%)" -f `
+                    $bm.Ok, $bm.Total, [int](100.0*$bm.Ok/$bm.Total)) -ForegroundColor DarkYellow
+        Write-Host  "  a high number here is not reassurance - it means the chrome happened to" -ForegroundColor DarkGray
+        Write-Host  "  agree with what was behind it. Only a surface producer settles these." -ForegroundColor DarkGray
+    }
+
     Write-Host "feature ranges by labelled class:"
     # image, button and the opaque count belong here: GALLERY_GRID and
     # MEDIA_PLAYER are separated by them and by nothing else in this table,
@@ -2647,6 +2731,7 @@ function Invoke-Classify {
         slider = $F.Slider; progress = $F.Progress; toggle = $F.Toggle
         checkable = $F.Checkable
         icon_left = $F.IconLeft; wide_img = $F.WideImg; img_geo = $F.ImgGeo
+        cover_opaque = $F.CoverOpaque; cover_web = $F.CoverWeb; cover_xc = $F.CoverXc
         editable = $F.Editable; listlike = $F.ListLike; gridlike = $F.GridLike
         swiper = $F.Swiper; scroll = $F.Scroll; scrollers = $scrollers
         web = $F.Web; xcomponent = $F.XComponent; video = $F.Video; canvas = $F.Canvas
@@ -2822,6 +2907,19 @@ if ($r -and $Out)   { Write-Host ""; Write-Host "row appended -> $Out" }
 if ($r -and $Label -and $r.truth) {
     Write-Host ""
     Write-Host ("labelled as {0} [{1}] -> {2}" -f $r.truth, $r.truth_src, $Calib) -ForegroundColor Green
+    # A label is a statement about what is on screen. When most of the screen
+    # is inside a surface, the features and the label describe different
+    # things, and a fitter cannot learn the difference - it can only learn
+    # noise. The row is kept, because the coverage is recorded with it and a
+    # later pass can weight or drop it, but it must not pass silently.
+    if ([int]$r.cover_opaque -ge 500) {
+        Write-Host ""
+        Write-Host ("  CAUTION    {0} permille of this screen is behind a surface." -f $r.cover_opaque) -ForegroundColor Yellow
+        Write-Host  "  Your label describes what you SAW. The features describe the native" -ForegroundColor Yellow
+        Write-Host  "  chrome around a region ArkUI cannot look into. If what you labelled" -ForegroundColor Yellow
+        Write-Host  "  was drawn inside that region, this row teaches the fitter nothing." -ForegroundColor Yellow
+        Write-Host  "  Kept, with cover_opaque recorded, so -Fit can set it aside." -ForegroundColor DarkGray
+    }
     if ($r.scene -eq $r.truth) {
         Write-Host "  the classifier agreed. Still useful: it holds the answer in place while you tune." -ForegroundColor DarkGray
     } else {

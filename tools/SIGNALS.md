@@ -253,6 +253,41 @@ On screen the same records print with the render-side lines from
 a surface composited on its own pass rather than folded into the window is a
 direct power difference, and ArkUI does not know which it is.
 
+## Coverage — how complete this record is
+
+ArkUI describes the nodes it owns. A region behind an `XComponent` is app
+content it will never see; a region behind a `Web` node belongs to a separate
+producer. So every record states how much of the viewport it could not read.
+
+| Column | Description |
+|---|---|
+| `cover_opaque` | permille of the viewport behind any opaque node |
+| `cover_web` | the part of that which is `Web` — recoverable from an ArkWeb producer |
+| `cover_xc` | the part which is `XComponent` — only render_service or the buffer queue can speak for it |
+
+Read it as the record's own confidence. At 20 permille the native counts are
+the whole story. At 900 they describe the chrome around a hole, and **the
+scene itself may be drawn inside that hole** — an icon list, a feed, a map,
+rendered by the app into a surface, with ArkUI seeing a `Stack` and a toolbar.
+
+This matters most while labelling. A label states what you *saw*; the features
+state what ArkUI *read*. Above 500 permille those are different things, and a
+fitter handed both can only learn noise. `-Label` warns, the coverage is
+recorded with the row, and `-Fit` sets those rows aside and scores them
+separately — a high score there means the chrome happened to agree with what
+was behind it, not that the classifier saw anything.
+
+Three modifiers carry the same fact into the correlation:
+
+| Modifier | Meaning |
+|---|---|
+| `SCENE_BEHIND_SURFACE` | most of the viewport is not in this tree |
+| `NEEDS_ARKWEB` | a Web region dominates; its producer should be read for this window |
+| `NEEDS_SURFACE_PRODUCER` | an XComponent dominates; render_service or the buffer queue is required |
+
+The last two are routing, not policy: the cheap always-on source saying which
+expensive source is worth consulting for this window right now.
+
 ## Text volume
 
 | Column | Description |
