@@ -58,6 +58,7 @@ param(
     [switch] $Screen,
     [switch] $Classify,
     [switch] $FindRects,
+    [switch] $Version,
     [switch] $RsProbe,
     [string] $RsFps,
     [string] $Calib = "scene_calib.csv"
@@ -2280,6 +2281,27 @@ function Invoke-Classify {
 # ================================================================== main
 
 Import-Thresholds
+
+# Which copy of this file is this? The script moves between machines by hand,
+# so "did I copy the new one" is a real question with no good answer unless the
+# file can state its own identity. The hash is of the file itself, so it cannot
+# drift from a version constant somebody forgot to bump.
+if ($Version) {
+    $self = $PSCommandPath
+    $h = (Get-FileHash -Path $self -Algorithm SHA256).Hash.Substring(0, 12).ToLower()
+    $n = (Get-Content -Path $self).Count
+    Write-Host ""
+    Write-Host ("scene_class.ps1   {0} lines   sha256 {1}" -f $n, $h) -ForegroundColor Cyan
+    Write-Host ("  {0}" -f $self) -ForegroundColor DarkGray
+    Write-Host ""
+    Write-Host "  scopes       -Window  -Screen  -Classify  -ListWindows"
+    Write-Host "  classify     -Watch  -Out  -Label  -Fit  -Apply  -Calib"
+    Write-Host "  discovery    -FindRects  -RsProbe  -RsFps  -Deep  -Services"
+    Write-Host "  diagnostics  -DumpOpt  -Explain  -Raw  -ShowCmd  -WindowId"
+    Write-Host ""
+    Write-Host "  repo  https://github.com/reiniertl/arkui" -ForegroundColor DarkGray
+    exit 0
+}
 
 # -Fit runs entirely offline against the labelled rows. No phone, no hdc.
 if ($Fit) { Invoke-Fit -Path $Calib -Apply:$Apply; exit 0 }

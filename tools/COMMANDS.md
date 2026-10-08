@@ -271,6 +271,7 @@ your correlation on `margin`, not on `scene`.
 | `-Explain` | off | first 25 parsed nodes with tag, indent, rect, on/off |
 | `-Raw` | off | write `tree_w<id>.txt` and print the tag tally |
 | `-ShowCmd` | off | print each hdc command before running it |
+| `-Version` | off | line count and SHA-256 of this file, and the switch list |
 
 ---
 
