@@ -219,6 +219,16 @@ $script:SystemWindowPat =
 # which is the whole of the scene-scoping logic. Cached for the session,
 # because window rects change on rotation and split, not on every tick.
 $script:RectCache = @{}
+# The window being examined, in display coordinates. Get-Features uses it as
+# the viewport, so it must be set before any tree is parsed.
+$script:WinRect = $null
+
+function Set-WinRect {
+    param($Row)
+    if ($Row -and $Row.W -gt 1 -and $Row.H -gt 1) {
+        $script:WinRect = [PSCustomObject]@{ X = [int]$Row.X; Y = [int]$Row.Y; W = [int]$Row.W; H = [int]$Row.H }
+    } else { $script:WinRect = $null }
+}
 
 function Repair-WindowRects {
     param([object[]] $Table, [int] $Max = 12)
@@ -705,14 +715,28 @@ function Get-SurfaceRecords {
 
         # What it is wrapped in. A Slider and two Buttons alongside is player
         # chrome; the same node alone under a Column is immersive.
-        $parent = ""
+        # True siblings: everything under the same parent at the same depth,
+        # however far away. A fixed +/-8 window missed the seekbar in a real
+        # player - the record read "alone in its parent, no chrome" on the
+        # same screen where the classifier scored "surface + seekbar". One of
+        # them had to be wrong and it was this one.
+        $parent = ""; $pIdx = -1
         for ($j = $i - 1; $j -ge 0; $j--) {
-            if ($Nodes[$j].Indent -lt $n.Indent) { $parent = $Nodes[$j].Tag; break }
+            if ($Nodes[$j].Indent -lt $n.Indent) { $parent = $Nodes[$j].Tag; $pIdx = $j; break }
         }
-        $sibs = @()
-        for ($j = [math]::Max(0, $i - 8); $j -le [math]::Min($Nodes.Count - 1, $i + 8); $j++) {
-            if ($j -eq $i) { continue }
-            if ($Nodes[$j].Indent -eq $n.Indent) { $sibs += $Nodes[$j].Tag }
+        $sibs = @(); $near = @()
+        if ($pIdx -ge 0) {
+            $pInd = $Nodes[$pIdx].Indent
+            for ($j = $pIdx + 1; $j -lt $Nodes.Count; $j++) {
+                if ($Nodes[$j].Indent -le $pInd) { break }
+                if ($j -eq $i) { continue }
+                if ($Nodes[$j].Indent -eq $n.Indent) { $sibs += $Nodes[$j].Tag }
+                # Controls anywhere in the parent's subtree, not only at the
+                # surface's own depth - chrome is usually wrapped a level down.
+                if ($Nodes[$j].Tag -match '^(Slider|Progress|Button|Toggle|Checkbox|Text|Image|SymbolGlyph)$') {
+                    $near += $Nodes[$j].Tag
+                }
+            }
         }
 
         # ---- per kind ----------------------------------------------------
@@ -806,6 +830,7 @@ function Get-SurfaceRecords {
             Opacity = $opa; Vis = $vsb
             W = $w; H = $h; Aspect = $aspect; Permille = $permille
             Parent = $parent; Siblings = (($sibs | Select-Object -Unique) -join ",")
+            Near = ((($near | Select-Object -Unique) | Select-Object -First 10) -join ",")
             Attrs = @($attrs); Flags = $flags
             Extra = $extra
         })
@@ -845,8 +870,13 @@ function Get-TallyCount {
 # the only part of the screen we can read.
 function Get-SiblingNote {
     param($Rec)
+    # Same-level siblings first, then anything under the same parent. A player
+    # often wraps its controls one level down, and "no chrome" said about a
+    # surface that has a seekbar two lines away is worse than saying nothing.
     $s = $Rec.Siblings
-    if (-not $s) { return "alone in its parent - no chrome to read" }
+    $where = "beside it"
+    if (-not $s) { $s = $Rec.Near; $where = "under the same parent" }
+    if (-not $s) { return "nothing around it in the tree - no chrome to read" }
     $notes = @()
     $btn = ([regex]::Matches($s, '(?i)\bButton\b')).Count
     if ($s -match '(?i)\bSlider\b' -and $btn -ge 2) { $notes += "seekbar + transport buttons: a player with controls" }
@@ -855,8 +885,8 @@ function Get-SiblingNote {
     if ($s -match '(?i)\bProgress\b')               { $notes += "progress indicator alongside" }
     if ($Rec.Parent -match '(?i)List|Grid|Waterflow|Swiper') { $notes += "inside a $($Rec.Parent) cell: one item among many, not the screen" }
     if ($s -match '(?i)\bText\b' -and $notes.Count -eq 0)    { $notes += "text alongside: captioned or labelled" }
-    if ($notes.Count -eq 0) { return "siblings carry nothing recognisable" }
-    return ($notes -join "; ")
+    if ($notes.Count -eq 0) { return "nothing recognisable $where" }
+    return (($notes -join "; ") + " ($where)")
 }
 
 function Show-Scope {
@@ -974,6 +1004,7 @@ function Show-Scope {
         if ($r.Flags.Count -gt 0) { Write-Host ("         {0,-12} {1}" -f "flags", ($r.Flags -join "  ")) }
         if ($r.Parent)   { Write-Host ("         {0,-12} {1}" -f "parent", $r.Parent) }
         if ($r.Siblings) { Write-Host ("         {0,-12} {1}" -f "siblings", $r.Siblings) }
+        if ($r.Near)     { Write-Host ("         {0,-12} {1}" -f "under parent", $r.Near) }
         Write-Host     ("         {0,-12} {1}" -f "reads as", (Get-SiblingNote -Rec $r)) -ForegroundColor DarkCyan
         if ($r.Extra.Count -gt 0) {
             Write-Host ("         {0,-12} {1}" -f "other keys", (($r.Extra | Select-Object -First 8) -join "  ")) -ForegroundColor DarkGray
@@ -1415,7 +1446,20 @@ function Get-Features {
     # panel size read from the window manager. No corroboration, no clip: the
     # counts fall back to the whole tree, which is merely less precise.
     $vp = $null; $vpTrusted = $false
-    if ($script:ScreenW -gt 0) {
+
+    # First choice: the window's OWN rect, read from the window manager. It is
+    # not a guess and it is not a node, which matters - picking the tree node
+    # whose rect best resembles the panel quietly excluded whatever sat below
+    # that node, and on both a launcher and a video app that was the bottom
+    # bar. Five icons counted as "scrolled out" while plainly on screen.
+    if ($script:WinRect -and $script:WinRect.W -gt 1 -and $script:WinRect.H -gt 1) {
+        $vp = @{ L = [double]$script:WinRect.X; T = [double]$script:WinRect.Y
+                 R = [double]($script:WinRect.X + $script:WinRect.W)
+                 B = [double]($script:WinRect.Y + $script:WinRect.H) }
+        $vpTrusted = $true
+    }
+
+    if (-not $vp -and $script:ScreenW -gt 0) {
         # the rect closest to the panel, within 15% on both axes
         $bestErr = 1e9
         foreach ($n in $nodes) {
@@ -2239,6 +2283,7 @@ function Invoke-Classify {
     $win  = $Table | Where-Object { $_.WinId -eq $Id } | Select-Object -First 1
     $name = if ($win) { $win.Name } else { "?" }
 
+    Set-WinRect -Row $win
     $lines = Get-Tree -Id $Id
     if (-not $lines -or $lines.Count -lt 2) {
         Write-Host "empty tree for window $Id - app restarted after param set?" -ForegroundColor Yellow
@@ -2461,6 +2506,7 @@ if ($FindRects) { Show-FindRects -Id $WindowId; exit 0 }
 if ($Window -or $Screen) {
     $w = @($table | Where-Object { $_.WinId -eq $WindowId })[0]
     if (-not $w) { Write-Host "error: window $WindowId not in the table" -ForegroundColor Red; exit 1 }
+    Set-WinRect -Row $w
     $lines = Get-Tree -Id $WindowId
     $Fs = Get-Features -Lines $lines              # clipped, when the viewport is trusted
     # Only worth a second pass when the clip actually did something. With no
