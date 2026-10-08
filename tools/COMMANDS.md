@@ -239,7 +239,8 @@ Surfaces — ArkUI sees the hole, not the content:
 | `MEDIA_PLAYER` | Video with transport chrome | A seekbar beside the surface |
 | `CALL_VIDEO` | Video call | **Two** surfaces — self view and remote — and no seekbar |
 | `CAPTURE` | Camera preview | Surface plus a button cluster, no seekbar |
-| `IMMERSIVE_SURFACE` | A surface filling a bare tree | Nothing else to go on. Honestly `{VIDEO, GAME, MAP, CAMERA}` |
+| `IMMERSIVE_SURFACE` | A surface filling a bare tree | Nothing else to go on. Honestly `{VIDEO, GAME, CAMERA}` |
+| `MAP` | Map or turn-by-turn navigation | A near-full surface with no list and no transport controls |
 | `WEB_CONTENT` | An ArkWeb page | A `Web` node dominating a thin native tree. Contents are ArkWeb's to describe |
 | `AUDIO_PLAYER` | Music or podcast | Transport controls and artwork, but **no** video surface |
 
@@ -258,9 +259,10 @@ Scrollers — all have icons and text, separated by item size and text length:
 
 | Class | What it is | Told apart by |
 |---|---|---|
-| `LIST` | Settings, contacts, any dense list | Small icons, short labels. Switches or a search field at the **top** |
+| `LIST` | A long content list: contacts, inbox, search results | Small icons, short labels, and a **long** tree |
+| `SETTINGS` | A preferences page | Switches, or a **short** tree of labelled rows with no media |
 | `FEED` | Cards, timeline | **Large** media items or **snippet**-length text |
-| `GALLERY_GRID` | Photo grid | A grid where images outnumber text, or carry no captions |
+| `GALLERY_GRID` | Thumbnail grid: photos or videos | Images roughly one per cell, captions rather than sentences |
 | `READING` | Article, document | Text dominates images, with a long contiguous block |
 | `CHAT` | Conversation | An input at the **bottom**, below the content, with message-length text |
 
