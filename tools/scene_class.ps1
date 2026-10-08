@@ -1798,6 +1798,9 @@ function Get-Modifiers {
 # scene_thresholds.json beside the script overrides any of these.
 $script:P = @{
     IconMin        = 6      # icons that make a grid an icon grid
+    GalleryCaption = 10.5   # avg chars: captions on a thumbnail grid, not sentences
+    SmallPage      = 150    # a preferences page is far shorter than a content list
+    FullBleed      = 980    # permille of panel: a viewfinder, not a player
     IconShare      = 0.15   # ...or this share of the tree, whichever hits first
     LabelChars     = 18     # avg content length that still reads as a label
     LabelMaxChars  = 40     # longest block that still reads as a label
@@ -1851,7 +1854,9 @@ $script:ClassInfo = @{
     ICON_PAGER        = @{ Cand=@("LAUNCHER","APP_DRAWER","ONBOARDING");   Resolve="page index separates home pages from the drawer" }
     ICON_GRID         = @{ Cand=@("APP_DRAWER","LAUNCHER_FOLDER","SHORTCUT_GRID"); Resolve="window identity separates the drawer from an app" }
     GALLERY_GRID      = @{ Cand=@("GALLERY","MEDIA_GRID");                 Resolve="-" }
-    LIST              = @{ Cand=@("LIST","SETTINGS","CONTACTS");           Resolve="-" }
+    LIST              = @{ Cand=@("LIST","CONTACTS","INBOX");             Resolve="-" }
+    SETTINGS          = @{ Cand=@("SETTINGS","PREFERENCES","ACCOUNT");     Resolve="-" }
+    MAP               = @{ Cand=@("MAP","NAVIGATION");                     Resolve="bound producer on the surface" }
     CHAT              = @{ Cand=@("CHAT");                                 Resolve="IME state separates composing from reading" }
     FORM              = @{ Cand=@("FORM");                                 Resolve="IME state" }
     EDITOR            = @{ Cand=@("DRAWING","PHOTO_EDIT","ANNOTATION");    Resolve="-" }
@@ -1994,7 +1999,7 @@ function Get-SceneClass {
 
     # ---- lists, chats, forms ----------------------------------------------
     if ($F.Toggle -ge $P.ToggleSettings -and $scrollers -ge 1) {
-        Score "LIST" 4.5 "$($F.Toggle) switches in a scroller - a preferences page"
+        Score "SETTINGS" 4.5 "$($F.Toggle) switches in a scroller"
     }
     if ($F.Editable -ge 1 -and $scrollers -ge 1 -and $geo) {
         if ($F.EditPos -ge 0 -and $F.EditPos -le $P.EditTopMax) {
@@ -2024,6 +2029,67 @@ function Get-SceneClass {
     if ($iconish -ge 1 -and $iconish -le 3 -and $F.Total -lt $P.SmallTree -and
         $F.Text -le 4 -and $F.Editable -eq 0 -and $mediaish -eq 0) {
         Score "MEDIA_VIEW" 4.0 "single dominant image, minimal chrome"
+    }
+
+    # ---- shapes that only a labelled corpus could have shown ---------------
+    #
+    # Everything below was added after 46 labelled screens scored 20%. The
+    # single largest cause was not a threshold: SETTINGS and MAP were never
+    # scored by any rule at all - they existed only as candidate names - so a
+    # quarter of the corpus was unwinnable by construction. -Fit now refuses
+    # to let that happen silently again.
+    #
+    # These rules are fitted to one device, one source and 46 screens. Treat
+    # the two-sample classes as provisional: they are a hypothesis written
+    # down, not a result.
+
+    # A preferences page is a SHORT scrolled list of labelled rows with no
+    # media. The intended signal was the switch count, and uitest reports no
+    # Toggle at all, so the shape has to come from size and composition.
+    if ($scrollers -ge 1 -and $F.Total -lt $P.SmallPage -and $iconish -ge 1 -and
+        $mediaish -eq 0 -and $opaque -eq 0) {
+        Score "SETTINGS" 3.5 "a short scrolled list of labelled rows, no media ($($F.Total) nodes)"
+        if ($textKnown -and $F.AvgText -ge $P.LabelChars) {
+            Score "SETTINGS" 1.5 "row labels run to sentence length (avg $([int]$F.AvgText))"
+        }
+    }
+    # ...and a content list is long. Size is the separator in this corpus;
+    # the ratios overlap almost exactly.
+    if ($scrollers -ge 1 -and $F.Total -ge $P.SmallPage -and $F.ListLike -ge 8) {
+        Score "LIST" 2.0 "a long list ($($F.ListLike) rows in $($F.Total) nodes)"
+    }
+
+    # A thumbnail grid is not a Grid in this vocabulary - it comes through as
+    # a List inside a pager. Images per cell survives captions; images
+    # outnumbering text 2:1 does not, because every thumbnail has a title.
+    $galleryCells = [math]::Max($F.GridLike, $F.ListLike)
+    if ($galleryCells -ge 1 -and $F.Image -ge 6 -and $opaque -eq 0 -and $F.Swiper -ge 3 -and
+        $textKnown -and $F.AvgText -lt $P.GalleryCaption) {
+        Score "GALLERY_GRID" 4.5 "$($F.Image) thumbnails in a pager, captions not sentences (avg $([int]$F.AvgText))"
+    }
+
+    # Two opaque regions is a web view with its own media inside it. One, with
+    # almost no native text around it, is an article being read THROUGH a web
+    # view - the same component, a different scene.
+    if ($opaque -ge 2) { Score "WEB_CONTENT" 3.0 "two opaque regions - a web view with media in it" }
+    if ($F.Web -ge 1 -and $F.Text -le 2 -and $opaque -le 1) {
+        Score "READING" 3.5 "one web view and almost no native text - an article, not a page of controls"
+    }
+
+    # A viewfinder fills the panel completely and has no transport controls.
+    # A player does not fill it and has a seekbar; a map fills most of it and
+    # has neither.
+    if ($opaque -ge 1 -and $F.LargestFrac -ge $P.FullBleed -and $F.Swiper -eq 0 -and
+        $F.Slider -eq 0 -and $F.ListLike -ge 4) {
+        Score "CAPTURE" 3.5 "a full-bleed surface with a control strip and no transport"
+    }
+    if ($opaque -ge 1 -and $F.ListLike -le 2 -and $F.Swiper -ge 2 -and $F.Slider -eq 0 -and
+        $F.LargestFrac -ge 900 -and $F.LargestFrac -lt $P.FullBleed) {
+        Score "MAP" 2.5 "a near-full surface, no list and no transport controls"
+    }
+    if ($opaque -ge 1 -and $F.ListLike -eq 0 -and $F.GridLike -eq 0 -and $F.Swiper -eq 0 -and
+        $F.Total -lt 100) {
+        Score "IMMERSIVE_SURFACE" 3.0 "a surface with no containers around it at all"
     }
 
     # ---- feed vs list ------------------------------------------------------
@@ -2227,13 +2293,20 @@ function Convert-RowToFeatures {
 function Measure-Fit {
     param($Rows)
     $ok = 0; $wrong = @()
+    # Every class any rule managed to score, anywhere in the corpus. A label
+    # that never appears here cannot be produced by the classifier at all, and
+    # no amount of threshold sweeping will reach it - which is a different
+    # failure from a rule being wrong, and it hid ten Settings screens and two
+    # maps behind a plausible-looking 20%.
+    $reachable = @{}
     foreach ($r in $Rows) {
         $f = Convert-RowToFeatures $r
         $res = Get-SceneClass -F $f -WinName ([string]$r.name)
+        foreach ($k in $res.All.Keys) { $reachable[$k] = $true }
         if ($res.Class -eq $r.truth) { $ok++ }
         else { $wrong += [PSCustomObject]@{ Truth=$r.truth; Got=$res.Class; Ranked=$res.Ranked; Name=$r.name } }
     }
-    return [PSCustomObject]@{ Ok=$ok; Total=$Rows.Count; Wrong=$wrong }
+    return [PSCustomObject]@{ Ok=$ok; Total=$Rows.Count; Wrong=$wrong; Reachable=$reachable }
 }
 
 function Invoke-Fit {
@@ -2255,6 +2328,21 @@ function Invoke-Fit {
     $base = Measure-Fit $rows
     Write-Host ""
     Write-Host ("baseline  {0}/{1} correct ({2}%)" -f $base.Ok, $base.Total, [int](100.0*$base.Ok/$base.Total)) -ForegroundColor Cyan
+
+    # Unreachable labels first: a percentage computed over rows that cannot be
+    # won reads as a tuning problem when it is a missing rule.
+    $groups = @($rows | Group-Object truth | Sort-Object Count -Descending)
+    $unreachable = @(); $lost = 0
+    foreach ($g in $groups) {
+        if (-not $base.Reachable.ContainsKey($g.Name)) { $unreachable += ("{0} x{1}" -f $g.Name, $g.Count); $lost += $g.Count }
+    }
+    if ($unreachable.Count -gt 0) {
+        Write-Host ""
+        Write-Host ("  NO RULE SCORES: {0}" -f ($unreachable -join ", ")) -ForegroundColor Red
+        Write-Host ("  {0} of {1} rows ({2}%) cannot be classified correctly by any threshold." -f `
+                    $lost, $base.Total, [int](100.0*$lost/$base.Total)) -ForegroundColor Red
+        Write-Host  "  These need a rule written for them, not a number moved." -ForegroundColor Red
+    }
     foreach ($w in $base.Wrong) {
         Write-Host ("  {0,-16} -> {1,-16}  {2}" -f $w.Truth, $w.Got, $w.Ranked) -ForegroundColor Yellow
     }
