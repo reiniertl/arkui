@@ -1,0 +1,53 @@
+# Coverage audit plan — one row per (app, scene).
+#
+#   bundle | scene label | ability (optional, enables --launch)
+#
+# An empty ability means "I will navigate there myself", which is how you
+# reach any scene that is not the landing screen. Most interesting scenes are
+# not landing screens, so most rows here are deliberately manual.
+#
+# Bundle names below are PLACEHOLDERS. Get the real ones from the device:
+#   hdc shell bm dump -a            # list installed bundles
+#   hdc shell sh /data/local/tmp/scene_probe.sh -l    # windows, with bundles
+#
+# Coverage varies by screen inside one app, which is why the video app has
+# three rows and not one.
+
+# ---- long-form video -------------------------------------------------------
+com.huawei.hmos.video      | home-feed   | EntryAbility
+com.huawei.hmos.video      | player      |
+com.huawei.hmos.video      | player-ui   |
+
+# ---- short video -----------------------------------------------------------
+PLACEHOLDER.shortvideo     | feed        | EntryAbility
+PLACEHOLDER.shortvideo     | comments    |
+
+# ---- heavy network / browser ----------------------------------------------
+com.huawei.hmos.browser    | blank       | MainAbility
+com.huawei.hmos.browser    | article     |
+com.huawei.hmos.browser    | video-page  |
+
+# ---- chat ------------------------------------------------------------------
+com.huawei.hmos.mms        | list        | EntryAbility
+com.huawei.hmos.mms        | thread      |
+com.huawei.hmos.mms        | composing   |
+
+# ---- reading ---------------------------------------------------------------
+com.huawei.hmos.notes      | note        | EntryAbility
+PLACEHOLDER.reader         | page        |
+
+# ---- feed scroll -----------------------------------------------------------
+com.huawei.hmos.photos     | grid        | EntryAbility
+com.huawei.hmos.photos     | fullscreen  |
+PLACEHOLDER.social         | feed        |
+
+# ---- audio only (probe with the screen on; note it in the label) ----------
+com.huawei.hmos.music      | nowplaying  | EntryAbility
+
+# ---- navigation ------------------------------------------------------------
+PLACEHOLDER.maps           | map-idle    | EntryAbility
+PLACEHOLDER.maps           | navigating  |
+
+# ---- opaque surface --------------------------------------------------------
+com.huawei.hmos.camera     | preview     | EntryAbility
+PLACEHOLDER.game           | play        |

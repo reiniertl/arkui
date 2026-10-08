@@ -1,0 +1,2429 @@
+<#
+.SYNOPSIS
+  Classify the scene on screen from the ArkUI tree. Windows host, nothing pushed.
+
+.DESCRIPTION
+  WHAT THIS CAN AND CANNOT SEE
+
+  hidumper gives a SNAPSHOT of the component tree. So:
+
+    available here      structure, roles, text volume, opaque regions, scene
+                        class, and - by differencing consecutive snapshots -
+                        a coarse churn proxy.
+
+    NOT available here  dirty_measure/layout/render, frames, vsyncs,
+                        pending_dirty, gesture events, renderer animations,
+                        damage, horizon_ms. Those live inside the running
+                        framework and need the collector.
+
+  The churn proxy separates STATIC from CHURNING without per-frame hooks. It
+  will UNDER-report a transform-only animation, because a sliding page does
+  not change the tree - which is itself the launcher-drag finding.
+
+  Dumps the component tree over hdc, extracts discriminative features, and
+  emits a scene CANDIDATE SET with the evidence that produced it.
+
+  It deliberately does not emit a single label. Some scenes are genuinely
+  indistinguishable from the tree alone — a fullscreen surface is video, game,
+  map or camera — and the honest output is a narrowed set plus the handle that
+  resolves it. That is the same contract the collector will have with the
+  aggregator, so this is a prototype of the real thing.
+
+  Rule-based on purpose: you can read why it decided, and fix a rule when it
+  is wrong.
+
+.EXAMPLE
+  .\scene_class.ps1 -WindowId 100
+  .\scene_class.ps1 -WindowId 100 -Watch 2
+  .\scene_class.ps1 -WindowId 100 -Out scenes.csv
+  .\scene_class.ps1 -WindowId 100 -Raw
+#>
+
+[CmdletBinding()]
+param(
+    [int]    $WindowId = 0,
+    [string] $Out,
+    [int]    $Watch = 0,
+    [string] $DumpOpt = "inspector",
+    [switch] $Raw,
+    [switch] $ListWindows,
+    [switch] $ShowCmd,
+    [switch] $Explain,
+    [string] $Label,
+    [switch] $Fit,
+    [switch] $Apply,
+    [switch] $Deep,
+    [switch] $Services,
+    [switch] $Window,
+    [switch] $Screen,
+    [switch] $Classify,
+    [switch] $FindRects,
+    [switch] $RsProbe,
+    [string] $RsFps,
+    [string] $Calib = "scene_calib.csv"
+)
+
+$ErrorActionPreference = "Stop"
+$script:ScreenW     = 0
+$script:ScreenH     = 0
+$script:ClipAborted = $false
+$script:ParseMode   = "?"
+$script:SceneContext = @()
+$script:PendingWin  = 0
+$script:PrevTally   = $null
+$script:PrevMono    = 0.0
+$script:StableTicks = 0
+$script:PrevClass   = ""
+
+
+function Invoke-HdcRaw {
+    param([string] $CommandLine)
+    $full = "hdc $CommandLine"
+    if ($ShowCmd) { Write-Host "  > $full" -ForegroundColor DarkGray }
+    $out = & cmd.exe /c $full 2>&1
+    return ($out | ForEach-Object { "$_" })
+}
+
+# Device CLOCK_MONOTONIC seconds. One cheap call per tick, and it is what lets
+# this CSV line up with a scope capture or a device-side trace: host timestamps
+# share no clock with anything on the phone.
+function Get-DeviceMono {
+    $l = Invoke-HdcRaw "shell cat /proc/uptime" |
+         Where-Object { $_ -match '^\s*[\d.]+' } | Select-Object -First 1
+    if ($l) {
+        $m = [regex]::Match($l, '^\s*([\d.]+)')
+        if ($m.Success) { return [double] $m.Groups[1].Value }
+    }
+    return 0.0
+}
+
+function Get-WindowTable {
+    $dump = Invoke-HdcRaw "shell `"hidumper -s WindowManagerService -a '-a'`""
+    # Panel size, used later to corroborate the viewport rect parsed out of the
+    # component tree. Without this the script cannot tell a window-sized rect
+    # from a stray one, and a wrong viewport silently deletes the whole scene.
+    $script:ScreenW = 0; $script:ScreenH = 0
+    foreach ($l in $dump) {
+        $m = [regex]::Match($l, '(\d{3,5})\s*[xX*,]\s*(\d{3,5})')
+        if ($m.Success) {
+            $w = [int]$m.Groups[1].Value; $h = [int]$m.Groups[2].Value
+            # a phone panel, in either orientation, not some other number pair
+            if ($w -ge 240 -and $h -ge 240 -and $w -le 8000 -and $h -le 8000 -and
+                ($w * $h) -gt ($script:ScreenW * $script:ScreenH)) {
+                $script:ScreenW = $w; $script:ScreenH = $h
+            }
+        }
+    }
+    $hdr = -1
+    for ($i = 0; $i -lt $dump.Count; $i++) {
+        if ($dump[$i] -match '(?i)\bWinId\b') { $hdr = $i; break }
+    }
+    if ($hdr -lt 0) { return @() }
+    # Brackets are stripped from header AND rows before splitting, so the
+    # bracketed geometry columns ("[OffsetX OffsetY] [Width Height]") line up
+    # with their values instead of shifting every index after them.
+    $cols = (($dump[$hdr] -replace '[\[\]]', ' ') -split '\s+') | Where-Object { $_ -ne "" }
+    function Idx($pat) {
+        $h = $cols | Where-Object { $_ -match $pat } | Select-Object -First 1
+        if ($h) { return [array]::IndexOf($cols, $h) } else { return -1 }
+    }
+    $iName = Idx '(?i)^WindowName$'
+    $iPid  = Idx '(?i)^Pid$'
+    $iWin  = Idx '(?i)^WinId$'
+    $iZ    = Idx '(?i)^ZOrd'
+    $iVis  = Idx '(?i)^Vis'
+    $iFoc  = Idx '(?i)^Focus'
+    $iType = Idx '(?i)^Type$'
+    $iX    = Idx '(?i)^OffsetX$'
+    $iY    = Idx '(?i)^OffsetY$'
+    $iW    = Idx '(?i)^(Window)?Width$'
+    $iH    = Idx '(?i)^(Window)?Height$'
+
+    $rows = @()
+    for ($i = $hdr + 1; $i -lt $dump.Count; $i++) {
+        $f = (($dump[$i] -replace '[\[\]]', ' ') -split '\s+') | Where-Object { $_ -ne "" }
+        if ($iWin -lt 0 -or $f.Count -le $iWin) { continue }
+        if ($f[$iWin] -notmatch '^\d+$') { continue }
+        function Fld($ix) { if ($ix -ge 0 -and $f.Count -gt $ix) { $f[$ix] } else { "" } }
+        function Num($v) { if ($v -match '^-?\d+$') { [int]$v } else { 0 } }
+        $z = Fld $iZ
+        $rows += [PSCustomObject]@{
+            Name    = if ($iName -ge 0 -and $f.Count -gt $iName) { $f[$iName] } else { "?" }
+            Pid     = Fld $iPid
+            WinId   = [int] $f[$iWin]
+            Type    = Fld $iType
+            Visible = Fld $iVis
+            Focus   = Fld $iFoc
+            ZOrd    = if ($z -match '^-?\d+$') { [int] $z } else { -999999 }
+            X       = Num (Fld $iX); Y = Num (Fld $iY)
+            W       = Num (Fld $iW); H = Num (Fld $iH)
+        }
+    }
+    return $rows
+}
+
+# Window names that are system chrome rather than an app's content. Extend this
+# list if the guess keeps landing on the wrong thing.
+# Windows that are system chrome rather than app content.
+#
+# SCB* are SceneBoard windows. Only the OVERLAYS are listed here - gesture hot
+# zones, status bars, panels, blur decoration. SCBDesktop and the other
+# launcher surfaces are deliberately NOT excluded: the launcher is a scene you
+# want to profile, and it legitimately sits at a high ZOrd.
+#
+# Tune without editing this file: -Exclude '<regex>' is appended.
+$script:SystemWindowPat =
+    '(?i)scbgesture|gestureback|gesturenav|' +
+    'scbwallpaper|scbstatusbar|scbnavigation|scbvolume|scbdropdown|' +
+    'scbscreenlock|scbbanner|scbnotification|' +
+    'blurview|backgroundblur|' +
+    'statusbar|navigationbar|navbar|wallpaper|systemui|keyguard|lock|dock|' +
+    'recent|pointer|cursor|softkeyboard|inputmethod|ime|toast|volume|' +
+    'notification|dropdown|controlpanel|launcherdock|divider|drag'
+
+# ---------------------------------------------------------------- scene scope
+#
+# WHAT IS "THE SCENE".
+#
+# Four different things get called the same word, and the classifier is only
+# meaningful once you say which one it is labelling:
+#
+#   window          a WindowManager object: rect, ZOrder, type, pid.
+#   viewport        that window's rect clipped to the display.
+#   visible region  the viewport minus whatever sits on top of it. A window
+#                   can be "visible" and entirely covered by a dialog.
+#   rendered set    the nodes inside the visible region that are not clipped
+#                   by a scroller, hidden, or transparent.
+#
+# The definition used here:
+#
+#   THE SCENE IS THE TOPMOST NON-OVERLAY WINDOW THAT COVERS A MATERIAL SHARE
+#   OF THE DISPLAY. Everything above it is CONTEXT, not a separate scene.
+#
+# That matters because a phone screen is nearly always several windows - a
+# launcher under a status bar under a gesture strip - and calling the topmost
+# one "the scene" is how the classifier ended up describing a 40-pixel gesture
+# hot zone. The thing a user would point at is the big one underneath.
+#
+# Picking by ZOrder alone cannot express this. Picking by area alone picks the
+# wallpaper. It needs both, plus occlusion: if something above genuinely
+# covers the host, THAT is the scene and the host is behind it.
+# The window table on this build prints no geometry columns, but every
+# per-window dump opens with a header that does:
+#
+#   WindowRect: [ 0, 0, 1316, 2832 ]
+#   Offset: [ 0, 0 ]
+#
+# One extra call per window buys back share, occlusion and the panel size -
+# which is the whole of the scene-scoping logic. Cached for the session,
+# because window rects change on rotation and split, not on every tick.
+$script:RectCache = @{}
+
+function Repair-WindowRects {
+    param([object[]] $Table, [int] $Max = 12)
+
+    if (-not $Table -or $Table.Count -eq 0) { return }
+    if (@($Table | Where-Object { $_.W -gt 0 }).Count -gt 0) { return }   # table had them
+
+    $n = 0
+    foreach ($w in $Table) {
+        if ($n -ge $Max) { break }
+        $n++
+        $id = [int]$w.WinId
+        if (-not $script:RectCache.ContainsKey($id)) {
+            $hdr = Invoke-HdcRaw "shell `"hidumper -s WindowManagerService -a '-w $id -element'`""
+            $r = $null
+            foreach ($l in $hdr) {
+                $m = [regex]::Match($l, '(?i)WindowRect\s*:\s*\[\s*(-?[\d.]+)\s*,\s*(-?[\d.]+)\s*,\s*(-?[\d.]+)\s*,\s*(-?[\d.]+)\s*\]')
+                if ($m.Success) {
+                    # [x, y, width, height] - the header gives an origin and a
+                    # size, not two corners.
+                    $r = @{ X=[int][double]$m.Groups[1].Value; Y=[int][double]$m.Groups[2].Value
+                            W=[int][double]$m.Groups[3].Value; H=[int][double]$m.Groups[4].Value }
+                    break
+                }
+            }
+            $script:RectCache[$id] = $r
+        }
+        $r = $script:RectCache[$id]
+        if ($r) {
+            $w.X = $r.X; $w.Y = $r.Y; $w.W = $r.W; $w.H = $r.H
+            if ($r.W -gt $script:ScreenW) { $script:ScreenW = $r.W; $script:ScreenH = $r.H }
+        }
+    }
+}
+
+function Resolve-Scene {
+    param([object[]] $Table, [switch] $Quiet)
+
+    if (-not $Table -or $Table.Count -eq 0) { return $null }
+    $ctx = @()
+
+    $displayArea = 0.0
+    if ($script:ScreenW -gt 0) { $displayArea = [double]$script:ScreenW * $script:ScreenH }
+    if ($displayArea -le 0) {
+        foreach ($w in $Table) { $a = [double]$w.W * $w.H; if ($a -gt $displayArea) { $displayArea = $a } }
+    }
+    $haveRects = ($displayArea -gt 0)
+
+    $visible = @($Table | Where-Object { $_.Visible -eq "" -or $_.Visible -match '(?i)^(1|true|yes)$' })
+    if ($visible.Count -eq 0) { $visible = $Table }
+
+    foreach ($w in $visible) {
+        $area = [double]$w.W * $w.H
+        $share = if ($haveRects -and $area -gt 0) { $area / $displayArea } else { -1.0 }
+        Add-Member -InputObject $w -NotePropertyName Share -NotePropertyValue $share -Force
+        # An overlay is system chrome by name, or - when we have rects - simply
+        # too small to be a scene whatever it is called.
+        $byName = ($w.Name -match $script:SystemWindowPat)
+        $bySize = ($share -ge 0 -and $share -lt 0.15)
+        Add-Member -InputObject $w -NotePropertyName IsOverlay -NotePropertyValue ($byName -or $bySize) -Force
+    }
+
+    # Candidates: not chrome, and big enough to be the thing on screen.
+    $content = @($visible | Where-Object { -not $_.IsOverlay -and ($_.Share -lt 0 -or $_.Share -ge 0.35) })
+    if ($content.Count -eq 0) { $content = @($visible | Where-Object { -not $_.IsOverlay }) ; $ctx += "NO_CONTENT_WINDOW" }
+    if ($content.Count -eq 0) { $content = $visible }
+
+    $ranked = @($content | Sort-Object ZOrd -Descending)
+    $host_ = $ranked[0]
+
+    # Occlusion. A window above that covers most of the host IS the scene.
+    if ($haveRects) {
+        foreach ($w in $visible) {
+            if ($w.WinId -eq $host_.WinId -or $w.ZOrd -le $host_.ZOrd) { continue }
+            if ($w.IsOverlay) { continue }
+            $ox = [math]::Max(0, [math]::Min($w.X + $w.W, $host_.X + $host_.W) - [math]::Max($w.X, $host_.X))
+            $oy = [math]::Max(0, [math]::Min($w.Y + $w.H, $host_.Y + $host_.H) - [math]::Max($w.Y, $host_.Y))
+            $hostArea = [double]$host_.W * $host_.H
+            if ($hostArea -gt 0 -and (($ox * $oy) / $hostArea) -ge 0.8) {
+                $ctx += "PROMOTED_OVER_$($host_.WinId)"
+                $host_ = $w
+            }
+        }
+    }
+
+    # What sits above the scene is context, and each of these changes the cost
+    # shape without changing what the scene IS.
+    foreach ($w in $visible) {
+        if ($w.ZOrd -le $host_.ZOrd) { continue }
+        if ($w.Name -match '(?i)input_?method|softkeyboard|\bime\b') { $ctx += "IME_UP"; continue }
+        if ($w.Name -match '(?i)notification|dropdown|shade|controlpanel')   { $ctx += "SHADE_ABOVE"; continue }
+        if ($w.Name -match '(?i)volume|toast|banner')                        { $ctx += "TRANSIENT_ABOVE"; continue }
+        if (-not $w.IsOverlay) { $ctx += "WINDOW_ABOVE" }
+    }
+    if (@($content | Where-Object { $_.Share -ge 0.2 }).Count -ge 2) { $ctx += "MULTI_WINDOW" }
+    if (-not $haveRects) { $ctx += "NO_WINDOW_RECTS" }
+
+    $script:SceneContext = @($ctx | Select-Object -Unique)
+
+    if (-not $Quiet) {
+        $sh = if ($host_.Share -ge 0) { "{0}% of the display" -f [int]($host_.Share * 100) } else { "size unknown" }
+        Write-Host ("scene: window {0} ({1})  z{2}  {3}" -f $host_.WinId, $host_.Name, $host_.ZOrd, $sh) -ForegroundColor DarkCyan
+        if ($script:SceneContext.Count -gt 0) {
+            Write-Host ("       context: {0}" -f ($script:SceneContext -join ", ")) -ForegroundColor DarkGray
+        }
+        $others = @($ranked | Select-Object -Skip 1 -First 2)
+        if ($others.Count -gt 0) {
+            Write-Host ("       under it: {0}" -f (($others | ForEach-Object { "$($_.WinId)/$($_.Name)/z$($_.ZOrd)" }) -join ", ")) -ForegroundColor DarkGray
+        }
+    }
+    return $host_
+}
+
+
+function Get-Tree {
+    param([int] $Id)
+    # uitest is not a hidumper view; it is a different tool with a different
+    # shape, so it is fetched and flattened before anything else sees it.
+    if ($DumpOpt -eq "uitest") { return Get-UiTestTree }
+    return Invoke-HdcRaw "shell `"hidumper -s WindowManagerService -a '-w $Id -$DumpOpt'`""
+}
+
+# ---------------------------------------------------------------- features
+
+# Rect parsing. The dump format moves between builds, so three shapes are
+# tried and the first hit wins. If none hits anywhere in the dump, geometry is
+# UNAVAILABLE, which is a different thing from flat: every geometry-dependent
+# column is then reported as absent and the rules that need it stand down
+# instead of guessing.
+function Get-Rect {
+    param([string] $L)
+    $r = Get-RectRaw $L
+    # A degenerate rect means "not measured", NOT "off screen". Auto-sized
+    # nodes print 0x0 in several dump formats, and treating those as scrolled
+    # out deleted most of the tree and collapsed every scene into the
+    # fallback class. Unknown geometry must leave the node in the scene.
+    if ($r -and (($r.R - $r.L) -le 0.5 -or ($r.B - $r.T) -le 0.5)) { return $null }
+    return $r
+}
+
+function Get-RectRaw {
+    param([string] $L)
+    # "bounds":"[left,top][right,bottom]" - uitest. Checked first and
+    # anchored on the key, because origBounds sits beside it with the
+    # pre-transform rect and taking that one silently shifts every node.
+    $m = [regex]::Match($L, '(?i)"bounds"\s*:\s*"\[\s*(-?[\d.]+)\s*,\s*(-?[\d.]+)\s*\]\s*\[\s*(-?[\d.]+)\s*,\s*(-?[\d.]+)\s*\]')
+    if ($m.Success) {
+        return @{ L=[double]$m.Groups[1].Value; T=[double]$m.Groups[2].Value
+                  R=[double]$m.Groups[3].Value; B=[double]$m.Groups[4].Value }
+    }
+    # "[left,top],[right,bottom]" - the ArkUI inspector $rect form
+    $m = [regex]::Match($L, '\[\s*(-?[\d.]+)\s*,\s*(-?[\d.]+)\s*\]\s*,\s*\[\s*(-?[\d.]+)\s*,\s*(-?[\d.]+)\s*\]')
+    if ($m.Success) {
+        return @{ L=[double]$m.Groups[1].Value; T=[double]$m.Groups[2].Value
+                  R=[double]$m.Groups[3].Value; B=[double]$m.Groups[4].Value }
+    }
+    # "(x, y) - [w x h]"
+    $m = [regex]::Match($L, '\(\s*(-?[\d.]+)\s*,\s*(-?[\d.]+)\s*\)\s*-?\s*\[\s*(-?[\d.]+)\s*x\s*(-?[\d.]+)\s*\]')
+    if ($m.Success) {
+        $x=[double]$m.Groups[1].Value; $y=[double]$m.Groups[2].Value
+        $w=[double]$m.Groups[3].Value; $h=[double]$m.Groups[4].Value
+        return @{ L=$x; T=$y; R=($x+$w); B=($y+$h) }
+    }
+    # separate keys
+    $mw = [regex]::Match($L, '(?i)\bwidth\s*[:=]\s*"?(-?[\d.]+)')
+    $mh = [regex]::Match($L, '(?i)\bheight\s*[:=]\s*"?(-?[\d.]+)')
+    if ($mw.Success -and $mh.Success) {
+        $mx = [regex]::Match($L, '(?i)(?:^|[^a-z])(?:x|left|offsetX)\s*[:=]\s*"?(-?[\d.]+)')
+        $my = [regex]::Match($L, '(?i)(?:^|[^a-z])(?:y|top|offsetY)\s*[:=]\s*"?(-?[\d.]+)')
+        $x = if ($mx.Success) { [double]$mx.Groups[1].Value } else { 0.0 }
+        $y = if ($my.Success) { [double]$my.Groups[1].Value } else { 0.0 }
+        return @{ L=$x; T=$y; R=($x+[double]$mw.Groups[1].Value); B=($y+[double]$mh.Groups[1].Value) }
+    }
+    return $null
+}
+
+# The dump comes in one of two layouts: one node per line, or a pretty-printed
+# block where $type, $rect and the attributes are on separate lines. Deciding
+# which ONCE, up front, is what makes node assembly reliable - a per-line
+# fallback applied to a block dump turns every attribute into a fake node.
+function Get-Nodes {
+    param([string[]] $Lines)
+
+    # Only the inspector's own key counts: "$type" or a quoted "type". A bare
+    # `Type:` line from the window property header must NOT switch the parser
+    # into block mode, because in block mode every line without that key is
+    # folded into the previous node - which turns a whole tree into one node.
+    $typePat = '(?:^|[\s,{])"?\$type"?\s*[:=]\s*"?([A-Za-z_][A-Za-z0-9_]*)|(?:^|[\s,{])"type"\s*:\s*"?([A-Za-z_][A-Za-z0-9_]*)'
+    $hits = 0
+    foreach ($l in $Lines) { if ($l -match $typePat) { $hits++; if ($hits -ge 3) { break } } }
+    $typed = ($hits -ge 3)
+
+    $nodes = Build-Nodes -Lines $Lines -Typed $typed -TypePat $typePat
+    # Self-correcting: if block mode produced almost nothing from a dump with
+    # real content, the key guess was wrong. Fall back rather than hand the
+    # classifier an empty tree.
+    if ($typed -and $nodes.Count -lt 5) {
+        $body = 0; foreach ($l in $Lines) { if (-not [string]::IsNullOrWhiteSpace($l)) { $body++ } }
+        if ($body -gt 20) {
+            $nodes = Build-Nodes -Lines $Lines -Typed $false -TypePat $typePat
+            $script:ParseMode = "per-line (block mode yielded $($nodes.Count))"
+            return ,$nodes
+        }
+    }
+    $script:ParseMode = if ($typed) { "block" } else { "per-line" }
+    return ,$nodes
+}
+
+function Build-Nodes {
+    param([string[]] $Lines, [bool] $Typed, [string] $TypePat)
+
+    $nodes = New-Object System.Collections.ArrayList
+    $cur = $null
+    foreach ($l in $Lines) {
+        if ([string]::IsNullOrWhiteSpace($l)) { continue }
+        $start = $false; $tag = $null
+        if ($Typed) {
+            $m = [regex]::Match($l, $TypePat)
+            if ($m.Success) {
+                $start = $true
+                $tag = if ($m.Groups[1].Success) { $m.Groups[1].Value } else { $m.Groups[2].Value }
+            }
+        } else {
+            $m = [regex]::Match($l, '[A-Za-z_][A-Za-z_]+')
+            if ($m.Success) { $start = $true; $tag = $m.Value }
+        }
+        if ($start) {
+            if ($cur) { [void]$nodes.Add($cur) }
+            $indent = $l.Length - $l.TrimStart().Length
+            $cur = @{ Tag=$tag; Indent=$indent; Text=$l; Rect=$null; Leaf=$true }
+        } elseif ($cur) {
+            $cur.Text += " " + $l
+        } else { continue }
+        if ($cur -and -not $cur.Rect) {
+            $r = Get-Rect $l
+            if ($r) { $cur.Rect = $r }
+        }
+    }
+    if ($cur) { [void]$nodes.Add($cur) }
+
+    # Leaf detection by indentation. Needed because the ROOT always fills the
+    # window: measure the largest node and every screen looks like fullscreen
+    # video. The largest LEAF is the content.
+    for ($i = 0; $i -lt $nodes.Count - 1; $i++) {
+        if ($nodes[$i+1].Indent -gt $nodes[$i].Indent) { $nodes[$i].Leaf = $false }
+    }
+    return ,$nodes
+}
+
+
+# ---- opaque regions: what is probably behind the surface ----------------
+#
+# We cannot look inside an XComponent, and never will - it is app-owned
+# content. But the DECLARATION is ours, and it carries more than it looks:
+#
+#   id            the developer's own name for it. Free text, so a guess, but
+#                 in practice people call a video surface "videoPlayer".
+#   libraryname   the native .so registered to drive it. "ijkplayer" and
+#                 "nativerender" say very different things.
+#   type          SURFACE composites on its own; TEXTURE is read back into the
+#                 UI tree, which costs an extra pass. A cost difference, not
+#                 just a taxonomy.
+#   enableSecure  DRM. Not a guess - protected content is video.
+#   accessibility the one string written to be human-readable.
+#
+# None of this is authoritative. The buffer queue knows the truth: usage flags
+# literally say video decoder or camera, and the format says YUV or RGBA. This
+# is what ArkUI can offer BEFORE that join, and a prior to weigh it against.
+function Get-OpaqueHint {
+    param($Nodes, $F)
+
+    $name=""; $lib=""; $xtype=""; $a11y=""; $secure=0; $hdr=0; $aspect=0.0
+    foreach ($n in $Nodes) {
+        $t = $n.Text
+        if (-not $name) {
+            $m = [regex]::Match($t, '(?i)\b(?:inspectorKey|componentId|\bid|\bkey)\s*[:=]\s*"?([A-Za-z0-9_.\-]{2,48})')
+            if ($m.Success -and $m.Groups[1].Value -notmatch '^\d+$') { $name = $m.Groups[1].Value }
+        }
+        if (-not $lib) {
+            $m = [regex]::Match($t, '(?i)librar(?:y)?[_ ]?name\s*[:=]\s*"?([A-Za-z0-9_.\-]{1,48})')
+            if ($m.Success) { $lib = $m.Groups[1].Value }
+        }
+        if (-not $xtype) {
+            $m = [regex]::Match($t, '(?i)(?:xcomponent)?type\s*[:=]\s*"?(surface|texture|component|node)\b')
+            if ($m.Success) { $xtype = $m.Groups[1].Value.ToUpper() }
+        }
+        if (-not $a11y) {
+            $m = [regex]::Match($t, '(?i)accessibility(?:Text|Description|Label)\s*[:=]\s*"?([^"|,]{2,60})')
+            if ($m.Success) { $a11y = $m.Groups[1].Value.Trim() }
+        }
+        if ($t -match '(?i)enablesecure\s*[:=]\s*"?true') { $secure = 1 }
+        if ($t -match '(?i)hdrbrightness|isHdr\s*[:=]\s*"?true') { $hdr = 1 }
+        if ($n.VisW -gt 0 -and $n.VisH -gt 0) {
+            $a = $n.VisW / $n.VisH
+            if ($a -gt $aspect) { $aspect = $a }
+        }
+    }
+
+    $hay  = ("$name $lib $a11y").ToLower()
+    $hint = "UNKNOWN"; $conf = 0; $why = @(); $flags = @()
+
+    # Keyword tables. Deliberately generous - a wrong guess at 40 confidence
+    # costs the aggregator nothing, a missing guess costs it a prior.
+    $tables = @(
+        @{ H="VIDEO";     Pat='video|player|media|movie|film|vod|live|stream|playback|mp4|avplayer|ijk|exo|ffmpeg|vlc|danmaku' },
+        @{ H="CAMERA";    Pat='camera|cam[^a-z]|preview|viewfinder|capture|lens|shutter|scan|qrcode|barcode' },
+        @{ H="GAME";      Pat='game|unity|unreal|cocos|egl|gles|opengl|vulkan|engine|render3d|scene3d|sprite' },
+        @{ H="MAP";       Pat='map|navi|gis|tile|amap|baidumap|route|geo' },
+        @{ H="CHART";     Pat='chart|graph|plot|gauge|candle|kline' },
+        @{ H="AR";        Pat='\bar\b|\bxr\b|slam|arkit|arengine' },
+        @{ H="AUDIO_VIS"; Pat='visualizer|spectrum|waveform|equalizer' }
+    )
+    foreach ($tb in $tables) {
+        if ($hay -match $tb.Pat) {
+            $hint = $tb.H; $conf = 55
+            $why += "name/library matched $($tb.H.ToLower())"
+            $flags += if ($lib -match $tb.Pat) { "LIBRARY_MATCH" } else { "NAME_MATCH" }
+            if ($a11y -match $tb.Pat) { $flags += "A11Y_MATCH"; $conf += 10 }
+            break
+        }
+    }
+
+    # Facts outrank substrings.
+    if ($secure) {
+        $flags += "SECURE"
+        if ($hint -eq "UNKNOWN" -or $hint -eq "VIDEO") { $hint = "VIDEO"; $conf = [math]::Max($conf, 85) }
+        $why += "DRM-protected surface"
+    }
+    if ($hdr) { $flags += "HDR"; if ($hint -eq "UNKNOWN") { $hint = "VIDEO"; $conf = 70 }; $why += "HDR" }
+
+    # Structure around it, when the declaration says nothing.
+    if ($hint -eq "UNKNOWN") {
+        if ($F.Slider -ge 1 -and $F.Button -ge 2) {
+            $hint = "VIDEO"; $conf = 45; $flags += "SIBLING_MATCH"; $why += "seekbar and transport beside the surface"
+        } elseif ($F.Button -ge 4 -and $F.Slider -eq 0) {
+            $hint = "CAMERA"; $conf = 35; $flags += "SIBLING_MATCH"; $why += "button cluster, no seekbar"
+        }
+    }
+    if ($aspect -ge 1.6 -and $aspect -le 1.85) {
+        $flags += "ASPECT_MATCH"
+        if ($hint -eq "VIDEO") { $conf = [math]::Min(95, $conf + 10) }
+        elseif ($hint -eq "UNKNOWN") { $hint = "VIDEO"; $conf = 30; $why += "16:9 surface" }
+    }
+    # TEXTURE is read back into the UI tree: an extra pass, worth saying.
+    if ($xtype -eq "TEXTURE") { $why += "TEXTURE type - composited through the UI tree, not independently" }
+
+    return [PSCustomObject]@{
+        Name = $name; Lib = $lib; XType = $xtype; A11y = $a11y
+        Secure = $secure; Hdr = $hdr
+        Aspect = [math]::Round($aspect, 2)
+        Hint = $hint; Conf = $conf
+        Flags = ($flags | Select-Object -Unique) -join "|"
+        Why = ($why -join "; ")
+    }
+}
+
+# Every node the walk STOPS at. One definition, used by the feature counter
+# and by the metadata dump alike, because "opaque" has to mean the same thing
+# in both places: a node whose contents we do not own and cannot descend into.
+# Web is on this list even though ArkWeb is patchable platform code - from the
+# component tree's point of view it is still a hole, and the inside of it is a
+# separate producer's job.
+$script:OpaquePat = '^(XComponent|Web|Video|SurfaceView|EmbeddedComponent|UIExtensionComponent|Plugin|RichEditor_Surface)$'
+
+$script:SurfaceKnownKeys = @(
+    'type','xcomponenttype','id','inspectorkey','componentid','key','libraryname','library_name',
+    'surfaceid','surface_id','uniqueid','nodeid','webid','nwebid','rect','framerect','x','y','left',
+    'top','right','bottom','width','height','size','offsetx','offsety','enablesecure','hdrbrightness',
+    'ishdr','enableanalyzer','renderfit','accessibilitytext','accessibilitydescription',
+    'accessibilitylabel','accessibilitylevel','accessibilitygroup','opacity','visibility','enabled',
+    'clip','active','backgroundcolor','foregroundcolor','zindex','compid','debugline','isroot',
+    'src','rendermode','layoutmode','incognito','javascriptaccess','darkmode','zoomaccess',
+    'mediaplaygestureaccess','nestedscroll','mixedmode','cachemode','blocknetwork','autoplay',
+    'controls','loop','muted','objectfit','currentprogressrate','poster','bundlename','abilityname',
+    'pluginname','want'
+)
+
+# Ordered attribute list for the printer: label, value, and a short note on why
+# the value matters. Empty values are dropped rather than printed as blanks -
+# an absent attribute and an attribute set to nothing are different facts, and
+# only the first one is worth a line.
+function Add-Attr {
+    param($List, [string] $K, [string] $V, [string] $N)
+    if ($V) { [void]$List.Add([PSCustomObject]@{ K=$K; V=$V; N=$N }) }
+}
+
+# Pull one attribute out of a node's accumulated text.
+function Get-Attr {
+    param([string] $T, [string] $Pat)
+    $m = [regex]::Match($T, $Pat)
+    if ($m.Success) { return $m.Groups[1].Value.Trim().Trim('"') }
+    return ""
+}
+
+# A URL is the most identifying thing a Web node carries and the one piece of
+# this that is somebody's browsing history. The host answers every question we
+# have - which engine instance, which site, is it the same page as last
+# interval - and the path answers none of them, so the path is printed for the
+# person at the terminal and never written to the CSV.
+function Split-Url {
+    param([string] $U)
+    if (-not $U) { return [PSCustomObject]@{ Host=""; Short="" } }
+    $m = [regex]::Match($U, '(?i)^([a-z][a-z0-9+.\-]*):(?://)?([^/?#\s]*)([^\s?#]*)')
+    if (-not $m.Success) { return [PSCustomObject]@{ Host=""; Short=($U.Substring(0, [math]::Min(48, $U.Length))) } }
+    $scheme = $m.Groups[1].Value.ToLower()
+    $hostName = $m.Groups[2].Value
+    $path = $m.Groups[3].Value
+    if ($path.Length -gt 24) { $path = $path.Substring(0, 24) + "..." }
+    $short = if ($hostName) { "$scheme`://$hostName$path" } else { "$scheme`:$path" }
+    return [PSCustomObject]@{ Host=$hostName; Short=$short }
+}
+
+# ---- metadata for every opaque node -------------------------------------
+#
+# One record per node, never one per window. Two opaque regions on a screen
+# are two independent cost sources - a 900-permille player and a 120-permille
+# preview submit at different rates and neither is described by their average.
+#
+# The attributes split three ways:
+#   common      geometry, visibility, and what the node is wrapped in. These
+#               mean the same thing whatever is behind the hole.
+#   per kind    an XComponent has a library and a surface type; a Web has a
+#               render mode and a URL. Different questions, different answers.
+#   unclaimed   every other key=value the node carries. The named sets above
+#               encode what we EXPECTED a declaration to hold; builds differ,
+#               and the only way to learn what this one emits is to print the
+#               keys nobody asked for.
+function Get-SurfaceRecords {
+    param($Nodes, [int] $VpW = 0, [int] $VpH = 0)
+
+    # The tree is not the screen. It carries pages beneath the top of the
+    # route stack, recycled list items and hidden tab contents, and every
+    # opaque node in them is in this walk. Which of them you are actually
+    # looking at is a geometry question, so without rects the honest answer
+    # is UNKNOWN - not "on screen", which is the mistake that collapsed the
+    # classifier twice already.
+    $clipW = if ($VpW -gt 0) { $VpW } else { $script:ScreenW }
+    $clipH = if ($VpH -gt 0) { $VpH } else { $script:ScreenH }
+
+    $recs = New-Object System.Collections.ArrayList
+    for ($i = 0; $i -lt $Nodes.Count; $i++) {
+        $n = $Nodes[$i]
+        if ($n.Tag -notmatch $script:OpaquePat) { continue }
+        $t = $n.Text
+
+        # ---- common ------------------------------------------------------
+        $id  = Get-Attr $t '(?i)\b(?:inspectorKey|componentId|id|key)\s*[:=]\s*"?([A-Za-z0-9_.\-]{2,48})'
+        if ($id -match '^\d+$') { $id = "" }
+        $opa = Get-Attr $t '(?i)\bopacity\s*[:=]\s*"?([\d.]+)'
+        $vsb = Get-Attr $t '(?i)\bvisibility\s*[:=]\s*"?([A-Za-z]+)'
+
+        # The join key. Several spellings across builds and across kinds; all
+        # numeric. Without one, nothing downstream can be matched to this
+        # node - not a buffer queue, not an RS layer, not a power interval.
+        $join = Get-Attr $t '(?i)\b(?:surface[_ ]?id|nweb[_ ]?id|web[_ ]?id|uniqueId|nodeId)\s*[:=]\s*"?([0-9]{3,20})'
+        $joinKind = ""
+        if ($join) {
+            if ($t -match '(?i)surface[_ ]?id')      { $joinKind = "surfaceId" }
+            elseif ($t -match '(?i)n?web[_ ]?id')    { $joinKind = "webId" }
+            else                                      { $joinKind = "nodeId" }
+        }
+
+        # Geometry. The share is of the PANEL, not of the parent, because that
+        # is the number the descriptor carries and the one that scales with
+        # composition cost.
+        $w = 0; $h = 0; $permille = -1; $aspect = 0.0
+        if ($n.Rect) {
+            $w = [int]($n.Rect.R - $n.Rect.L); $h = [int]($n.Rect.B - $n.Rect.T)
+            if ($h -gt 0) { $aspect = [math]::Round([double]$w / [double]$h, 3) }
+            if ($script:ScreenW -gt 0 -and $script:ScreenH -gt 0) {
+                $permille = [int](1000.0 * ($w * $h) / ([double]$script:ScreenW * $script:ScreenH))
+            }
+        }
+
+        # What it is wrapped in. A Slider and two Buttons alongside is player
+        # chrome; the same node alone under a Column is immersive.
+        $parent = ""
+        for ($j = $i - 1; $j -ge 0; $j--) {
+            if ($Nodes[$j].Indent -lt $n.Indent) { $parent = $Nodes[$j].Tag; break }
+        }
+        $sibs = @()
+        for ($j = [math]::Max(0, $i - 8); $j -le [math]::Min($Nodes.Count - 1, $i + 8); $j++) {
+            if ($j -eq $i) { continue }
+            if ($Nodes[$j].Indent -eq $n.Indent) { $sibs += $Nodes[$j].Tag }
+        }
+
+        # ---- per kind ----------------------------------------------------
+        # Attrs is an ordered list of label/value/note so the printer does not
+        # need to know anything about kinds, and a new kind is one block here.
+        $attrs = New-Object System.Collections.ArrayList
+        $flags = @()
+        $kind = switch -Regex ($n.Tag) {
+            '^XComponent$'                             { "XCOMPONENT" }
+            '^Web$'                                    { "WEB" }
+            '^Video$'                                  { "VIDEO" }
+            '^SurfaceView$'                            { "SURFACE_VIEW" }
+            '^(EmbeddedComponent|UIExtensionComponent)$' { "EMBEDDED" }
+            '^Plugin$'                                 { "PLUGIN" }
+            default                                    { "OPAQUE" }
+        }
+        $srcHost = ""
+
+        if ($kind -eq "XCOMPONENT" -or $kind -eq "SURFACE_VIEW") {
+            $xt = (Get-Attr $t '(?i)(?:xcomponent)?type\s*[:=]\s*"?(surface|texture|component|node)\b').ToUpper()
+            Add-Attr $attrs "libraryname" (Get-Attr $t '(?i)librar(?:y)?[_ ]?name\s*[:=]\s*"?([A-Za-z0-9_.\-]{1,48})') ""
+            Add-Attr $attrs "type"        $xt $(switch ($xt) {
+                                    "TEXTURE"   { "read back through the UI tree - an extra pass" }
+                                    "SURFACE"   { "own composition layer" }
+                                    "COMPONENT" { "drawn by the app on the UI thread" }
+                                    default     { "" } })
+            Add-Attr $attrs "renderFit"   (Get-Attr $t '(?i)renderFit\s*[:=]\s*"?([A-Za-z_]+)') "how the buffer is fitted - implies scaling"
+            if ($t -match '(?i)enablesecure\s*[:=]\s*"?true')  { $flags += "SECURE (DRM)" }
+            if ($t -match '(?i)hdrbrightness\s*[:=]\s*"?[\d.]+|\bisHdr\s*[:=]\s*"?true') { $flags += "HDR" }
+            if ($t -match '(?i)enableanalyzer\s*[:=]\s*"?true') { $flags += "ANALYZER (AI runs over the frames)" }
+        }
+        elseif ($kind -eq "WEB") {
+            $u = Split-Url (Get-Attr $t '(?i)\bsrc\s*[:=]\s*"?([^"\s,}]{4,300})')
+            $srcHost = $u.Host
+            Add-Attr $attrs "src"        $u.Short "host is kept; the path is not written to the CSV"
+            $rm = (Get-Attr $t '(?i)renderMode\s*[:=]\s*"?([A-Za-z_]+)').ToUpper()
+            Add-Attr $attrs "renderMode" $rm $(if ($rm -match 'SYNC') { "drawn into the UI tree - same cost shape as a TEXTURE XComponent" }
+                                 elseif ($rm -match 'ASYNC') { "own composition layer" } else { "" })
+            $lm = (Get-Attr $t '(?i)layoutMode\s*[:=]\s*"?([A-Za-z_]+)').ToUpper()
+            Add-Attr $attrs "layoutMode" $lm $(if ($lm -match 'FIT_CONTENT') { "measured by content height - web layout drives ArkUI measure" } else { "" })
+            Add-Attr $attrs "cacheMode"  (Get-Attr $t '(?i)cacheMode\s*[:=]\s*"?([A-Za-z_]+)') ""
+            Add-Attr $attrs "mixedMode"  (Get-Attr $t '(?i)mixedMode\s*[:=]\s*"?([A-Za-z_]+)') ""
+            Add-Attr $attrs "nestedScroll" (Get-Attr $t '(?i)nestedScroll[A-Za-z]*\s*[:=]\s*"?([A-Za-z_]+)') "web scroll chained to an ArkUI scroller"
+            if ($t -match '(?i)incognito\s*[:=]\s*"?true')              { $flags += "INCOGNITO" }
+            if ($t -match '(?i)javaScriptAccess\s*[:=]\s*"?false')      { $flags += "JS OFF" }
+            if ($t -match '(?i)darkMode\s*[:=]\s*"?(On|Auto)')          { $flags += "DARK MODE" }
+            if ($t -match '(?i)mediaPlayGestureAccess\s*[:=]\s*"?true') { $flags += "MEDIA GESTURE" }
+            if ($t -match '(?i)blockNetwork\s*[:=]\s*"?true')           { $flags += "NETWORK BLOCKED" }
+        }
+        elseif ($kind -eq "VIDEO") {
+            $u = Split-Url (Get-Attr $t '(?i)\bsrc\s*[:=]\s*"?([^"\s,}]{4,300})')
+            $srcHost = $u.Host
+            Add-Attr $attrs "src"       $u.Short ""
+            Add-Attr $attrs "objectFit" (Get-Attr $t '(?i)objectFit\s*[:=]\s*"?([A-Za-z_]+)') ""
+            Add-Attr $attrs "rate"      (Get-Attr $t '(?i)currentProgressRate\s*[:=]\s*"?([\d.]+)') "playback rate - off 1.0 changes the decode load"
+            if ($t -match '(?i)autoPlay\s*[:=]\s*"?true') { $flags += "AUTOPLAY" }
+            if ($t -match '(?i)\bloop\s*[:=]\s*"?true')   { $flags += "LOOP" }
+            if ($t -match '(?i)\bmuted\s*[:=]\s*"?true')  { $flags += "MUTED" }
+            if ($t -match '(?i)\bcontrols\s*[:=]\s*"?true') { $flags += "BUILT-IN CONTROLS" }
+        }
+        elseif ($kind -eq "EMBEDDED" -or $kind -eq "PLUGIN") {
+            # The provider IS the identity here - the content belongs to
+            # another process entirely, so there is nothing else to read.
+            Add-Attr $attrs "bundleName"  (Get-Attr $t '(?i)bundleName\s*[:=]\s*"?([A-Za-z0-9_.\-]{2,80})') "the process that owns what is inside"
+            Add-Attr $attrs "abilityName" (Get-Attr $t '(?i)abilityName\s*[:=]\s*"?([A-Za-z0-9_.\-]{2,80})') ""
+            Add-Attr $attrs "pluginName"  (Get-Attr $t '(?i)pluginName\s*[:=]\s*"?([A-Za-z0-9_.\-]{2,80})') ""
+        }
+
+        Add-Attr $attrs "a11y" (Get-Attr $t '(?i)accessibility(?:Text|Description|Label)\s*[:=]\s*"?([^"|,]{2,60})') "the one string written to be read by a human"
+
+        # ---- unclaimed ---------------------------------------------------
+        $extra = @()
+        foreach ($m in [regex]::Matches($t, '([A-Za-z_][A-Za-z0-9_]{2,31})\s*[:=]\s*"?([^",}\s][^",}]{0,38})')) {
+            $k = $m.Groups[1].Value
+            if ($script:SurfaceKnownKeys -contains $k.ToLower()) { continue }
+            $extra += ("{0}={1}" -f $k, $m.Groups[2].Value.Trim())
+        }
+        $extra = @($extra | Select-Object -Unique | Select-Object -First 24)
+
+        $onScreen = -1
+        if ($n.Rect -and $clipW -gt 0 -and $clipH -gt 0) {
+            $ox = [math]::Min($n.Rect.R, [double]$clipW) - [math]::Max($n.Rect.L, 0.0)
+            $oy = [math]::Min($n.Rect.B, [double]$clipH) - [math]::Max($n.Rect.T, 0.0)
+            $onScreen = if ($ox -gt 0.5 -and $oy -gt 0.5) { 1 } else { 0 }
+        }
+
+        [void]$recs.Add([PSCustomObject]@{
+            Idx = $recs.Count; Tag = $n.Tag; Kind = $kind; OnScreen = $onScreen
+            JoinId = $join; JoinKind = $joinKind
+            Id = $id; SrcHost = $srcHost
+            Opacity = $opa; Vis = $vsb
+            W = $w; H = $h; Aspect = $aspect; Permille = $permille
+            Parent = $parent; Siblings = (($sibs | Select-Object -Unique) -join ",")
+            Attrs = @($attrs); Flags = $flags
+            Extra = $extra
+        })
+    }
+    return ,$recs
+}
+
+# ------------------------------------------------------------------- scopes
+#
+# Two views of the same window, same layout, one difference:
+#
+#   -Window   everything the window CONTAINS. The whole tree, including the
+#             pages under the top of the route stack and the list items that
+#             are laid out but scrolled past.
+#   -Screen   only what is INSIDE THE VIEWPORT right now.
+#
+# They are different questions with different answers, and the gap between
+# them is the point. A window containing a media player is a media player
+# window for as long as it is open. Scroll the player out of view and the
+# screen is a list - same window, same tree, different pixels, and almost
+# certainly a different power draw, because the decoder is still running but
+# nothing it produces reaches the display.
+#
+# Nothing here classifies. It reports.
+
+function Get-TallyCount {
+    param($T, [string[]] $Keys)
+    $n = 0
+    if (-not $T) { return 0 }
+    foreach ($k in $Keys) { if ($T.ContainsKey($k)) { $n += $T[$k] } }
+    return $n
+}
+
+# What a node sits next to, said plainly. Siblings are evidence about an
+# opaque region precisely because the surface itself tells us nothing: a
+# seekbar beside a hole is a statement about what is behind the hole, made by
+# the only part of the screen we can read.
+function Get-SiblingNote {
+    param($Rec)
+    $s = $Rec.Siblings
+    if (-not $s) { return "alone in its parent - no chrome to read" }
+    $notes = @()
+    $btn = ([regex]::Matches($s, '(?i)\bButton\b')).Count
+    if ($s -match '(?i)\bSlider\b' -and $btn -ge 2) { $notes += "seekbar + transport buttons: a player with controls" }
+    elseif ($s -match '(?i)\bSlider\b')             { $notes += "a slider alongside: seekable or adjustable" }
+    elseif ($btn -ge 4)                             { $notes += "$btn buttons, no seekbar: a capture or tool bar" }
+    if ($s -match '(?i)\bProgress\b')               { $notes += "progress indicator alongside" }
+    if ($Rec.Parent -match '(?i)List|Grid|Waterflow|Swiper') { $notes += "inside a $($Rec.Parent) cell: one item among many, not the screen" }
+    if ($s -match '(?i)\bText\b' -and $notes.Count -eq 0)    { $notes += "text alongside: captioned or labelled" }
+    if ($notes.Count -eq 0) { return "siblings carry nothing recognisable" }
+    return ($notes -join "; ")
+}
+
+function Show-Scope {
+    param($F, [int] $Id, [string] $WinName, [string] $ProcId, [string] $Mode)
+
+    $screen = ($Mode -eq "screen")
+    $tally  = if ($screen) { $F.Tally } else { $F.TallyAll }
+    $total  = if ($screen) { $F.Total } else { $F.Nodes }
+
+    Write-Host ""
+    if ($screen) {
+        Write-Host ("SCREEN  of window {0}  ({1})" -f $Id, $WinName) -ForegroundColor Cyan
+        Write-Host  "  scope: only the nodes inside the viewport right now" -ForegroundColor DarkGray
+    } else {
+        Write-Host ("WINDOW  {0}  ({1})  pid {2}" -f $Id, $WinName, $ProcId) -ForegroundColor Cyan
+        Write-Host  "  scope: everything the window contains, on screen or not" -ForegroundColor DarkGray
+    }
+
+    # ---- can we even tell the two apart on this build? -------------------
+    $clipOn = [bool]$F.VpTrusted
+    Write-Host ""
+    if ($clipOn) {
+        Write-Host ("  viewport   {0}x{1}   panel {2}x{3}   clip ON" -f $F.VpW, $F.VpH, $F.ScreenW, $F.ScreenH)
+        Write-Host ("  on screen  {0} of {1} nodes   ({2} scrolled out, {3} hidden)" -f `
+                    $F.Total, $F.Nodes, $F.OffScreen, $F.Hidden)
+    } else {
+        $why = if (-not $F.GeoOK) { "this dump carries no node rects" }
+               elseif ($F.ClipAborted) { "the viewport was rejected - it would have deleted most of the tree" }
+               else { "no rect matched the panel size, so the viewport is unconfirmed" }
+        Write-Host ("  geometry   UNAVAILABLE - {0}" -f $why) -ForegroundColor DarkYellow
+        if ($screen) {
+            Write-Host  "  SCREEN CANNOT BE SEPARATED FROM WINDOW on this build." -ForegroundColor Yellow
+            Write-Host  "  What follows is the whole window again. Scrolling will not change it." -ForegroundColor Yellow
+            Write-Host  "  Next thing to try:  -DumpOpt render   then   -RsProbe" -ForegroundColor Yellow
+        }
+    }
+
+    # ---- what the window itself declares ---------------------------------
+    # Only in window scope: these are properties of the window, not of what
+    # happens to be scrolled into view.
+    if (-not $screen) {
+        $props = Get-WindowProps -Id $Id
+        $hit = @()
+        foreach ($k in $props.Keys) { if ($k -match $script:WindowPropsOfInterest) { $hit += ("{0}={1}" -f $k, $props[$k]) } }
+        Write-Host ""
+        if ($hit.Count -gt 0) { Write-Host ("  declares   {0}" -f (($hit | Select-Object -First 12) -join "   ")) }
+        else { Write-Host "  declares   nothing recognised in the window property dump" -ForegroundColor DarkGray }
+    }
+
+    # ---- composition ------------------------------------------------------
+    $text   = Get-TallyCount $tally @('Text','Span','RichText')
+    $image  = Get-TallyCount $tally @('Image')
+    $icon   = Get-TallyCount $tally @('SymbolGlyph','Symbol','ImageSpan','ImageAnimator')
+    $button = Get-TallyCount $tally @('Button')
+    $edit   = Get-TallyCount $tally @('TextInput','TextArea','Search','RichEditor')
+    $list   = Get-TallyCount $tally @('List','ListItem','ListItemGroup','LazyForEach')
+    $grid   = Get-TallyCount $tally @('Grid','GridItem','WaterFlow','FlowItem')
+    $swiper = Get-TallyCount $tally @('Swiper','Tabs','TabContent')
+    $scroll = Get-TallyCount $tally @('Scroll','Scroller','Refresh')
+    $slider = Get-TallyCount $tally @('Slider','Progress')
+    $xc     = Get-TallyCount $tally @('XComponent')
+    $web    = Get-TallyCount $tally @('Web')
+    $vid    = Get-TallyCount $tally @('Video','SurfaceView')
+
+    Write-Host ""
+    Write-Host ("  nodes      {0}" -f $total)
+    Write-Host ("  content    text {0}   image {1}   icon {2}   button {3}   editable {4}" -f $text, $image, $icon, $button, $edit)
+    Write-Host ("  containers list {0}   grid {1}   swiper/tabs {2}   scroll {3}" -f $list, $grid, $swiper, $scroll)
+    Write-Host ("  media      XComponent {0}   Web {1}   Video {2}   slider/progress {3}" -f $xc, $web, $vid, $slider)
+
+    # ---- opaque nodes -----------------------------------------------------
+    $vw = if ($clipOn) { $F.VpW } else { 0 }
+    $vh = if ($clipOn) { $F.VpH } else { 0 }
+    $all = Get-SurfaceRecords -Nodes $F.NodeList -VpW $vw -VpH $vh
+    $recs = if ($screen -and $clipOn) { @($all | Where-Object { $_.OnScreen -eq 1 }) } else { @($all) }
+
+    Write-Host ""
+    if ($all.Count -eq 0) {
+        Write-Host "  OPAQUE     none in this window" -ForegroundColor DarkGray
+    } elseif ($recs.Count -eq 0) {
+        Write-Host ("  OPAQUE     none on screen - {0} exist in the window but are scrolled out" -f $all.Count) -ForegroundColor DarkYellow
+    } else {
+        Write-Host ("  OPAQUE     {0}" -f $recs.Count) -ForegroundColor Green
+    }
+
+    foreach ($r in $recs) {
+        $state = switch ($r.OnScreen) { 1 { "on screen" } 0 { "OFF SCREEN" } default { "on screen?" } }
+        Write-Host ""
+        Write-Host ("    [{0}] {1}  ({2})  {3}" -f $r.Idx, $r.Tag, $r.Kind, $state) -ForegroundColor Green
+        if ($r.JoinId) { Write-Host ("         {0,-12} {1}" -f $r.JoinKind, $r.JoinId) }
+        else           { Write-Host ("         {0,-12} not in this dump" -f "joinId") -ForegroundColor DarkGray }
+        if ($r.Id)     { Write-Host ("         {0,-12} {1}" -f "id", $r.Id) }
+        foreach ($a in $r.Attrs) { Write-Host ("         {0,-12} {1}" -f $a.K, $a.V) }
+        if ($r.W -gt 0) {
+            $sh = if ($r.Permille -ge 0) { "{0} permille of panel" -f $r.Permille } else { "" }
+            Write-Host ("         {0,-12} {1}x{2}  aspect {3}  {4}" -f "rect", $r.W, $r.H, $r.Aspect, $sh)
+        } else {
+            Write-Host ("         {0,-12} not in this dump" -f "rect") -ForegroundColor DarkGray
+        }
+        if ($r.Flags.Count -gt 0) { Write-Host ("         {0,-12} {1}" -f "flags", ($r.Flags -join "  ")) }
+        if ($r.Parent)   { Write-Host ("         {0,-12} {1}" -f "parent", $r.Parent) }
+        if ($r.Siblings) { Write-Host ("         {0,-12} {1}" -f "siblings", $r.Siblings) }
+        Write-Host     ("         {0,-12} {1}" -f "reads as", (Get-SiblingNote -Rec $r)) -ForegroundColor DarkCyan
+        if ($r.Extra.Count -gt 0) {
+            Write-Host ("         {0,-12} {1}" -f "other keys", (($r.Extra | Select-Object -First 8) -join "  ")) -ForegroundColor DarkGray
+        }
+    }
+
+    # ---- rows, when asked for --------------------------------------------
+    if ($Out -and $recs.Count -gt 0) {
+        $sdir = Split-Path -Parent $Out
+        $sf   = if ($sdir) { Join-Path $sdir "scene_surfaces.csv" } else { "scene_surfaces.csv" }
+        $had  = Test-Path $sf
+        $recs | Select-Object @{n='scope';e={$Mode}}, @{n='win';e={$Id}}, @{n='window_name';e={$WinName}},
+                              Idx, Tag, Kind, OnScreen, JoinKind, JoinId, Id, SrcHost,
+                              W, H, Aspect, Permille, Vis, Opacity, Parent, Siblings,
+                              @{n='flags';e={ $_.Flags -join '|' }},
+                              @{n='attrs';e={ ($_.Attrs | ForEach-Object { "$($_.K)=$($_.V)" }) -join '|' }},
+                              @{n='extra';e={ $_.Extra -join '|' }} |
+            Export-Csv -Path $sf -NoTypeInformation -Append:$had
+        Write-Host ""
+        Write-Host ("  rows -> {0}" -f $sf) -ForegroundColor DarkGray
+    }
+
+    # ---- the comparison, stated ------------------------------------------
+    Write-Host ""
+    if ($clipOn) {
+        $hiddenOpaque = @($all | Where-Object { $_.OnScreen -eq 0 }).Count
+        if ($screen -and $hiddenOpaque -gt 0) {
+            Write-Host ("  {0} opaque node(s) are in this window but not on screen. The decoder may" -f $hiddenOpaque) -ForegroundColor DarkCyan
+            Write-Host  "  still be running while nothing it produces reaches the display." -ForegroundColor DarkCyan
+        }
+        Write-Host ("  run the other scope to compare:  scene_class.cmd {0} -WindowId {1}" -f `
+                    $(if ($screen) { "-Window" } else { "-Screen" }), $Id) -ForegroundColor DarkGray
+    }
+}
+
+# -------------------------------------------------------------------- uitest
+#
+# -FindRects settled it: on this build every hidumper view returns the same
+# window header, only the inspector returns a body, and that body is a bare
+# tree of component names. No rects, no text, no attributes anywhere. The
+# layout results exist - the device is drawing them - but nothing in the
+# window manager's dumps prints them.
+#
+# uitest does. It is the UI-test harness that ships with the system, and its
+# dumpLayout walks the live accessibility tree and writes one JSON object per
+# node with bounds, type, text, id, description and the host window id. That
+# is everything the inspector withholds, from a channel that exists for
+# exactly this purpose.
+#
+# The cost is honesty about what it is: a test harness, heavier than a dump,
+# and it reads the accessibility projection of the tree rather than the tree
+# itself - decorative nodes may be absent, and a node marked
+# accessibility-hidden will not appear. For building a labelled dictionary
+# that is a good trade. For the collector it is irrelevant: in-process the
+# real tree is right there.
+
+# Split uitest's JSON into one indented line per node. Indentation is the
+# depth of the children arrays, which restores the parent/sibling structure
+# the rest of the script reads.
+#
+# String literals are skipped while scanning, because "bounds":"[0,0][1,2]"
+# contains brackets and counting those as nesting would scramble every depth
+# below it.
+function ConvertFrom-UiTestLayout {
+    param([string] $Json)
+
+    $out = New-Object System.Collections.ArrayList
+    $len = $Json.Length
+    $depth = 0
+    $i = 0
+    while ($i -lt $len) {
+        $c = $Json[$i]
+
+        # Every string is read as a unit, key or value alike. Scanning past
+        # them is not optional: "bounds":"[0,0][1,2]" carries brackets, and
+        # counting those as nesting scrambles the depth of everything below.
+        if ($c -eq '"') {
+            $st = $i + 1
+            $j = $st
+            while ($j -lt $len) {
+                if ($Json[$j] -eq '\') { $j += 2; continue }
+                if ($Json[$j] -eq '"')  { break }
+                $j++
+            }
+            $key = $Json.Substring($st, $j - $st)
+            $i = $j + 1
+
+            if ($key -eq 'attributes') {
+                $k = $i
+                while ($k -lt $len -and ($Json[$k] -eq ':' -or $Json[$k] -eq ' ' -or $Json[$k] -eq "`t" -or $Json[$k] -eq "`r" -or $Json[$k] -eq "`n")) { $k++ }
+                if ($k -lt $len -and $Json[$k] -eq '{') {
+                    $d = 0; $e = $k
+                    while ($e -lt $len) {
+                        $ch = $Json[$e]
+                        if ($ch -eq '"') {
+                            $e++
+                            while ($e -lt $len) {
+                                if ($Json[$e] -eq '\') { $e += 2; continue }
+                                if ($Json[$e] -eq '"')  { break }
+                                $e++
+                            }
+                        } elseif ($ch -eq '{') { $d++ }
+                        elseif ($ch -eq '}') { $d--; if ($d -eq 0) { break } }
+                        $e++
+                    }
+                    if ($e -ge $len) { break }
+                    [void]$out.Add(((" " * ($depth * 2)) + $Json.Substring($k, $e - $k + 1)))
+                    $i = $e + 1
+                }
+            }
+            continue
+        }
+
+        # Depth is the nesting of the children arrays, which is what restores
+        # the parent/sibling structure the rest of the script reads.
+        if ($c -eq '[') { $depth++; $i++; continue }
+        if ($c -eq ']') { $depth--; $i++; continue }
+        $i++
+    }
+    return ,$out.ToArray()
+}
+
+function Get-UiTestTree {
+    $path = "/data/local/tmp/ark_layout.json"
+    Invoke-HdcRaw "shell `"uitest dumpLayout -p $path`"" | Out-Null
+    $raw = @(Invoke-HdcRaw "shell `"cat $path`"")
+    if ($raw.Count -eq 0) {
+        Write-Host "uitest produced nothing. Check:  hdc shell uitest dumpLayout -p $path" -ForegroundColor Yellow
+        return @()
+    }
+    $joined = ($raw -join "")
+    if ($joined -notmatch '"attributes"') {
+        Write-Host "uitest answered but the output is not a layout dump:" -ForegroundColor Yellow
+        Write-Host ("  " + $joined.Substring(0, [math]::Min(160, $joined.Length))) -ForegroundColor DarkGray
+        return @()
+    }
+    return ConvertFrom-UiTestLayout -Json $joined
+}
+
+# ------------------------------------------------------------------ geometry
+#
+# -Screen cannot differ from -Window without node rects, and on this build the
+# inspector view carries none. That is a property of ONE dump option, not of
+# the device: the layout results exist, something just has to print them. This
+# tries every view and reports which one does, so the question is settled by a
+# single command instead of a guess.
+function Show-FindRects {
+    param([int] $Id)
+
+    $rectPat = '(?i)(?:\$?rect|frameRect|bounds)\s*[:=]|\[\s*-?\d+(?:\.\d+)?\s*,\s*-?\d+(?:\.\d+)?\s*\]|\b\d{2,5}(?:\.\d+)?\s*[xX*]\s*\d{2,5}'
+
+    Write-Host ""
+    Write-Host ("GEOMETRY SEARCH  window {0}" -f $Id) -ForegroundColor Cyan
+    Write-Host "  which hidumper view carries node rects on this build" -ForegroundColor DarkGray
+    Write-Host ""
+    Write-Host ("  {0,-12} {1,8} {2,8} {3,8}  {4}" -f "view", "lines", "nodes", "rects", "verdict")
+
+    $best = ""; $bestN = 0
+    foreach ($opt in @('inspector','render','element','frontend','navigation','uitest')) {
+        $lines = if ($opt -eq 'uitest') { @(Get-UiTestTree) }
+                 else { @(Invoke-HdcRaw "shell `"hidumper -s WindowManagerService -a '-w $Id -$opt'`"") }
+        $body  = @($lines | Where-Object { $_ -and $_.Trim() })
+        if ($body.Count -eq 0) {
+            Write-Host ("  {0,-12} {1,8} {2,8} {3,8}  {4}" -f $opt, 0, "-", "-", "no output") -ForegroundColor DarkGray
+            continue
+        }
+        $nodes = Get-Nodes -Lines $lines
+        $boxes = @($nodes | Where-Object { $_.Rect }).Count
+        # Count rect-shaped TEXT too: a view may carry geometry the node
+        # assembler does not attach, and that is a parser fix, not a dead end.
+        $rawHits = @($body | Where-Object { $_ -match $rectPat }).Count
+
+        $verdict = if ($boxes -ge 5) { "USE THIS" }
+                   elseif ($rawHits -ge 5) { "has rects, parser misses them" }
+                   else { "no geometry" }
+        $col = if ($boxes -ge 5) { "Green" } elseif ($rawHits -ge 5) { "Yellow" } else { "DarkGray" }
+        Write-Host ("  {0,-12} {1,8} {2,8} {3,8}  {4}" -f $opt, $body.Count, $nodes.Count, $boxes, $verdict) -ForegroundColor $col
+        if ($rawHits -gt 0 -and $boxes -lt 5) {
+            $sample = @($body | Where-Object { $_ -match $rectPat } | Select-Object -First 2)
+            foreach ($l in $sample) { Write-Host ("               {0}" -f $l.Trim().Substring(0, [math]::Min(96, $l.Trim().Length))) -ForegroundColor DarkGray }
+        }
+        if ($boxes -gt $bestN) { $bestN = $boxes; $best = $opt }
+    }
+
+    Write-Host ""
+    if ($best) {
+        Write-Host ("  use it:  scene_class.cmd -Window -Screen -DumpOpt {0}" -f $best) -ForegroundColor Green
+    } else {
+        Write-Host "  no view carried rects the parser could attach." -ForegroundColor Yellow
+        Write-Host "  Where a line is shown above, the geometry IS there and the rect parser" -ForegroundColor DarkGray
+        Write-Host "  needs the format - that is a small fix. Otherwise try -RsProbe: RS has" -ForegroundColor DarkGray
+        Write-Host "  layer bounds because it cannot composite without them." -ForegroundColor DarkGray
+    }
+}
+
+# ---------------------------------------------------------------- RenderService
+#
+# The inspector dump not printing a property does NOT mean the property does
+# not exist. The live FrameNode has it; the serialiser simply did not write it.
+# That distinction matters because it decides whether a signal is missing or
+# merely unreachable THROUGH THIS CHANNEL - and render_service is a different
+# channel, on the far side of the surface, which is exactly where the things
+# ArkUI cannot see are kept.
+#
+# This is discovery, not a feature: nobody here knows what this build's RS
+# accepts, so the candidate list is tried and the ones that answer are
+# reported. Mutating arguments (trimMem, dumpMem and friends) are deliberately
+# NOT in the list - they change the thing we are measuring.
+$script:RsProbeArgs = @(
+    @{ A = 'screen';         W = 'display config: resolution, refresh rate, rotation, HDR' }
+    @{ A = 'surface';        W = 'layer list: names, bounds, buffer state, z. The join we want' }
+    @{ A = 'RSTree';         W = 'the render tree - one node per line, the global composition' }
+    @{ A = 'nodeNotOnTree';  W = 'allocated but not composited - cost without pixels' }
+    @{ A = 'allSurfacesMem'; W = 'per-surface memory; sizes imply buffer format and count' }
+    @{ A = 'composer fps';   W = 'composition rate for the display' }
+    @{ A = 'allInfo';        W = 'everything RS will print, usually long' }
+)
+
+function Invoke-RsDump {
+    param([string] $Arg)
+    return Invoke-HdcRaw "shell `"hidumper -s RenderService -a '$Arg'`""
+}
+
+function Show-RsProbe {
+    param([int] $Preview = 6)
+
+    Write-Host ""
+    Write-Host "RENDER SERVICE PROBE  [R]" -ForegroundColor Cyan
+    Write-Host "  which dump arguments answer on this build, and what they carry." -ForegroundColor DarkGray
+    Write-Host "  read-only arguments only - nothing here trims or frees anything." -ForegroundColor DarkGray
+
+    $worked = @()
+    foreach ($p in $script:RsProbeArgs) {
+        $out = @(Invoke-RsDump -Arg $p.A | Where-Object { $_ -and $_.Trim() })
+        $bad = ($out.Count -eq 0) -or
+               (@($out | Where-Object { $_ -match '(?i)unknown|not support|invalid|no such|usage:|permission' }).Count -gt 0 -and $out.Count -lt 4)
+        Write-Host ""
+        if ($bad) {
+            Write-Host ("  {0,-16} no" -f $p.A) -ForegroundColor DarkGray
+            if ($out.Count -gt 0) { Write-Host ("    {0}" -f $out[0].Trim()) -ForegroundColor DarkGray }
+            continue
+        }
+        $worked += $p.A
+        Write-Host ("  {0,-16} YES  {1} lines   ({2})" -f $p.A, $out.Count, $p.W) -ForegroundColor Green
+        foreach ($l in ($out | Select-Object -First $Preview)) { Write-Host ("    {0}" -f $l.Trim()) -ForegroundColor DarkGray }
+        if ($out.Count -gt $Preview) { Write-Host ("    ... {0} more" -f ($out.Count - $Preview)) -ForegroundColor DarkGray }
+    }
+
+    Write-Host ""
+    if ($worked.Count -eq 0) {
+        Write-Host "  nothing answered. Either the service is named differently here -" -ForegroundColor Yellow
+        Write-Host "  run -Services and look for a render entry - or it needs more rights." -ForegroundColor Yellow
+    } else {
+        Write-Host ("  answered: {0}" -f ($worked -join ", ")) -ForegroundColor Green
+        Write-Host "  if 'surface' answered, its layer names are the join key the component" -ForegroundColor DarkGray
+        Write-Host "  dump is missing, and -RsFps <layer name> gives that layer's submit rate." -ForegroundColor DarkGray
+    }
+}
+
+# Per-layer submit rate. This is the one measurement that settles what an
+# opaque node is doing rather than what it declares: a layer submitting at
+# 60/s is live content, one submitting at 0 is a paused player or a static
+# map. ArkUI cannot see it at all - those frames never pass through the
+# pipeline - so unlike almost everything else here, this signal belongs to
+# the aggregator by necessity, not by choice.
+function Show-RsFps {
+    param([string] $Layer)
+    Write-Host ""
+    Write-Host ("LAYER SUBMIT RATE  [R]   '{0}'" -f $Layer) -ForegroundColor Cyan
+    $out = @(Invoke-RsDump -Arg ("fps " + $Layer) | Where-Object { $_ -and $_.Trim() })
+    if ($out.Count -eq 0) {
+        Write-Host "  nothing returned - check the name against the 'surface' dump" -ForegroundColor Yellow
+        return
+    }
+    foreach ($l in $out) { Write-Host ("  {0}" -f $l.Trim()) }
+}
+
+# Lines from the RS surface/tree dumps that plausibly belong to this window.
+# Matched on pid and on the window name, because RS names layers after the
+# window and the two dumps do not share an id format.
+function Get-RsForWindow {
+    param([string] $WinName, [string] $ProcId)
+
+    $hits = @()
+    foreach ($arg in @('surface', 'RSTree')) {
+        $out = @(Invoke-RsDump -Arg $arg | Where-Object { $_ -and $_.Trim() })
+        if ($out.Count -eq 0) { continue }
+        foreach ($l in $out) {
+            $t = $l.Trim()
+            if ($ProcId -and $t -match ("\b" + [regex]::Escape($ProcId) + "\b")) { $hits += "[$arg] $t"; continue }
+            if ($WinName -and $t -match [regex]::Escape($WinName))               { $hits += "[$arg] $t" }
+        }
+    }
+    return ,@($hits | Select-Object -Unique | Select-Object -First 24)
+}
+
+# The classifier, run against one scope and labelled as such. Separate from
+# Invoke-Classify because that one is the CSV path - it stamps timestamps,
+# tracks churn across ticks and writes rows. This just answers the question
+# for the tree in front of it.
+function Show-ScopeClass {
+    param($F, [string] $Mode, $Win)
+
+    $R = Get-SceneClass -F $F
+    $churn = [PSCustomObject]@{ Delta=0; Added=0; Removed=0; Net=0; Shape="NONE"; Rate=0.0; Dt=0.0; First=$true }
+    $mods = Get-Modifiers -F $F -Churn $churn -Win $Win
+    $col = switch ($R.Conf) { "structural" {"Green"} "weak" {"Yellow"} default {"DarkYellow"} }
+
+    Write-Host ""
+    Write-Host ("  CLASS      {0}   ({1} as a {2})" -f $R.Class, $R.Conf, $Mode) -ForegroundColor $col
+    if ($R.Cand.Count -gt 0) { Write-Host ("  candidates {0}" -f ($R.Cand -join ", ")) }
+    Write-Host ("  ranked     {0}" -f $R.Ranked)
+    Write-Host ("  evidence   {0}" -f ($R.Ev -join "; "))
+    if ($mods.Count -gt 0) { Write-Host ("  modifiers  {0}" -f ($mods -join " | ")) }
+}
+
+# ---------------------------------------------------------- window properties
+#
+# Window flags say something about content without looking at it. An app asks
+# for keep-screen-on because it knows the user is watching something, and that
+# is a stronger statement than any name match on a component id.
+#
+# Mined generically: the keys differ across builds and we do not know this
+# one, so everything is kept and the interesting names are merely promoted -
+# the same principle as the unclaimed attributes on a node.
+function Get-WindowProps {
+    param([int] $Id)
+    $lines = Invoke-HdcRaw "shell `"hidumper -s WindowManagerService -a '-w $Id -element'`""
+    $kv = [ordered]@{}
+    foreach ($l in $lines) {
+        foreach ($m in [regex]::Matches($l, '([A-Za-z_][A-Za-z0-9_ ]{2,31}?)\s*[:=]\s*([^,;|}\s][^,;|}]{0,46})')) {
+            $k = $m.Groups[1].Value.Trim()
+            $v = $m.Groups[2].Value.Trim()
+            if ($k -and $v -and -not $kv.Contains($k)) { $kv[$k] = $v }
+        }
+    }
+    return $kv
+}
+
+# Window flags that say something about content without looking at it. These
+# are declarations of intent - an app asks for keep-screen-on because it knows
+# the user is watching something, and that is a stronger statement than any
+# name match on a component id.
+$script:WindowPropsOfInterest = '(?i)keep.?screen|brightness|orientation|privacy|secure|touchable|focusable|transparent|decor|window.?mode|window.?type|pip|float|split|display.?id|visib|alpha|scale|dirty|flag'
+
+
+function Get-Features {
+    # -NoClip computes the same features over the WHOLE tree, ignoring the
+    # viewport even when it is trusted. That is what -Window means, and the
+    # classifier needs its own feature set for each scope: a window holding a
+    # player and a screen showing a list are two different answers from one
+    # dump, and they cannot share one count.
+    param([string[]] $Lines, [switch] $NoClip)
+
+    $nodes = Get-Nodes -Lines $Lines
+
+    # ---- viewport ------------------------------------------------------
+    # A scroller's own rect is clipped to the viewport; its CHILDREN are not,
+    # so a long page carries rows that are laid out but not rendered. Dropping
+    # those is the point of this block.
+    #
+    # But a wrong viewport drops EVERYTHING, and a classifier fed an empty
+    # tree does not fail loudly - it quietly answers LIST for every screen.
+    # So the clip only runs when the viewport is CORROBORATED against the
+    # panel size read from the window manager. No corroboration, no clip: the
+    # counts fall back to the whole tree, which is merely less precise.
+    $vp = $null; $vpTrusted = $false
+    if ($script:ScreenW -gt 0) {
+        # the rect closest to the panel, within 15% on both axes
+        $bestErr = 1e9
+        foreach ($n in $nodes) {
+            if (-not $n.Rect) { continue }
+            $w = $n.Rect.R - $n.Rect.L; $h = $n.Rect.B - $n.Rect.T
+            if ($w -lt $script:ScreenW * 0.85 -or $w -gt $script:ScreenW * 1.15) { continue }
+            if ($h -lt $script:ScreenH * 0.4  -or $h -gt $script:ScreenH * 1.15) { continue }
+            $err = [math]::Abs($w - $script:ScreenW) + [math]::Abs($h - $script:ScreenH)
+            if ($err -lt $bestErr) { $bestErr = $err; $vp = $n.Rect }
+        }
+        if ($vp) { $vpTrusted = $true }
+    }
+    if (-not $vp) {
+        # Largest rect in the dump. Used for overdraw and largest-leaf ratios,
+        # never for clipping, because nothing confirms it is the screen.
+        $best = -1.0
+        foreach ($n in $nodes) {
+            if (-not $n.Rect) { continue }
+            $a2 = ($n.Rect.R - $n.Rect.L) * ($n.Rect.B - $n.Rect.T)
+            if ($a2 -gt $best) { $best = $a2; $vp = $n.Rect }
+        }
+    }
+    $geoOK = $false
+    if ($vp) {
+        $vpW = $vp.R - $vp.L; $vpH = $vp.B - $vp.T
+        if ($vpW -gt 1 -and $vpH -gt 1) { $geoOK = $true }
+    }
+    if (-not $geoOK) { $vpW = 0.0; $vpH = 0.0; $vpTrusted = $false }
+    if ($NoClip) { $vpTrusted = $false }
+    $vpArea = $vpW * $vpH
+
+    # ---- visibility ------------------------------------------------------
+    # ONLY an explicit visibility state. An earlier version also excluded
+    # `active: false` and `visible: false`, which different builds use for
+    # things that are on screen perfectly well.
+    $hiddenPat = '(?i)visibility\s*[:=.]\s*"?(Hidden|None|GONE|INVISIBLE)\b'
+    $hidden = 0
+    foreach ($n in $nodes) { if ($n.Text -match $hiddenPat) { $hidden++ } }
+    # If it wants to remove a third of the tree it has matched something other
+    # than a visibility state. Drop the filter rather than the screen.
+    $useHidden = ($hidden -lt ($nodes.Count * 0.3))
+    if (-not $useHidden) { $hidden = 0 }
+
+    $vis = New-Object System.Collections.ArrayList
+    $off = 0; $boxes = 0
+    $areaSum = 0.0
+    $bigLeafArea = 0.0; $bigLeafW = 0.0; $bigLeafH = 0.0
+    foreach ($n in $nodes) {
+        if ($useHidden -and $n.Text -match $hiddenPat) { continue }
+        if (-not $n.Rect) { [void]$vis.Add($n); continue }
+        $boxes++
+        $r = $n.Rect
+        $cl = [math]::Max($r.L, $vp.L); $ct = [math]::Max($r.T, $vp.T)
+        $cr = [math]::Min($r.R, $vp.R); $cb = [math]::Min($r.B, $vp.B)
+        $w = $cr - $cl; $h = $cb - $ct
+        if ($w -le 0.5 -or $h -le 0.5) {
+            $off++
+            if ($vpTrusted) { continue }      # scrolled out
+            $w = 0.0; $h = 0.0
+        }
+        $n.VisW = $w; $n.VisH = $h
+        if ($w -gt 0) { $n.CenterY = ($ct + $cb) / 2.0 }
+        $areaSum += ($w * $h)
+        if ($n.Leaf -and ($w * $h) -gt $bigLeafArea) {
+            $bigLeafArea = $w * $h; $bigLeafW = $w; $bigLeafH = $h
+        }
+        [void]$vis.Add($n)
+    }
+
+    # Last line of defence. If the clip somehow still emptied the tree, the
+    # answer is not to classify an empty tree - it is to stop clipping.
+    if ($vpTrusted -and $nodes.Count -ge 20 -and $vis.Count -lt ($nodes.Count * 0.15)) {
+        $vpTrusted = $false
+        $vis = New-Object System.Collections.ArrayList
+        foreach ($n in $nodes) { [void]$vis.Add($n) }
+        $script:ClipAborted = $true
+    } else { $script:ClipAborted = $false }
+
+    # ---- counts, over what is on screen ----------------------------------
+    $tally = @{}; $tallyAll = @{}
+    foreach ($n in $nodes) { if ($tallyAll.ContainsKey($n.Tag)) { $tallyAll[$n.Tag]++ } else { $tallyAll[$n.Tag] = 1 } }
+    foreach ($n in $vis)   { if ($tally.ContainsKey($n.Tag))    { $tally[$n.Tag]++ }    else { $tally[$n.Tag] = 1 } }
+    function C($n) { if ($tally.ContainsKey($n)) { [int]$tally[$n] } else { 0 } }
+    $total = 0; foreach ($v in $tally.Values) { $total += $v }
+
+    # ---- text ------------------------------------------------------------
+    # avg per text-bearing node is the label-vs-snippet discriminator: a
+    # settings row and a feed card both have "text", 12 chars against 90.
+    $textLen = 0; $textMax = 0; $textNodes = 0
+    foreach ($n in $vis) {
+        # The inspector calls it "content", uitest calls it "text". Both, and
+        # the empty-string case excluded, because uitest emits "text":"" on
+        # every non-text node and counting those would halve every average.
+        $m = [regex]::Match($n.Text, '(?i)"?\b(?:content|text)"?\s*[:=]\s*"([^"]{2,})"')
+        if (-not $m.Success) { $m = [regex]::Match($n.Text, '(?i)\bcontent\s*[:=]\s*"?([^"|,]{2,})') }
+        if ($m.Success) {
+            $len = $m.Groups[1].Value.Trim().Length
+            $textLen += $len; $textNodes++
+            if ($len -gt $textMax) { $textMax = $len }
+        }
+    }
+    $avgText = if ($textNodes -gt 0) { [math]::Round($textLen / $textNodes, 1) } else { 0.0 }
+
+    # ---- position, within the viewport -----------------------------------
+    # A search field sits ABOVE the list, a chat composer BELOW it. Normalised
+    # against the viewport, not the document, so a long page does not push the
+    # composer to 0.05 just because the content behind it is tall.
+    function MeanPos($tags) {
+        if (-not $geoOK) { return -1.0 }
+        $s = 0.0; $k = 0
+        foreach ($n in $vis) {
+            if ($tags -contains $n.Tag -and $n.CenterY -ne $null) {
+                $s += (($n.CenterY - $vp.T) / $vpH); $k++
+            }
+        }
+        if ($k -eq 0) { return -1.0 }
+        return [math]::Round($s / $k, 3)
+    }
+    $editPos   = MeanPos @('TextInput','TextArea','Search','RichEditor')
+    $sliderPos = MeanPos @('Slider')
+    $posSource = if (-not $geoOK) { "none" } elseif ($vpTrusted) { "viewport" } else { "largest-rect" }
+
+    # ---- render-cost multipliers, on visible nodes only ------------------
+    $fxBlur=0; $fxShadow=0; $fxOpacity=0; $fxClip=0; $fxGrad=0
+    $declRate=0; $lazy=0; $reusable=0; $cached=0
+    foreach ($n in $vis) {
+        $t = $n.Text
+        if ($t -match '(?i)blur')                  { $fxBlur++ }
+        if ($t -match '(?i)shadow')                { $fxShadow++ }
+        if ($t -match '(?i)opacity')               { $fxOpacity++ }
+        if ($t -match '(?i)\bclip|\bmask')         { $fxClip++ }
+        if ($t -match '(?i)gradient')              { $fxGrad++ }
+        if ($t -match '(?i)lazyforeach')           { $lazy++ }
+        if ($t -match '(?i)reusable|recycle')      { $reusable++ }
+        $m = [regex]::Match($t, '(?i)expectedFrameRate\s*[:=]\s*"?(\d+)')
+        if ($m.Success) { $r = [int]$m.Groups[1].Value; if ($r -gt $declRate) { $declRate = $r } }
+        $m = [regex]::Match($t, '(?i)cachedCount\s*[:=]\s*"?(\d+)')
+        if ($m.Success) { $cached += [int]$m.Groups[1].Value }
+    }
+    $fxScore = ($fxBlur * 8) + ($fxShadow * 2) + $fxOpacity + $fxClip + $fxGrad
+
+    # ---- what is behind the opaque regions -------------------------------
+    $opaqueNodes = @()
+    foreach ($n in $vis) { if ($n.Tag -match $script:OpaquePat) { $opaqueNodes += $n } }
+    $pre = [PSCustomObject]@{ Slider = (C 'Slider'); Button = (C 'Button') }
+    $xc = if ($opaqueNodes.Count -gt 0) { Get-OpaqueHint -Nodes $opaqueNodes -F $pre }
+          else { [PSCustomObject]@{ Name=""; Lib=""; XType=""; A11y=""; Secure=0; Hdr=0
+                                    Aspect=0.0; Hint="NONE"; Conf=0; Flags=""; Why="" } }
+
+    [PSCustomObject]@{
+        Tally      = $tally          # visible only - churn tracks the screen
+        TallyAll   = $tallyAll
+        Nodes      = $nodes.Count
+        NodeList   = $nodes
+        ParseMode  = $script:ParseMode
+        Total      = $total
+        OffScreen  = $off
+        Hidden     = $hidden
+        GeoOK      = $geoOK
+        VpTrusted  = $vpTrusted
+        ClipAborted = $script:ClipAborted
+        ScreenW    = $script:ScreenW
+        ScreenH    = $script:ScreenH
+        VpW        = [int]$vpW
+        VpH        = [int]$vpH
+        Text       = (C 'Text') + (C 'Span') + (C 'RichText')
+        Image      = (C 'Image')
+        Icon       = (C 'SymbolGlyph') + (C 'Symbol') + (C 'ImageSpan') + (C 'ImageAnimator')
+        Button     = (C 'Button')
+        Slider     = (C 'Slider')
+        Progress   = (C 'Progress') + (C 'LoadingProgress')
+        Toggle     = (C 'Toggle') + (C 'Checkbox') + (C 'Radio') + (C 'Switch')
+        Editable   = (C 'TextInput') + (C 'TextArea') + (C 'Search') + (C 'RichEditor')
+        ListLike   = (C 'List') + (C 'ListItem')
+        GridLike   = (C 'Grid') + (C 'GridItem') + (C 'WaterFlow')
+        Swiper     = (C 'Swiper') + (C 'Tabs') + (C 'TabContent')
+        Scroll     = (C 'Scroll')
+        Web        = (C 'Web')
+        XComponent = (C 'XComponent')
+        Video      = (C 'Video')
+        Canvas     = (C 'Canvas')
+        TextLen    = $textLen
+        TextMax    = $textMax
+        AvgText    = $avgText
+        EditPos    = $editPos
+        SliderPos  = $sliderPos
+        PosSource  = $posSource
+        Boxes      = $boxes
+        Visible    = $vis.Count
+        Overdraw   = if ($vpArea -gt 0) { [math]::Round($areaSum / $vpArea, 2) } else { 0.0 }
+        LargestFrac   = if ($vpArea -gt 0) { [int](1000.0 * $bigLeafArea / $vpArea) } else { 0 }
+        LargestAspect = if ($bigLeafH -gt 0) { [math]::Round($bigLeafW / $bigLeafH, 2) } else { 0.0 }
+        XcName = $xc.Name; XcLib = $xc.Lib; XcType = $xc.XType; XcA11y = $xc.A11y
+        XcSecure = $xc.Secure; XcHdr = $xc.Hdr; XcAspect = $xc.Aspect
+        XcHint = $xc.Hint; XcConf = $xc.Conf; XcFlags = $xc.Flags; XcWhy = $xc.Why
+        FxBlur = $fxBlur; FxShadow = $fxShadow; FxOpacity = $fxOpacity
+        FxClip = $fxClip; FxGradient = $fxGrad; FxScore = $fxScore
+        DeclRate = $declRate; Lazy = $lazy; Reusable = $reusable; Cached = $cached
+    }
+}
+
+# Snapshot differencing: the only dynamics available without the collector.
+# Sum of absolute per-tag changes, normalised per second. The tally it diffs
+# is the VISIBLE one, so scrolling a long page registers as change even though
+# the document behind it did not move.
+function Get-Churn {
+    param($Tally, [double] $Mono)
+    if (-not $script:PrevTally) {
+        $script:PrevTally = $Tally; $script:PrevMono = $Mono
+        return [PSCustomObject]@{ Delta=0; Added=0; Removed=0; Net=0; Shape="NONE"; Rate=0.0; Dt=0.0; First=$true }
+    }
+    # Direction matters: nodes ARRIVING cost construction, layout and possibly
+    # decode. Nodes LEAVING cost teardown, which is far cheaper. A balanced
+    # add/remove is a swap (page change, or list recycling); add >> remove is
+    # construction, which is the expensive one.
+    $added = 0; $removed = 0
+    $keys = @($Tally.Keys) + @($script:PrevTally.Keys) | Sort-Object -Unique
+    foreach ($k in $keys) {
+        $a = if ($Tally.ContainsKey($k)) { [int]$Tally[$k] } else { 0 }
+        $b = if ($script:PrevTally.ContainsKey($k)) { [int]$script:PrevTally[$k] } else { 0 }
+        if ($a -gt $b) { $added += ($a - $b) } elseif ($b -gt $a) { $removed += ($b - $a) }
+    }
+    $delta = $added + $removed
+    $net   = $added - $removed
+    # Shape of the change, which is what maps to cost.
+    $shape = "NONE"
+    if ($delta -gt 0) {
+        $minv = [math]::Min($added, $removed)
+        if ($minv -gt 0 -and [math]::Abs($net) -le ($delta * 0.25)) { $shape = "SWAP" }
+        elseif ($net -gt 0)  { $shape = "GROW" }
+        else                 { $shape = "SHRINK" }
+    }
+    $dt = $Mono - $script:PrevMono
+    if ($dt -le 0) { $dt = 0.001 }
+    $script:PrevTally = $Tally; $script:PrevMono = $Mono
+    return [PSCustomObject]@{ Delta=$delta; Added=$added; Removed=$removed; Net=$net
+                              Shape=$shape; Rate=[math]::Round($delta/$dt,1)
+                              Dt=[math]::Round($dt,3); First=$false }
+}
+
+# Only the modifiers this script can honestly infer from snapshots. The
+# collector emits the rest: WORK_COMMITTED, RENDERER_ANIMATING, GESTURE_ACTIVE.
+function Get-Modifiers {
+    param($F, $Churn, $Win)
+    $mods = @()
+    $opaque = $F.Web + $F.XComponent
+    $mediaish = $F.XComponent + $F.Video
+    if (-not $Churn.First) {
+        if ($Churn.Delta -eq 0) { $mods += "STATIC" }
+        else {
+            $mag = if ($Churn.Delta -ge 40) { "HIGH" } else { "LOW" }
+            # GROW = construction (dear), SHRINK = teardown (cheap),
+            # SWAP = page change or list recycling (dear, but bounded).
+            $mods += "CHURN_$($Churn.Shape)_$mag"
+        }
+    }
+    if ($opaque -ge 1 -and $F.Total -lt 60) { $mods += "OPAQUE_DOMINANT" }
+    if ($mediaish -ge 1) {
+        if ($F.Slider -ge 1 -or $F.Button -ge 2) { $mods += "CHROME_VISIBLE" }
+        else                                     { $mods += "CHROME_HIDDEN" }
+    }
+    if ($F.Editable -ge 1) { $mods += "EDITABLE_PRESENT" }
+    # ArkUI's committed layout work is the UI thread: frequency helps, cores do
+    # not. Image nodes arriving are the exception - decode may go parallel.
+    $mods += "SINGLE_THREAD_LAYOUT"
+    if ($F.Image -ge 4 -and $Churn.Added -ge 6) { $mods += "DECODE_LIKELY" }
+    if ($F.FxBlur -ge 1)      { $mods += "BLUR_PRESENT" }      # readback + extra pass
+    if ($F.FxScore -ge 20)    { $mods += "FX_HEAVY" }
+    if ($F.Overdraw -ge 3)    { $mods += "OVERDRAW_HIGH" }
+    if ($F.DeclRate -gt 0)    { $mods += "RATE_DECLARED_$($F.DeclRate)" }
+    if ($F.Lazy -ge 1)        { $mods += "LAZY_LIST" }
+    if ($F.Reusable -ge 1)    { $mods += "REUSE_POOL" }
+    if (-not $F.GeoOK)        { $mods += "NO_GEOMETRY" }       # dump carries no rects
+    # Say it in the signal, not only on the console: a row classified without
+    # the viewport clip is a weaker row and the correlation should know.
+    if ($F.GeoOK -and -not $F.VpTrusted) { $mods += "GEO_UNTRUSTED" }
+    # No content strings: every text-length test stood down. Counts only.
+    if ($F.TextLen -eq 0 -and $F.TextMax -eq 0) { $mods += "NO_TEXT_CONTENT" }
+    # A tall page whose off-screen part dwarfs the viewport: virtualisation is
+    # NOT doing its job, and every one of those nodes was still laid out.
+    if ($F.GeoOK -and $F.OffScreen -ge $F.Visible -and $F.OffScreen -ge 20) { $mods += "OFFSCREEN_HEAVY" }
+    if ($Win -and $Win.Name -match $script:SystemWindowPat) { $mods += "SYSTEM_WINDOW" }
+    # What sits above the scene changes its cost without changing what it is:
+    # an IME shrinks the content and adds a second animating surface, a shade
+    # pull composites a blurred panel over everything.
+    if ($script:SceneContext) { $mods += $script:SceneContext }
+    return $mods
+}
+
+# ---------------------------------------------------------------- thresholds
+
+# Every number the classifier uses, in one place, so it can be tuned without
+# editing logic - and so `-Fit` can tune it for you from labelled screens.
+# scene_thresholds.json beside the script overrides any of these.
+$script:P = @{
+    IconMin        = 6      # icons that make a grid an icon grid
+    IconShare      = 0.15   # ...or this share of the tree, whichever hits first
+    LabelChars     = 18     # avg content length that still reads as a label
+    LabelMaxChars  = 40     # longest block that still reads as a label
+    SnippetChars   = 25     # avg content length that reads as a snippet
+    ReadingChars   = 200    # longest block that reads as an article
+    BigItemPermil  = 120    # largest leaf, per-mille, that reads as feed media
+    EditTopMax     = 0.33   # editable this high up is a search header
+    EditBotMin     = 0.65   # editable this low down is a composer
+    ToggleSettings = 3      # switches in a scroller that make it preferences
+    SmallTree      = 60     # node count below which a tree is "a small screen"
+    ThinTree       = 25     # ...and below which a surface dominates it
+    SparseTree     = 20
+    TextDominance  = 3.0    # text:image ratio that reads as text-dominant
+    MarginStrong   = 2.5    # score margin over the runner-up for "structural"
+    MarginWeak     = 1.0    # ...and for "weak"; below this, "low"
+    CandMargin     = 2.0    # runner-up within this of the top joins candidates
+}
+
+function Import-Thresholds {
+    $f = Join-Path $PSScriptRoot "scene_thresholds.json"
+    if (-not (Test-Path $f)) { return }
+    try { $j = Get-Content $f -Raw | ConvertFrom-Json } catch {
+        Write-Host "warning: $f is not valid JSON, using defaults" -ForegroundColor Yellow; return
+    }
+    foreach ($prop in $j.PSObject.Properties) {
+        if ($script:P.ContainsKey($prop.Name)) { $script:P[$prop.Name] = [double]$prop.Value }
+    }
+    Write-Host "thresholds loaded from $f" -ForegroundColor DarkCyan
+}
+
+function Export-Thresholds {
+    $f = Join-Path $PSScriptRoot "scene_thresholds.json"
+    $o = New-Object PSObject
+    foreach ($k in ($script:P.Keys | Sort-Object)) { $o | Add-Member -NotePropertyName $k -NotePropertyValue $script:P[$k] }
+    $o | ConvertTo-Json | Set-Content -Path $f -Encoding UTF8
+    Write-Host "thresholds written -> $f" -ForegroundColor Green
+}
+
+# What each class narrows to, and who can resolve the rest. Kept beside the
+# scoring rather than inside it, because the candidate set is a property of the
+# class, not of the evidence that found it.
+$script:ClassInfo = @{
+    MEDIA_PLAYER      = @{ Cand=@("VIDEO");                                Resolve="audio stream usage; surface submit rate" }
+    CALL_VIDEO        = @{ Cand=@("VIDEO_CALL");                           Resolve="audio usage confirms VOICE_COMMUNICATION" }
+    CAPTURE           = @{ Cand=@("CAMERA");                               Resolve="bound producer on the surface" }
+    IMMERSIVE_SURFACE = @{ Cand=@("VIDEO","GAME","MAP","CAMERA");          Resolve="audio usage, surface submit rate, bound producer" }
+    WEB_CONTENT       = @{ Cand=@("WEB_ANY");                              Resolve="the ArkWeb record for this window" }
+    AUDIO_PLAYER      = @{ Cand=@("MUSIC","PODCAST","AUDIOBOOK");          Resolve="audio stream usage; may continue with the screen off" }
+    SPLASH_LOADING    = @{ Cand=@("SPLASH","LOADING");                     Resolve="short-lived; treat as a transition, not a scene" }
+    DIALOG            = @{ Cand=@("MODAL","PERMISSION","SHEET","ALERT");   Resolve="window type separates a subwindow from in-page" }
+    ICON_PAGER        = @{ Cand=@("LAUNCHER","APP_DRAWER","ONBOARDING");   Resolve="page index separates home pages from the drawer" }
+    ICON_GRID         = @{ Cand=@("APP_DRAWER","LAUNCHER_FOLDER","SHORTCUT_GRID"); Resolve="window identity separates the drawer from an app" }
+    GALLERY_GRID      = @{ Cand=@("GALLERY","MEDIA_GRID");                 Resolve="-" }
+    LIST              = @{ Cand=@("LIST","SETTINGS","CONTACTS");           Resolve="-" }
+    CHAT              = @{ Cand=@("CHAT");                                 Resolve="IME state separates composing from reading" }
+    FORM              = @{ Cand=@("FORM");                                 Resolve="IME state" }
+    EDITOR            = @{ Cand=@("DRAWING","PHOTO_EDIT","ANNOTATION");    Resolve="-" }
+    MEDIA_VIEW        = @{ Cand=@("PHOTO_VIEW","FULLSCREEN_IMAGE");        Resolve="a pager sibling means a swipeable gallery" }
+    FEED              = @{ Cand=@("FEED");                                 Resolve="-" }
+    READING           = @{ Cand=@("READING");                              Resolve="-" }
+    PAGING            = @{ Cand=@("LAUNCHER","ONBOARDING","GALLERY_SWIPE");Resolve="window identity" }
+    SPARSE            = @{ Cand=@();                                       Resolve="check the parse with -Tags" }
+    UNCLASSIFIED      = @{ Cand=@();                                       Resolve="-" }
+}
+
+# ---------------------------------------------------------------- classify
+
+# Scoring, not first-match. Every class accumulates evidence and the highest
+# total wins; the runner-ups become the candidate set and the margin becomes
+# the confidence. The old chain returned on the first rule that matched, so a
+# loose rule placed early ate screens that a later, better rule would have
+# caught - that is what put EDITOR on a launcher and CHAT on Settings. A score
+# cannot be shadowed by ordering.
+function Get-SceneClass {
+    param($F, [string] $WinName = "")
+
+    $P = $script:P
+    $S = @{}; $E = @{}
+    function Score($cls, $w, $why) {
+        if (-not $S.ContainsKey($cls)) { $S[$cls] = 0.0; $E[$cls] = @() }
+        $S[$cls] += $w
+        if ($why) { $E[$cls] += $why }
+    }
+
+    $opaque    = $F.XComponent + $F.Web
+    $mediaish  = $F.XComponent + $F.Video
+    $scrollers = $F.ListLike + $F.GridLike + $F.Scroll + $F.Swiper
+    $iconish   = $F.Image + $F.Icon
+    $geo       = ($F.PosSource -ne "none")
+    # Zero here means the dump carried no content strings, NOT that the text is
+    # short. Unknown must never satisfy a test that a value would - the same
+    # mistake as treating a zero-sized rect as "off screen".
+    $textKnown = ($F.TextLen -gt 0 -or $F.TextMax -gt 0)
+
+    # ---- surfaces ---------------------------------------------------------
+    if ($mediaish -ge 1) {
+        Score "IMMERSIVE_SURFACE" 2.0 "a surface is present"
+        if ($F.Slider -ge 1 -or $F.Progress -ge 1) {
+            Score "MEDIA_PLAYER" 5.0 "surface + seekbar"
+            if ($F.Button -ge 2) { Score "MEDIA_PLAYER" 1.5 "transport buttons" }
+            if ($geo -and $F.SliderPos -ge 0.6) { Score "MEDIA_PLAYER" 1.5 "seekbar low in the frame" }
+        }
+        if ($F.XComponent -ge 2 -and $F.Slider -eq 0 -and $F.Button -ge 2) {
+            Score "CALL_VIDEO" 5.5 "two surfaces + controls, no seekbar"
+        }
+        if ($F.XComponent -ge 1 -and $F.Button -ge 3 -and $F.Slider -eq 0) {
+            Score "CAPTURE" 4.5 "surface + button cluster, no seekbar"
+        }
+        if ($F.LargestAspect -ge 1.6 -and $F.LargestAspect -le 1.85 -and $F.LargestFrac -ge 400) {
+            Score "MEDIA_PLAYER" 1.0 "largest leaf is 16:9 and dominant"
+            Score "IMMERSIVE_SURFACE" 0.5 "16:9 dominant leaf"
+        }
+    }
+    # The surface's own declaration, when it said anything. A guess with a
+    # stated confidence beats a shrug, and the aggregator can discount it.
+    if ($F.XcConf -ge 30) {
+        $w = $F.XcConf / 25.0          # 30 -> 1.2, 85 -> 3.4
+        switch ($F.XcHint) {
+            "VIDEO"     { Score "MEDIA_PLAYER" $w "surface looks like video: $($F.XcWhy)"
+                          Score "IMMERSIVE_SURFACE" ($w * 0.4) "surface looks like video" }
+            "CAMERA"    { Score "CAPTURE" $w "surface looks like a camera preview: $($F.XcWhy)" }
+            "GAME"      { Score "IMMERSIVE_SURFACE" $w "surface looks like a game: $($F.XcWhy)" }
+            "MAP"       { Score "IMMERSIVE_SURFACE" ($w * 0.8) "surface looks like a map: $($F.XcWhy)" }
+            "CHART"     { Score "EDITOR" ($w * 0.5) "surface looks like a chart" }
+            "AUDIO_VIS" { Score "AUDIO_PLAYER" $w "surface looks like an audio visualiser" }
+        }
+    }
+    if ($opaque -ge 1 -and $F.Total -lt $P.ThinTree) {
+        Score "IMMERSIVE_SURFACE" 4.0 "surface fills a near-empty tree ($($F.Total) elements)"
+    }
+    if ($F.Web -ge 1) {
+        Score "WEB_CONTENT" 3.0 "a Web component is present"
+        if ($F.Total -lt $P.SmallTree + 20) { Score "WEB_CONTENT" 2.0 "and the native tree around it is thin" }
+    }
+    if ($mediaish -eq 0 -and ($F.Slider -ge 1 -or $F.Progress -ge 1) -and
+        $F.Button -ge 2 -and $iconish -ge 1 -and $scrollers -le 1 -and $F.Total -lt 150) {
+        Score "AUDIO_PLAYER" 5.0 "transport controls + artwork, no video surface"
+    }
+
+    # ---- transient --------------------------------------------------------
+    if ($F.Total -lt 40 -and $F.Progress -ge 1 -and $F.Editable -eq 0 -and
+        $F.Button -le 1 -and $scrollers -eq 0) {
+        Score "SPLASH_LOADING" 4.5 "progress indicator, almost nothing interactive"
+    }
+    if ($F.Total -lt $P.SmallTree -and $F.Button -ge 2 -and $F.Text -ge 1 -and
+        $scrollers -eq 0 -and $F.Editable -le 1 -and $mediaish -eq 0) {
+        Score "DIALOG" 4.0 "small tree, buttons and text, nothing scrollable"
+    }
+
+    # ---- icon grids -------------------------------------------------------
+    # An icon grid is icons arranged ONE PER CELL. That is the test: the cell
+    # count tracks the icon count, within a wide band.
+    #
+    # It used to be gated on icon count matching TEXT count, on the theory that
+    # every icon carries one caption. A real launcher broke that at once: 50
+    # icons against 401 text nodes, because a launcher window holds far more
+    # text than captions - page indicators, folder contents, a search field,
+    # widgets. Counting cells rather than captions is more direct, and it
+    # survives a dump that carries no content strings at all.
+    $manyIcons = ($iconish -ge $P.IconMin -or ($F.Total -gt 0 -and $iconish -ge $F.Total * $P.IconShare))
+    $cells = $F.GridLike
+
+    if ($WinName -match '(?i)scbdesktop|launcher|home|workspace|negativescreen|appcenter|desktop') {
+        if ($iconish -ge 3) {
+            Score "ICON_PAGER" 4.0 "launcher window identity"
+            Score "ICON_GRID"  2.5 "launcher window identity"
+        }
+    }
+    # Text NODE count, not text content - available even when the dump carries
+    # no strings. An icon grid captions roughly every cell; a photo grid does
+    # not caption at all, and without this it would read as an icon grid.
+    $captioned = ($F.Text -ge ($cells * 0.5))
+    if ($cells -ge 4 -and $manyIcons -and $F.Editable -le 1 -and $captioned) {
+        $ratio = $iconish / [math]::Max(1.0, [double]$cells)
+        if ($ratio -ge 0.25 -and $ratio -le 4.0) {
+            Score "ICON_GRID"  4.0 "$iconish icons across $cells grid cells"
+            Score "ICON_PAGER" 2.0 "$iconish icons across $cells grid cells"
+            if ($F.Swiper -ge 1) { Score "ICON_PAGER" 2.5 "and a pager - horizontal pages, not a scroll" }
+            # Captions confirm it when the dump carries them. A bonus, never a
+            # gate: absent content strings must not read as "not an icon grid".
+            if ($textKnown -and $F.AvgText -lt $P.LabelChars) {
+                Score "ICON_GRID"  1.0 "captions are label-length (avg $([int]$F.AvgText) chars)"
+                Score "ICON_PAGER" 1.0 "captions are label-length"
+            }
+        }
+    }
+    # A photo grid: images outnumber any captions, or there are none.
+    if ($cells -ge 2 -and $manyIcons -and $iconish -gt ($F.Text * 2)) {
+        Score "GALLERY_GRID" 4.5 "grid, images outnumber text $iconish to $($F.Text)"
+    }
+    if ($cells -ge 2 -and $F.LargestFrac -ge $P.BigItemPermil -and $F.Text -le 2) {
+        Score "GALLERY_GRID" 1.5 "large unlabelled grid cells"
+    }
+
+    # ---- lists, chats, forms ----------------------------------------------
+    if ($F.Toggle -ge $P.ToggleSettings -and $scrollers -ge 1) {
+        Score "LIST" 4.5 "$($F.Toggle) switches in a scroller - a preferences page"
+    }
+    if ($F.Editable -ge 1 -and $scrollers -ge 1 -and $geo) {
+        if ($F.EditPos -ge 0 -and $F.EditPos -le $P.EditTopMax) {
+            Score "LIST" 3.5 "editable at $([int]($F.EditPos*100))% down - a search header, not a composer"
+        }
+        if ($F.EditPos -ge $P.EditBotMin) {
+            Score "CHAT" 3.5 "editable at $([int]($F.EditPos*100))% down - a composer below the content"
+        }
+    }
+    if ($F.Editable -ge 1 -and $scrollers -ge 1 -and $F.Text -ge 8 -and $textKnown -and
+        ($F.TextMax -ge $P.LabelMaxChars -or $F.AvgText -ge $P.SnippetChars)) {
+        Score "CHAT" 2.0 "message-length text beside an input"
+    }
+    if ($F.Toggle -ge $P.ToggleSettings) { Score "CHAT" (-3.0) "switches do not belong in a conversation" }
+    if ($F.Editable -ge 2 -and $scrollers -le 1) {
+        Score "FORM" 4.0 "$($F.Editable) editables, little scrolling"
+    }
+
+    # ---- canvas, single image ---------------------------------------------
+    if ($F.Canvas -ge 1) {
+        Score "EDITOR" 1.5 "a canvas is present"
+        if ($iconish -le 3 -and $scrollers -le 1 -and $F.Total -lt 200 -and
+            ($F.Button -ge 3 -or $F.Slider -ge 1)) {
+            Score "EDITOR" 3.5 "canvas is the content, with a tool palette"
+        }
+    }
+    if ($iconish -ge 1 -and $iconish -le 3 -and $F.Total -lt $P.SmallTree -and
+        $F.Text -le 4 -and $F.Editable -eq 0 -and $mediaish -eq 0) {
+        Score "MEDIA_VIEW" 4.0 "single dominant image, minimal chrome"
+    }
+
+    # ---- feed vs list ------------------------------------------------------
+    # Both have icons and labels. What separates a feed is LARGE items and
+    # SNIPPETS; a list has small icons and short labels. Counts cannot tell
+    # them apart, these two tests can.
+    if ($scrollers -ge 1) {
+        Score "LIST" 1.0 "a scroller is present"
+        if ($iconish -ge 4 -and $F.Text -ge 4) {
+            if ($F.LargestFrac -ge $P.BigItemPermil) { Score "FEED" 3.0 "large media items ($($F.LargestFrac)/1000)" }
+            if ($textKnown -and $F.AvgText -ge $P.SnippetChars) { Score "FEED" 3.0 "snippet-length text (avg $([int]$F.AvgText) chars)" }
+            if ($textKnown -and $F.AvgText -lt $P.LabelChars)    { Score "LIST" 2.0 "short labels (avg $([int]$F.AvgText) chars)" }
+        }
+        if ($F.ListLike -ge 2) { Score "LIST" 1.5 "List/ListItem structure" }
+    }
+    # A grid of cells is not an article, whatever the text:image ratio says.
+    if ($F.Text -gt 0 -and $F.Text -ge ($iconish * $P.TextDominance) -and $F.GridLike -lt 4) {
+        Score "READING" 2.0 "text dominant over images"
+        if ($F.TextMax -ge $P.ReadingChars) { Score "READING" 3.0 "a long contiguous block ($($F.TextMax) chars)" }
+    }
+    if ($F.Swiper -ge 1 -and $F.Total -lt 120) {
+        Score "PAGING" 1.5 "a pager with a small tree"
+    }
+    if ($F.Total -lt $P.SparseTree) {
+        Score "SPARSE" 1.5 "very few elements ($($F.Total))"
+    }
+
+    # ---- resolve -----------------------------------------------------------
+    if ($S.Count -eq 0) {
+        return @{ Class="UNCLASSIFIED"; Cand=@(); Conf="none"; Score=0.0; Margin=0.0
+                  Ev=@("no evidence matched"); Resolve="-"; Ranked="" }
+    }
+    $ranked = @($S.GetEnumerator() | Sort-Object Value -Descending)
+    $top    = $ranked[0]
+    # Negative evidence pushes a class below zero; it must not inflate the
+    # margin of the winner, which is supposed to mean "how much better than
+    # the next PLAUSIBLE answer".
+    $second = if ($ranked.Count -gt 1) { [math]::Max(0.0, $ranked[1].Value) } else { 0.0 }
+    $margin = $top.Value - $second
+
+    $conf = if ($margin -ge $P.MarginStrong) { "structural" }
+            elseif ($margin -ge $P.MarginWeak) { "weak" }
+            else { "low" }
+
+    # Candidates: the class itself plus anything the evidence could not rule
+    # out. A narrow set that is wrong is worse than a wide set that is honest.
+    $cand = @()
+    if ($script:ClassInfo.ContainsKey($top.Key)) { $cand += $script:ClassInfo[$top.Key].Cand }
+    foreach ($r in $ranked) {
+        if ($r.Key -eq $top.Key) { continue }
+        if (($top.Value - $r.Value) -le $P.CandMargin -and $r.Value -gt 0) { $cand += $r.Key }
+    }
+    $cand = @($cand | Select-Object -Unique)
+
+    $rankStr = (($ranked | Select-Object -First 4 | ForEach-Object { "$($_.Key):$([math]::Round($_.Value,1))" }) -join " ")
+    $resolve = if ($script:ClassInfo.ContainsKey($top.Key)) { $script:ClassInfo[$top.Key].Resolve } else { "-" }
+
+    return @{ Class=$top.Key; Cand=$cand; Conf=$conf; All=$S; AllEv=$E
+              Score=[math]::Round($top.Value,1); Margin=[math]::Round($margin,1)
+              Ev=$E[$top.Key]; Resolve=$resolve; Ranked=$rankStr }
+}
+
+
+# ---------------------------------------------------------------- deep probe
+#
+# The ArkUI tree says a surface EXISTS. It cannot say what is behind it, and
+# never will - that is app-owned content. But the process that owns it is wide
+# open over hdc, and a process cannot hide what it loaded, what it named its
+# threads, or which device nodes it opened.
+#
+# Ranked by how hard they are to fake or mistake:
+#
+#   device nodes   /dev/vcodec, /dev/video, /dev/dri - a hardware decoder is
+#                  open or it is not. As close to proof as this gets.
+#   thread names   decoders, camera streams and game engines all name their
+#                  threads, and nobody renames them to mislead a profiler.
+#   libraries      a process that mapped libavplayer is doing playback.
+#                  Weak for libEGL/libGLES, which ArkUI itself loads.
+#   surface names  the RS node name often carries the XComponent's own id.
+#
+# This is identification, not instrumentation: every one of these is a read.
+# ---- process evidence ---------------------------------------------------
+#
+# This used to end in a weighted verdict - VIDEO 95% and so on - and the
+# verdict was wrong often enough to be worse than nothing, for a reason no
+# amount of tuning fixes: the evidence is PROCESS-scoped and the question is
+# NODE-scoped. A browser has web threads on a settings page. A super-app maps
+# a decoder library on its launcher. A game engine's render thread is alive
+# while the pause menu is up. None of that says what is behind the hole on
+# screen right now, and a confident number attached to it reads as if it did.
+#
+# So this prints facts and stops. Threads, mapped libraries and open device
+# nodes are real and sometimes decisive - /dev/video0 open means a camera is
+# streaming somewhere in this process - but the attribution is yours to make,
+# with the opaque-node records from -Surfaces beside them.
+function Invoke-DeepProbe {
+    param([int] $Id, [string] $ProcId, [string] $WinName)
+
+    Write-Host ""
+    Write-Host ("PROCESS EVIDENCE  window {0}  pid {1}  ({2})" -f $Id, $ProcId, $WinName) -ForegroundColor Cyan
+    Write-Host  "  scope: the whole process, NOT any one node on screen." -ForegroundColor DarkYellow
+    if (-not $ProcId -or $ProcId -notmatch '^\d+$') {
+        Write-Host "  no pid for this window - pass -WindowId for an app window" -ForegroundColor Yellow
+        return
+    }
+
+    # Thread names. The most identifying thing available for free: a decoder
+    # names its threads, so does a camera pipeline, so does every game engine.
+    $comms = @(Invoke-HdcRaw "shell `"cat /proc/$ProcId/task/*/comm`"" |
+               Where-Object { $_ -and $_ -notmatch 'No such|Permission' } |
+               ForEach-Object { $_.Trim() })
+    $threadTotal = $comms.Count
+
+    $libs = @(Invoke-HdcRaw "shell `"grep -o 'lib[A-Za-z0-9_.+-]*\.so' /proc/$ProcId/maps | sort -u`"" |
+              Where-Object { $_ -and $_ -notmatch 'No such|Permission|not found' } |
+              ForEach-Object { $_.Trim() })
+
+    # Open device nodes are the strongest of the three, because a file
+    # descriptor on /dev/vcodec is a decoder that is open NOW, not a library
+    # that was linked at startup.
+    $devs = @(Invoke-HdcRaw "shell `"ls -l /proc/$ProcId/fd`"" |
+              ForEach-Object { $m = [regex]::Match($_, '(/dev/[A-Za-z0-9_/\.\-]+)'); if ($m.Success) { $m.Value } } |
+              Select-Object -Unique)
+
+    $shown = @($comms | Where-Object { $_ -notmatch '(?i)^(ipc|os_|hap|jit|gc_|binder|pool|worker)' } |
+                        Select-Object -Unique -First 14)
+    Write-Host ("  threads    {0}" -f ($shown -join ", "))
+    Write-Host ("             {0} total, {1} shown after dropping runtime threads" -f $threadTotal, $shown.Count) -ForegroundColor DarkGray
+
+    if ($libs.Count -gt 0) {
+        $interesting = @($libs | Where-Object { $_ -match '(?i)codec|media|player|camera|unity|cocos|vulkan|ffmpeg|map|web_engine|nweb|hevc|h264|gles|egl' } |
+                                 Select-Object -First 12)
+        if ($interesting.Count -gt 0) { Write-Host ("  libraries  {0}" -f ($interesting -join ", ")) }
+        else { Write-Host ("  libraries  {0} mapped, none media- or render-related" -f $libs.Count) -ForegroundColor DarkGray }
+    } else {
+        Write-Host "  libraries  unreadable (/proc/<pid>/maps needs root here)" -ForegroundColor DarkGray
+    }
+
+    $devShown = @($devs | Where-Object { $_ -notmatch '(?i)/dev/(null|zero|urandom|random|ashmem|binder|hwbinder|console|ptmx)$' } |
+                          Select-Object -First 10)
+    if ($devShown.Count -gt 0) { Write-Host ("  devices    {0}" -f ($devShown -join ", ")) }
+    else { Write-Host "  devices    none open beyond the usual runtime nodes" -ForegroundColor DarkGray }
+
+    Write-Host "  no verdict is printed: this evidence cannot be attributed to a node." -ForegroundColor DarkGray
+}
+
+# What this build exposes. Run once; it tells you which identification
+# channels exist here, and the list is short enough to read.
+function Show-Services {
+    Write-Host ""
+    Write-Host "services this build exposes to hidumper:" -ForegroundColor Cyan
+    $svc = Invoke-HdcRaw "shell `"hidumper -ls`""
+    $interesting = @()
+    foreach ($l in $svc) {
+        $t = $l.Trim()
+        if (-not $t) { continue }
+        Write-Host ("  {0}" -f $t)
+        if ($t -match '(?i)render|media|camera|audio|player|graphic|display|power|thermal') { $interesting += $t }
+    }
+    if ($interesting.Count -gt 0) {
+        Write-Host ""
+        Write-Host "worth probing for surface identity:" -ForegroundColor Green
+        foreach ($i in $interesting) { Write-Host ("  {0}" -f $i) }
+    }
+}
+
+# ---------------------------------------------------------------- calibration
+#
+# The loop this exists for:
+#
+#   1. put a screen up, run with -Label <WHAT IT ACTUALLY IS>
+#   2. repeat for a dozen or two screens
+#   3. run -Fit, OFFLINE, with no device attached
+#
+# -Fit re-scores every labelled row through the live classifier, so tuning is
+# a second per pass instead of a trip to the phone. Nothing leaves the box.
+
+function Convert-RowToFeatures {
+    param($Row)
+    function N($v) { if ($null -eq $v -or $v -eq "") { 0.0 } else { [double]$v } }
+    [PSCustomObject]@{
+        Total = N $Row.total; Text = N $Row.text; Image = N $Row.image; Icon = N $Row.icon
+        Button = N $Row.button; Slider = N $Row.slider; Progress = N $Row.progress
+        Toggle = N $Row.toggle; Editable = N $Row.editable
+        ListLike = N $Row.listlike; GridLike = N $Row.gridlike
+        Swiper = N $Row.swiper; Scroll = N $Row.scroll
+        Web = N $Row.web; XComponent = N $Row.xcomponent; Video = N $Row.video
+        Canvas = N $Row.canvas
+        TextLen = N $Row.textlen; TextMax = N $Row.textmax; AvgText = N $Row.avgtext
+        EditPos = N $Row.edit_pos; SliderPos = N $Row.slider_pos
+        PosSource = if ($Row.pos_source) { [string]$Row.pos_source } else { "none" }
+        LargestFrac = N $Row.largest_frac; LargestAspect = N $Row.largest_aspect
+        # the opaque hint feeds the scorer, so -Fit must replay it too or
+        # offline accuracy would not match what the device produced
+        XcHint = if ($Row.xc_hint) { [string]$Row.xc_hint } else { "NONE" }
+        XcConf = N $Row.xc_conf
+        XcWhy  = if ($Row.xc_flags) { [string]$Row.xc_flags } else { "" }
+    }
+}
+
+function Measure-Fit {
+    param($Rows)
+    $ok = 0; $wrong = @()
+    foreach ($r in $Rows) {
+        $f = Convert-RowToFeatures $r
+        $res = Get-SceneClass -F $f -WinName ([string]$r.name)
+        if ($res.Class -eq $r.truth) { $ok++ }
+        else { $wrong += [PSCustomObject]@{ Truth=$r.truth; Got=$res.Class; Ranked=$res.Ranked; Name=$r.name } }
+    }
+    return [PSCustomObject]@{ Ok=$ok; Total=$Rows.Count; Wrong=$wrong }
+}
+
+function Invoke-Fit {
+    param([string] $Path, [switch] $Apply)
+
+    if (-not (Test-Path $Path)) {
+        Write-Host "no calibration file at $Path" -ForegroundColor Red
+        Write-Host "label some screens first:  scene_class.cmd -Label LIST" -ForegroundColor Yellow
+        return
+    }
+    $rows = @(Import-Csv $Path | Where-Object { $_.truth -and $_.truth -ne "" })
+    if ($rows.Count -lt 2) { Write-Host "need at least two labelled rows" -ForegroundColor Red; return }
+
+    Write-Host ""
+    Write-Host "$($rows.Count) labelled screens from $Path"
+    $byClass = $rows | Group-Object truth | Sort-Object Count -Descending
+    Write-Host ("  " + (($byClass | ForEach-Object { "$($_.Name) x$($_.Count)" }) -join ", "))
+
+    $base = Measure-Fit $rows
+    Write-Host ""
+    Write-Host ("baseline  {0}/{1} correct ({2}%)" -f $base.Ok, $base.Total, [int](100.0*$base.Ok/$base.Total)) -ForegroundColor Cyan
+    foreach ($w in $base.Wrong) {
+        Write-Host ("  {0,-16} -> {1,-16}  {2}" -f $w.Truth, $w.Got, $w.Ranked) -ForegroundColor Yellow
+    }
+
+    # Coordinate descent, one threshold at a time. Deliberately not a general
+    # optimiser: a single changed number with a stated effect is reviewable,
+    # and a classifier nobody can read is worse than one that is a bit wrong.
+    Write-Host ""
+    Write-Host "sweeping thresholds..."
+    $factors = @(0.5, 0.67, 0.8, 1.25, 1.5, 2.0)
+    $bestOk = $base.Ok; $bestKey = $null; $bestVal = $null
+    foreach ($k in @($script:P.Keys)) {
+        if ($k -like "Margin*" -or $k -eq "CandMargin") { continue }   # confidence, not class
+        $orig = $script:P[$k]
+        foreach ($fct in $factors) {
+            $try = $orig * $fct
+            if ($k -like "Edit*" -or $k -eq "IconShare") { if ($try -gt 1.0) { continue } }
+            if ($try -le 0) { continue }
+            $script:P[$k] = $try
+            $m = Measure-Fit $rows
+            if ($m.Ok -gt $bestOk) { $bestOk = $m.Ok; $bestKey = $k; $bestVal = $try }
+        }
+        $script:P[$k] = $orig
+    }
+
+    if (-not $bestKey) {
+        Write-Host "no single threshold change improves on the baseline." -ForegroundColor DarkYellow
+        Write-Host "the remaining errors need a rule, not a number - the ranked scores above say which." -ForegroundColor DarkYellow
+    } else {
+        Write-Host ("best single change: {0}  {1} -> {2}   gives {3}/{4} ({5}%)" -f `
+                    $bestKey, $script:P[$bestKey], [math]::Round($bestVal,3), $bestOk, $base.Total,
+                    [int](100.0*$bestOk/$base.Total)) -ForegroundColor Green
+        if ($Apply) {
+            $script:P[$bestKey] = $bestVal
+            Export-Thresholds
+            Write-Host "re-run -Fit -Apply to take the next step." -ForegroundColor Green
+        } else {
+            Write-Host "re-run with -Apply to write it to scene_thresholds.json." -ForegroundColor DarkCyan
+        }
+    }
+
+    # Per-class feature ranges. This is what tells you WHICH feature could
+    # separate two classes that keep being confused.
+    Write-Host ""
+    Write-Host "feature ranges by labelled class:"
+    $cols = @("total","text","icon","toggle","editable","gridlike","listlike","swiper","avgtext","textmax","edit_pos","largest_frac")
+    Write-Host ("  {0,-16} {1}" -f "class", (($cols | ForEach-Object { "{0,10}" -f $_ }) -join ""))
+    foreach ($g in $byClass) {
+        $cells = foreach ($c in $cols) {
+            $vals = @($g.Group | ForEach-Object { $_.$c } | Where-Object { $_ -ne "" } | ForEach-Object { [double]$_ })
+            if ($vals.Count -eq 0) { "{0,10}" -f "-" }
+            else {
+                $lo = [math]::Round(($vals | Measure-Object -Minimum).Minimum,1)
+                $hi = [math]::Round(($vals | Measure-Object -Maximum).Maximum,1)
+                if ($lo -eq $hi) { "{0,10}" -f $lo } else { "{0,10}" -f "$lo-$hi" }
+            }
+        }
+        Write-Host ("  {0,-16} {1}" -f $g.Name, ($cells -join ""))
+    }
+}
+
+# ---------------------------------------------------------------- one pass
+
+function Invoke-Classify {
+    param([int] $Id, [object[]] $Table, [switch] $Terse)
+
+    $mono = Get-DeviceMono
+    $win  = $Table | Where-Object { $_.WinId -eq $Id } | Select-Object -First 1
+    $name = if ($win) { $win.Name } else { "?" }
+
+    $lines = Get-Tree -Id $Id
+    if (-not $lines -or $lines.Count -lt 2) {
+        Write-Host "empty tree for window $Id - app restarted after param set?" -ForegroundColor Yellow
+        return $null
+    }
+    $F     = Get-Features -Lines $lines
+    $churn = Get-Churn -Tally $F.Tally -Mono $mono
+    $R     = Get-SceneClass -F $F -WinName $name
+    $mods  = Get-Modifiers -F $F -Churn $churn -Win $win
+    $script:LastScores = $R.All
+
+    if ($R.Class -eq $script:PrevClass) { $script:StableTicks++ } else { $script:StableTicks = 0 }
+    $script:PrevClass = $R.Class
+
+    $colour = switch ($R.Conf) { "structural" {"Green"} "weak" {"Yellow"} default {"DarkYellow"} }
+    $scrollers = $F.ListLike + $F.GridLike + $F.Scroll + $F.Swiper
+
+    if ($Terse) {
+        Write-Host ("{0,11:F3}  {1,-18} {2,-44} {3,-10} {4}" -f `
+                    $mono, $R.Class, ($mods -join "|"), "+$($churn.Added)/-$($churn.Removed)", $name) -ForegroundColor $colour
+    } else {
+        Write-Host ""
+        Write-Host ("window {0} ({1})   device mono {2:F3}s" -f $Id, $name, $mono)
+        Write-Host ("scene        {0}" -f $R.Class) -ForegroundColor $colour
+        if ($R.Cand.Count -gt 0) { Write-Host ("  candidates {0}" -f ($R.Cand -join ", ")) }
+        Write-Host ("  confidence {0}  (score {1}, margin {2} over the runner-up)" -f $R.Conf, $R.Score, $R.Margin)
+        Write-Host ("  ranked     {0}" -f $R.Ranked)
+        Write-Host ("  modifiers  {0}" -f ($mods -join " | "))
+        Write-Host ("  evidence   {0}" -f ($R.Ev -join "; "))
+        if ($R.Resolve -ne "-") { Write-Host ("  resolve by {0}" -f $R.Resolve) -ForegroundColor DarkCyan }
+        Write-Host ""
+        Write-Host "  STRUCTURE  total $($F.Total)  text $($F.Text)  image $($F.Image)  button $($F.Button)"
+        Write-Host "             slider $($F.Slider)  editable $($F.Editable)  scrollers $scrollers"
+        Write-Host "             opaque $($F.Web + $F.XComponent) (Web $($F.Web), XComponent $($F.XComponent))"
+        if ($F.XcHint -ne "NONE") {
+            Write-Host ("  OPAQUE     hint {0} ({1}% confident)  type {2}  aspect {3}" -f $F.XcHint, $F.XcConf, $F.XcType, $F.XcAspect)
+            if ($F.XcName -or $F.XcLib) { Write-Host ("             id '{0}'  library '{1}'" -f $F.XcName, $F.XcLib) }
+            if ($F.XcA11y)  { Write-Host ("             accessibility '{0}'" -f $F.XcA11y) }
+            if ($F.XcWhy)   { Write-Host ("             {0}" -f $F.XcWhy) -ForegroundColor DarkCyan }
+            Write-Host     ("             the buffer queue settles this; join on the surface id") -ForegroundColor DarkGray
+        }
+        Write-Host "             textlen $($F.TextLen)  longest $($F.TextMax)  avg/node $($F.AvgText)"
+        Write-Host "  POSITION   editable $($F.EditPos)  slider $($F.SliderPos)  (source: $($F.PosSource))"
+        Write-Host "  PARSE      $($F.ParseMode), $($F.Nodes) nodes, $($F.Boxes) with rects"
+        # One readable verdict instead of a wall of numbers. Everything the
+        # script needed to decide is on these two lines.
+        $clip = if ($F.VpTrusted) { "ON" } elseif ($F.ClipAborted) { "ABORTED" } elseif (-not $F.GeoOK) { "off (no rects)" } else { "off (viewport unconfirmed)" }
+        Write-Host "  VIEWPORT   $($F.VpW)x$($F.VpH) vs panel $($F.ScreenW)x$($F.ScreenH)   clip $clip"
+        Write-Host "             counted $($F.Visible) of $($F.Nodes) nodes  (scrolled out $($F.OffScreen), hidden $($F.Hidden))"
+        if (-not $F.VpTrusted) {
+            Write-Host "             geometry is advisory only; counts are over the whole tree" -ForegroundColor DarkYellow
+        }
+        if ($F.Nodes -lt 10) {
+            Write-Host "  WARNING    only $($F.Nodes) nodes parsed - check -DumpOpt, then -Explain" -ForegroundColor Red
+        }
+        Write-Host "  RENDER     overdraw $($F.Overdraw)x  boxes $($F.Boxes)  largest leaf $($F.LargestFrac)/1000 aspect $($F.LargestAspect)"
+        Write-Host "             fx $($F.FxScore) (blur $($F.FxBlur), shadow $($F.FxShadow), gradient $($F.FxGradient), clip $($F.FxClip))"
+        Write-Host "  DEMAND     declared rate $($F.DeclRate)  lazy $($F.Lazy)  reusable $($F.Reusable)  cached $($F.Cached)"
+        Write-Host "  CHURN      $($churn.Shape)  +$($churn.Added) -$($churn.Removed) net $($churn.Net)  over $($churn.Dt)s = $($churn.Rate)/s"
+        Write-Host "  STABLE     $($script:StableTicks) ticks in this class"
+    }
+
+    $truth = $Label
+    $truthSrc = if ($Label) { "manual" } else { "" }
+    # -Label AUTO is gone with the verdict it depended on. A machine-written
+    # label that is wrong poisons the fit silently and is never noticed; a
+    # missing label costs one screen. Labels are yours now, all of them.
+    if ($Label -eq "AUTO") {
+        Write-Host "  -Label AUTO was removed: process evidence cannot label a screen." -ForegroundColor Yellow
+        Write-Host "  Use -Surfaces to see what is on it, then label it yourself." -ForegroundColor DarkGray
+        $truth = ""; $truthSrc = ""
+    }
+    if ($Deep) {
+        Invoke-DeepProbe -Id $Id -ProcId ([string]$win.Pid) -WinName $name
+    }
+
+    if ($Explain) {
+        Write-Host ""
+        Write-Host "  PARSED NODES (first 25) - tag, indent, rect, state:"
+        $k = 0
+        foreach ($n in $F.NodeList) {
+            if ($k -ge 25) { break }
+            $rect = if ($n.Rect) { "[{0:N0},{1:N0}]-[{2:N0},{3:N0}]" -f $n.Rect.L,$n.Rect.T,$n.Rect.R,$n.Rect.B } else { "no rect" }
+            $state = if ($n.VisW -gt 0) { "on" } elseif ($n.Rect) { "OFF" } else { "-" }
+            Write-Host ("    {0,-3} {1,-20} ind {2,-3} {3,-30} {4}" -f $k, $n.Tag, $n.Indent, $rect, $state)
+            $k++
+        }
+    }
+
+    if ($Raw) {
+        $f = Join-Path (Get-Location) ("tree_w{0}.txt" -f $Id)
+        $lines | Set-Content -Path $f -Encoding UTF8
+        Write-Host "  raw -> $f"
+        $allTotal = 0; foreach ($v in $F.TallyAll.Values) { $allTotal += $v }
+        Write-Host "  DOCUMENT   $($F.Total) tags on screen of $allTotal in the whole tree"
+        Write-Host "  TOP TAGS (on-screen only; should be component names):"
+        $F.Tally.GetEnumerator() | Sort-Object Value -Descending | Select-Object -First 12 |
+            ForEach-Object { Write-Host ("    {0,6}  {1}" -f $_.Value, $_.Key) }
+    }
+
+    return [PSCustomObject]@{
+        host_ts = (Get-Date -Format "yyyy-MM-dd HH:mm:ss.fff")
+        dev_mono = [math]::Round($mono, 3)
+        window = $Id; name = $name
+        scene_scope = ($script:SceneContext -join "|")
+        win_share = if ($win -and $win.Share -ge 0) { [int]($win.Share * 100) } else { -1 }
+        pid = if ($win) { $win.Pid } else { "" }
+        scene = $R.Class; candidates = ($R.Cand -join "|"); confidence = $R.Conf
+        score = $R.Score; margin = $R.Margin; ranked = $R.Ranked
+        truth = $truth; truth_src = $truthSrc
+        modifiers = ($mods -join "|"); stable_ticks = $script:StableTicks
+        total = $F.Total; text = $F.Text; image = $F.Image; icon = $F.Icon
+        button = $F.Button
+        slider = $F.Slider; progress = $F.Progress; toggle = $F.Toggle
+        editable = $F.Editable; listlike = $F.ListLike; gridlike = $F.GridLike
+        swiper = $F.Swiper; scroll = $F.Scroll; scrollers = $scrollers
+        web = $F.Web; xcomponent = $F.XComponent; video = $F.Video; canvas = $F.Canvas
+        opaque = ($F.Web + $F.XComponent)
+        textlen = $F.TextLen; textmax = $F.TextMax; avgtext = $F.AvgText
+        edit_pos = $F.EditPos; slider_pos = $F.SliderPos; pos_source = $F.PosSource
+        nodes = $F.Nodes; offscreen = $F.OffScreen; hidden = $F.Hidden
+        geo = [int]$F.GeoOK; vp_w = $F.VpW; vp_h = $F.VpH
+        boxes = $F.Boxes; visible_boxes = $F.Visible; overdraw = $F.Overdraw
+        largest_frac = $F.LargestFrac; largest_aspect = $F.LargestAspect
+        xc_name = $F.XcName; xc_lib = $F.XcLib; xc_type = $F.XcType
+        xc_a11y = $F.XcA11y; xc_secure = $F.XcSecure; xc_hdr = $F.XcHdr
+        xc_aspect = $F.XcAspect; xc_hint = $F.XcHint; xc_conf = $F.XcConf
+        xc_flags = $F.XcFlags
+        fx_score = $F.FxScore; fx_blur = $F.FxBlur; fx_shadow = $F.FxShadow
+        fx_opacity = $F.FxOpacity; fx_clip = $F.FxClip; fx_gradient = $F.FxGradient
+        decl_rate = $F.DeclRate; lazy = $F.Lazy; reusable = $F.Reusable; cached = $F.Cached
+        churn_delta = $churn.Delta; churn_added = $churn.Added
+        churn_removed = $churn.Removed; churn_net = $churn.Net
+        churn_shape = $churn.Shape; churn_rate = $churn.Rate; dt = $churn.Dt
+        evidence = ($R.Ev -join "; ")
+    }
+}
+
+# ================================================================== main
+
+Import-Thresholds
+
+# -Fit runs entirely offline against the labelled rows. No phone, no hdc.
+if ($Fit) { Invoke-Fit -Path $Calib -Apply:$Apply; exit 0 }
+
+if (-not (Get-Command hdc -ErrorAction SilentlyContinue)) {
+    Write-Host "error: hdc not on PATH" -ForegroundColor Red; exit 1
+}
+
+$table = Get-WindowTable
+Repair-WindowRects -Table $table
+if ($table.Count -eq 0) {
+    Write-Host "error: could not read the window table; pass -WindowId" -ForegroundColor Red; exit 1
+}
+
+if ($Services) { Show-Services; exit 0 }
+if ($RsProbe) { Show-RsProbe; exit 0 }
+if ($RsFps)   { Show-RsFps -Layer $RsFps; exit 0 }
+
+# The display: every window, every process, in one call. Nothing inside ArkUI
+# can produce this view - a container sees its own window and no other - so
+# this is the script's one unique signal, and the aggregator's job later.
+if ($ListWindows) {
+    $host_ = Resolve-Scene -Table $table -Quiet
+    $panel = if ($script:ScreenW -gt 0) { "{0}x{1}" -f $script:ScreenW, $script:ScreenH } else { "unknown" }
+    Write-Host ""
+    Write-Host ("DISPLAY   panel {0}   {1} windows" -f $panel, $table.Count) -ForegroundColor Cyan
+    Write-Host ""
+    Write-Host ("  {0,-5} {1,-28} {2,-6} {3,-20} {4,-7} {5,-8} {6}" -f "win", "name", "z", "rect", "share", "role", "pid")
+    foreach ($w in ($table | Sort-Object ZOrd -Descending)) {
+        $rect  = if ($w.W -gt 0) { "{0},{1} {2}x{3}" -f $w.X, $w.Y, $w.W, $w.H } else { "-" }
+        $share = if ($null -ne $w.Share -and $w.Share -ge 0) { "{0}%" -f [int]($w.Share * 100) } else { "?" }
+        $role  = if ($host_ -and $w.WinId -eq $host_.WinId) { "HOST" }
+                 elseif ($null -eq $w.Share) { "hidden" }
+                 elseif ($w.IsOverlay) { "overlay" } else { "content" }
+        $col   = if ($role -eq "HOST") { "Green" } elseif ($role -eq "content") { "Gray" } else { "DarkGray" }
+        Write-Host ("  {0,-5} {1,-28} {2,-6} {3,-20} {4,-7} {5,-8} {6}" -f `
+                    $w.WinId, $w.Name, $w.ZOrd, $rect, $share, $role, $w.Pid) -ForegroundColor $col
+    }
+    if ($script:SceneContext -and $script:SceneContext.Count -gt 0) {
+        Write-Host ("  context  {0}" -f ($script:SceneContext -join ", ")) -ForegroundColor DarkCyan
+    }
+    Write-Host ""
+    Write-Host ("  then:  scene_class.cmd -Window -Screen -WindowId <win>") -ForegroundColor DarkGray
+    exit 0
+}
+
+$FollowForeground = ($WindowId -le 0)
+if ($FollowForeground) {
+    $fg = Resolve-Scene -Table $table
+    if (-not $fg) { Write-Host "error: no window found; pass -WindowId" -ForegroundColor Red; exit 1 }
+    $WindowId = $fg.WinId
+}
+
+# The two scope views. Both may be asked for at once, which prints the window
+# and the screen back to back - the comparison is the whole point.
+if ($FindRects) { Show-FindRects -Id $WindowId; exit 0 }
+
+if ($Window -or $Screen) {
+    $w = @($table | Where-Object { $_.WinId -eq $WindowId })[0]
+    if (-not $w) { Write-Host "error: window $WindowId not in the table" -ForegroundColor Red; exit 1 }
+    $lines = Get-Tree -Id $WindowId
+    $Fs = Get-Features -Lines $lines              # clipped, when the viewport is trusted
+    # Only worth a second pass when the clip actually did something. With no
+    # rects the two scopes are the same tree and the same answer.
+    $Fw = if ($Fs.VpTrusted) { Get-Features -Lines $lines -NoClip } else { $Fs }
+
+    if ($Window) {
+        Show-Scope -F $Fs -Id $WindowId -WinName $w.Name -ProcId ([string]$w.Pid) -Mode "window"
+        if ($Classify) { Show-ScopeClass -F $Fw -Mode "window" -Win $w }
+    }
+    if ($Screen) {
+        Show-Scope -F $Fs -Id $WindowId -WinName $w.Name -ProcId ([string]$w.Pid) -Mode "screen"
+        if ($Classify) { Show-ScopeClass -F $Fs -Mode "screen" -Win $w }
+    }
+    if ($Classify -and $Window -and $Screen -and -not $Fs.VpTrusted) {
+        Write-Host ""
+        Write-Host "  both classes come from the same counts: with no rects there is only" -ForegroundColor DarkYellow
+        Write-Host "  one tree to classify. They will agree until geometry is available." -ForegroundColor DarkYellow
+    }
+    exit 0
+}
+
+function Save-Row { param($r)
+    if (-not $r) { return }
+    # -Label always lands in the calibration file, whether or not -Out is set.
+    $targets = @()
+    if ($Out)   { $targets += $Out }
+    if ($Label -and $r.truth) { $targets += $Calib }
+    foreach ($t in ($targets | Select-Object -Unique)) {
+        if (Test-Path $t) { $r | Export-Csv -Path $t -NoTypeInformation -Append }
+        else              { $r | Export-Csv -Path $t -NoTypeInformation }
+    }
+}
+
+if ($Watch -gt 0) {
+    Write-Host "watching every ${Watch}s - Ctrl+C to stop"
+    Write-Host ("{0,11}  {1,-18} {2,-40} {3,-6} {4}" -f "dev_mono","class","modifiers","churn","window")
+    while ($true) {
+        if ($FollowForeground) {
+            $table = Get-WindowTable
+            $fg = Resolve-Scene -Table $table -Quiet
+            if ($fg -and $fg.WinId -ne $WindowId) {
+                # Require two consecutive ticks before re-scoping. A scene that
+                # flickers between two windows produces a flickering class, and
+                # a flickering class makes the governor oscillate - which is
+                # the exact failure this project exists to avoid.
+                if ($script:PendingWin -eq $fg.WinId) {
+                    $WindowId = $fg.WinId
+                    $script:PrevTally = $null     # scene changed: churn restarts
+                    $script:PendingWin = 0
+                } else {
+                    $script:PendingWin = $fg.WinId
+                }
+            } else { $script:PendingWin = 0 }
+        }
+        Save-Row (Invoke-Classify -Id $WindowId -Table $table -Terse)
+        Start-Sleep -Seconds $Watch
+    }
+}
+
+$r = Invoke-Classify -Id $WindowId -Table $table
+Save-Row $r
+if ($r -and $Out)   { Write-Host ""; Write-Host "row appended -> $Out" }
+if ($r -and $Label -and $r.truth) {
+    Write-Host ""
+    Write-Host ("labelled as {0} [{1}] -> {2}" -f $r.truth, $r.truth_src, $Calib) -ForegroundColor Green
+    if ($r.scene -eq $r.truth) {
+        Write-Host "  the classifier agreed. Still useful: it holds the answer in place while you tune." -ForegroundColor DarkGray
+    } else {
+        # A label on its own changes nothing, and it is worth saying why the
+        # label was not taken - because the answer decides whether -Fit can
+        # help at all, or whether the features are simply not there.
+        Write-Host ("  the classifier said {0}." -f $r.scene) -ForegroundColor Yellow
+        $got = $script:LastScores
+        $want = 0.0
+        if ($got -and $got.ContainsKey($r.truth)) { $want = $got[$r.truth] }
+        Write-Host ("  {0} scored {1}; {2} scored {3}." -f $r.truth, [math]::Round($want,1), $r.scene, $r.score)
+        if ($want -le 0) {
+            Write-Host "  $($r.truth) scored NOTHING - no rule for it found any evidence at all." -ForegroundColor Red
+            Write-Host "  -Fit cannot fix this. A threshold sweep only moves rules that already fire." -ForegroundColor Red
+            Write-Host "  Run  scene_class.cmd -Window  and check the counts are really what is on screen." -ForegroundColor Red
+        } else {
+            Write-Host "  both rules fired, so this IS a threshold gap - exactly what -Fit tunes." -ForegroundColor DarkCyan
+        }
+    }
+    Write-Host "when you have a dozen or so, run:  scene_class.cmd -Fit" -ForegroundColor DarkCyan
+}

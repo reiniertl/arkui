@@ -1,0 +1,17 @@
+# Staging copies used to move files to the Windows box that drives the phone.
+*.ps1.txt
+*.md.txt
+*.7z
+
+# Captured data and anything the scripts write at run time.
+signals.csv
+scene_calib.csv
+scene_surfaces.csv
+scene_thresholds.json
+coverage.csv
+joined.csv
+tree_w*.txt
+layout*.json
+inv_*.txt
+*.pyc
+__pycache__/
