@@ -981,6 +981,24 @@ function Show-Scope {
         }
     }
 
+    # What attribute keys this source actually emits. Asked once, it settles
+    # a whole class of question: a feature reading zero everywhere is either
+    # absent from the screen or absent from the vocabulary, and those need
+    # opposite responses. Switches were the case in point - a type in the
+    # inspector, an attribute in uitest.
+    if (-not $screen -and $DumpOpt -eq "uitest") {
+        $keys = @{}
+        foreach ($n in $F.NodeList) {
+            foreach ($m in [regex]::Matches($n.Text, '"([A-Za-z_][A-Za-z0-9_]{1,31})"\s*:')) {
+                $keys[$m.Groups[1].Value] = $true
+            }
+        }
+        if ($keys.Count -gt 0) {
+            Write-Host ""
+            Write-Host ("  attributes {0}" -f ((@($keys.Keys) | Sort-Object) -join " ")) -ForegroundColor DarkGray
+        }
+    }
+
     # ---- what the window itself declares ---------------------------------
     # Only in window scope: these are properties of the window, not of what
     # happens to be scrolled into view.
@@ -1010,7 +1028,8 @@ function Show-Scope {
 
     Write-Host ""
     Write-Host ("  nodes      {0}" -f $total)
-    Write-Host ("  content    text {0}   image {1}   icon {2}   button {3}   editable {4}" -f $text, $image, $icon, $button, $edit)
+    Write-Host ("  content    text {0}   image {1}   icon {2}   button {3}   editable {4}   toggle {5}" -f `
+                $text, $image, $icon, $button, $edit, $F.Toggle)
     Write-Host ("  containers list {0}   grid {1}   swiper/tabs {2}   scroll {3}" -f $list, $grid, $swiper, $scroll)
     Write-Host ("  media      XComponent {0}   Web {1}   Video {2}   slider/progress {3}" -f $xc, $web, $vid, $slider)
 
@@ -1590,6 +1609,16 @@ function Get-Features {
     # ---- text ------------------------------------------------------------
     # avg per text-bearing node is the label-vs-snippet discriminator: a
     # settings row and a feed card both have "text", 12 chars against 90.
+    # A switch is a TYPE in the inspector and an ATTRIBUTE in uitest: the
+    # accessibility model describes a toggle as a node that is checkable, not
+    # as a component called Toggle. Counting only the type reported zero
+    # switches on every Settings page on the device, which is why the rule
+    # that was supposed to find a preferences page never fired once.
+    $checkable = 0
+    foreach ($n in $vis) {
+        if ($n.Text -match '(?i)"checkable"\s*:\s*"?true') { $checkable++ }
+    }
+
     $textLen = 0; $textMax = 0; $textNodes = 0
     foreach ($n in $vis) {
         # The inspector calls it "content", uitest calls it "text". Both, and
@@ -1673,7 +1702,8 @@ function Get-Features {
         Button     = (C 'Button')
         Slider     = (C 'Slider')
         Progress   = (C 'Progress') + (C 'LoadingProgress')
-        Toggle     = (C 'Toggle') + (C 'Checkbox') + (C 'Radio') + (C 'Switch')
+        Toggle     = [math]::Max((C 'Toggle') + (C 'Checkbox') + (C 'Radio') + (C 'Switch'), $checkable)
+        Checkable  = $checkable
         Editable   = (C 'TextInput') + (C 'TextArea') + (C 'Search') + (C 'RichEditor')
         ListLike   = (C 'List') + (C 'ListItem')
         GridLike   = (C 'Grid') + (C 'GridItem') + (C 'WaterFlow')
@@ -2273,7 +2303,7 @@ function Convert-RowToFeatures {
     [PSCustomObject]@{
         Total = N $Row.total; Text = N $Row.text; Image = N $Row.image; Icon = N $Row.icon
         Button = N $Row.button; Slider = N $Row.slider; Progress = N $Row.progress
-        Toggle = N $Row.toggle; Editable = N $Row.editable
+        Toggle = N $Row.toggle; Checkable = N $Row.checkable; Editable = N $Row.editable
         ListLike = N $Row.listlike; GridLike = N $Row.gridlike
         Swiper = N $Row.swiper; Scroll = N $Row.scroll
         Web = N $Row.web; XComponent = N $Row.xcomponent; Video = N $Row.video
@@ -2392,7 +2422,7 @@ function Invoke-Fit {
     # MEDIA_PLAYER are separated by them and by nothing else in this table,
     # and a range table that omits the deciding feature sends you tuning the
     # wrong number.
-    $cols = @("total","text","image","icon","button","slider","editable","gridlike","listlike","swiper","opaque","avgtext","textmax","largest_frac")
+    $cols = @("total","text","image","icon","button","toggle","slider","editable","gridlike","listlike","swiper","opaque","avgtext","textmax")
     Write-Host ("  {0,-14} {1}" -f "class", (($cols | ForEach-Object { "{0,9}" -f $_ }) -join ""))
     foreach ($g in $byClass) {
         $cells = foreach ($c in $cols) {
@@ -2532,6 +2562,7 @@ function Invoke-Classify {
         total = $F.Total; text = $F.Text; image = $F.Image; icon = $F.Icon
         button = $F.Button
         slider = $F.Slider; progress = $F.Progress; toggle = $F.Toggle
+        checkable = $F.Checkable
         editable = $F.Editable; listlike = $F.ListLike; gridlike = $F.GridLike
         swiper = $F.Swiper; scroll = $F.Scroll; scrollers = $scrollers
         web = $F.Web; xcomponent = $F.XComponent; video = $F.Video; canvas = $F.Canvas
