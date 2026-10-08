@@ -259,9 +259,10 @@ Scrollers — all have icons and text, separated by item size and text length:
 
 | Class | What it is | Told apart by |
 |---|---|---|
-| `LIST` | A long content list: contacts, inbox, search results | Small icons, short labels, and a **long** tree |
+| `LIST` | Text-only rows: search results, plain lists | Rows carry almost no images at all |
+| `ICON_LIST` | Rows with a small image on the **left**: contacts, conversations, files | One small left-edge image per row. One small decode per row, height driven by the text |
 | `SETTINGS` | A preferences page | Switches, or a **short** tree of labelled rows with no media |
-| `FEED` | Cards, timeline | **Large** media items or **snippet**-length text |
+| `FEED` | Cards: an image spanning the row with text around or below it | Images span half the width or more. A full-width decode per card, and tall items |
 | `GALLERY_GRID` | Thumbnail grid: photos or videos | Images roughly one per cell, captions rather than sentences |
 | `READING` | Article, document | Text dominates images, with a long contiguous block |
 | `CHAT` | Conversation | An input at the **bottom**, below the content, with message-length text |
@@ -280,7 +281,8 @@ Everything else:
 | `UNCLASSIFIED` | No evidence matched at all | — |
 
 Three pairs are deliberately close and will often share a candidate set:
-`ICON_PAGER`/`ICON_GRID`, `LIST`/`FEED`, and `MEDIA_PLAYER`/`IMMERSIVE_SURFACE`.
+`ICON_PAGER`/`ICON_GRID`, `LIST`/`ICON_LIST`/`FEED`, and
+`MEDIA_PLAYER`/`IMMERSIVE_SURFACE`.
 When the evidence genuinely does not separate them you get a **low margin**
 with the other in `candidates`, rather than a confident wrong answer. Filter
 your correlation on `margin`, not on `scene`.
