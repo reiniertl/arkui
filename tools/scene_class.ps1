@@ -1637,6 +1637,26 @@ function Get-Features {
             $vp.B = $script:ImeTop
             $script:VpImeClipped = $true
         }
+        # The IME host window on this build reports the WHOLE PANEL as its
+        # rect - SCBKeyboardPanel at 0,0 1316x2832 - so the keyboard's top
+        # edge is not in the window table to be read. It is in this window's
+        # own layout instead: ArkUI moved the content up to avoid the
+        # keyboard, so the lowest real element in the tree now sits just above
+        # it. Background-sized nodes are excluded, or the root would answer
+        # the question with the panel height it always has.
+        if (-not $script:VpImeClipped -and ($script:SceneContext -contains "IME_UP")) {
+            $winH = $vp.B - $vp.T
+            $lowest = 0.0
+            foreach ($n in $nodes) {
+                if (-not $n.Rect) { continue }
+                if (($n.Rect.B - $n.Rect.T) -ge $winH * 0.5) { continue }
+                if ($n.Rect.B -gt $lowest) { $lowest = $n.Rect.B }
+            }
+            if ($lowest -gt ($vp.T + $winH * 0.4) -and $lowest -lt ($vp.B - 1)) {
+                $vp.B = $lowest
+                $script:VpImeClipped = $true
+            }
+        }
         $vpTrusted = $true
     }
 
@@ -1870,11 +1890,22 @@ function Get-Features {
     # gives a bare word, keep the old behaviour.
     $fxOn = {
         param([string] $t, [string] $key)
-        $m = [regex]::Match($t, ('(?i)"' + $key + '"\s*:\s*"?([^",}\]]*)'))
-        if ($m.Success) {
-            $v = $m.Groups[1].Value.Trim()
-            return ($v -ne "" -and $v -notmatch '(?i)^(false|0|0\.0+|none|null|no)$')
+        # Any KEY CONTAINING the word, not the bare word. Matching "blur"
+        # exactly found no key at all on this build - uitest spells it
+        # backgroundBlurStyle / foregroundBlurStyle - so the fallback fired
+        # and matched the word inside the key name itself, on all 176 nodes.
+        # clip got fixed and blur did not, which is what gave it away.
+        $ms = [regex]::Matches($t, ('(?i)"([a-z0-9_]*' + $key + '[a-z0-9_]*)"\s*:\s*"?([^",}\]]*)'))
+        if ($ms.Count -gt 0) {
+            foreach ($m in $ms) {
+                $v = $m.Groups[2].Value.Trim()
+                if ($v -ne "" -and $v -notmatch '(?i)^(false|0|0\.0+|none|null|no|unset|default)$') { return $true }
+            }
+            return $false
         }
+        # No JSON keys at all means the inspector dump, where an attribute is
+        # written only when it has been set. There the bare word is the signal.
+        if ($t -match '"\s*:\s*') { return $false }
         return ($t -match ('(?i)' + $key))
     }
     foreach ($n in $vis) {
