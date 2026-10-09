@@ -1564,6 +1564,12 @@ function Show-ScopeClass {
     Write-Host ("  CLASS      {0}   ({1} as a {2})" -f $R.Class, $R.Conf, $Mode) -ForegroundColor $col
     if ($R.Cand.Count -gt 0) { Write-Host ("  candidates {0}" -f ($R.Cand -join ", ")) }
     Write-Host ("  ranked     {0}" -f $R.Ranked)
+    if ($R.Second) {
+        Write-Host ("  alongside  {0} ({1}) - native structure beside or over the surface." -f $R.Second, $R.SecondScore) -ForegroundColor Cyan
+        Write-Host  "             two scenes in one window: the surface produces at its own rate" -ForegroundColor DarkGray
+        Write-Host  "             while the UI thread works on this. Both cost, and the winner" -ForegroundColor DarkGray
+        Write-Host  "             alone describes only one of them." -ForegroundColor DarkGray
+    }
     Write-Host ("  evidence   {0}" -f ($R.Ev -join "; "))
     if ($mods.Count -gt 0) { Write-Host ("  modifiers  {0}" -f ($mods -join " | ")) }
 }
@@ -2055,6 +2061,15 @@ function Get-Features {
         # much of that the user cannot see either.
         SurfCovered= [int]($surfCovered * 1000)
         SurfFrac   = if ($vpArea -gt 1) { [int](1000.0 * $surfArea / $vpArea) } else { 0 }
+        # The one number that orders the whole short-video family. A comments
+        # sheet does not always COVER the video - it often pushes it up and
+        # shrinks it instead, and shrinking is invisible to surf_covered while
+        # covering is invisible to surf_frac. The product is the share of the
+        # panel actually showing surface, and it falls monotonically across
+        # full player -> video pushed up -> comments fill the window.
+        SurfVisible= if ($vpArea -gt 1) {
+                         [int]((1000.0 * $surfArea / $vpArea) * (1.0 - $surfCovered))
+                     } else { 0 }
         CoverOpaque= [int]($coverOpaque * 1000)
         IconLeft   = $iconLeft      # small images hugging the left edge
         WideImg    = $wideImg       # images spanning half the width or more
@@ -2162,6 +2177,11 @@ function Get-Modifiers {
     # The surface is still producing at its own rate; the user is looking at
     # something else over most of it. Two cost centres, both live.
     if ($F.SurfFrac -ge 500 -and $F.SurfCovered -ge $P.SurfaceCovered) { $mods += "SURFACE_BEHIND_UI" }
+    # Shrunk is not the same as covered and costs differently: a video scaled
+    # into a corner is still decoding every frame at source resolution, and
+    # the scaler now runs on top. Covered at least leaves the geometry alone.
+    if ($F.SurfFrac -ge 1 -and $F.SurfVisible -lt $P.SurfaceGone) { $mods += "SURFACE_COLLAPSED" }
+    elseif ($F.SurfFrac -ge 1 -and $F.SurfVisible -lt $P.SurfaceReal) { $mods += "SURFACE_SHRUNK" }
     if ($mediaish -ge 1) {
         if ($F.Slider -ge 1 -or $F.Button -ge 2) { $mods += "CHROME_VISIBLE" }
         else                                     { $mods += "CHROME_HIDDEN" }
@@ -2210,6 +2230,9 @@ $script:P = @{
     GalleryCaption = 10.5   # avg chars: captions on a thumbnail grid, not sentences
     SmallPage      = 150    # a preferences page is far shorter than a content list
     FullBleed      = 980    # permille of panel: a viewfinder, not a player
+    SurfaceReal    = 150    # permille of the VIEWPORT still showing surface for
+                            # the scene to be about the surface at all
+    SurfaceGone    = 50     # ...and below this the surface is a strip or hidden
     SurfaceCovered = 400    # permille of a dominant surface hidden again by the
                             # native nodes drawn over it before the scene stops
                             # being "the surface" and becomes "the UI on top of it"
@@ -2563,8 +2586,22 @@ function Get-SceneClass {
 
     # Video in a feed plays without visible transport: a dominant surface
     # inside a pager is a player even with no seekbar on screen.
-    if ($opaque -ge 1 -and $F.LargestFrac -ge 850 -and $F.Swiper -ge 1 -and $F.GridLike -eq 0) {
-        Score "MEDIA_PLAYER" 3.0 "a dominant surface inside a pager - a video feed"
+    # LargestFrac is the largest LEAF, and on this app it is a full-screen
+    # container that reads 952 whether the video fills the panel, has been
+    # pushed up to a third of it, or has collapsed to a 50:1 strip behind the
+    # comments. It scored "a dominant surface" in all three. The surface's own
+    # rect is what moves - 16:9, then 1.92, then 50.4 - and surf_visible is
+    # that rect after whatever is drawn over it.
+    if ($opaque -ge 1 -and $F.SurfVisible -ge $P.SurfaceReal -and $F.Swiper -ge 1 -and $F.GridLike -eq 0) {
+        Score "MEDIA_PLAYER" 3.0 "a dominant surface inside a pager ($($F.SurfVisible)/1000 visible) - a video feed"
+    }
+    # A seekbar outlives the video it belongs to: the player chrome is still
+    # in the tree when the comments have taken the window, and "surface +
+    # seekbar" kept scoring 9.5 on a screen with no video on it. What the
+    # user is looking at is what is over the surface, not the surface.
+    if ($opaque -ge 1 -and $F.SurfFrac -ge 1 -and $F.SurfVisible -lt $P.SurfaceGone) {
+        Score "MEDIA_PLAYER"      (-4.0) "the surface is down to $($F.SurfVisible)/1000 visible - the scene is what covers it"
+        Score "IMMERSIVE_SURFACE" (-3.0) "the surface is down to $($F.SurfVisible)/1000 visible"
     }
 
     # A viewfinder fills the panel completely and has no transport controls.
@@ -2681,10 +2718,28 @@ function Get-SceneClass {
     }
     $cand = @($cand | Select-Object -Unique)
 
+    # A scene with a surface in it is not always ABOUT the surface, and the
+    # argmax has no way to say so. Across the three short-video states the
+    # surface metrics separate "comments fill the window" cleanly and do NOT
+    # separate "full player" from "video pushed up with comments below it" -
+    # there the surface barely changes and the NATIVE TREE grows a list. That
+    # second scene is real, it is running, and it costs; reporting only the
+    # winner throws away the half the UI thread is actually working on.
+    $surfaceClasses = @("MEDIA_PLAYER", "IMMERSIVE_SURFACE", "CAPTURE", "CALL_VIDEO", "AUDIO_PLAYER")
+    $second = ""; $secondScore = 0.0
+    if ($surfaceClasses -contains $top.Key) {
+        foreach ($r in $ranked) {
+            if ($surfaceClasses -contains $r.Key) { continue }
+            if ($r.Value -ge 4.0) { $second = $r.Key; $secondScore = [math]::Round($r.Value, 1) }
+            break
+        }
+    }
+
     $rankStr = (($ranked | Select-Object -First 4 | ForEach-Object { "$($_.Key):$([math]::Round($_.Value,1))" }) -join " ")
     $resolve = if ($script:ClassInfo.ContainsKey($top.Key)) { $script:ClassInfo[$top.Key].Resolve } else { "-" }
 
     return @{ Class=$top.Key; Cand=$cand; Conf=$conf; All=$S; AllEv=$E
+              Second=$second; SecondScore=$secondScore
               Score=[math]::Round($top.Value,1); Margin=[math]::Round($margin,1)
               Ev=$E[$top.Key]; Resolve=$resolve; Ranked=$rankStr }
 }
@@ -2815,6 +2870,7 @@ function Convert-RowToFeatures {
         CoverOpaque = N $Row.cover_opaque; CoverWeb = N $Row.cover_web; CoverXc = N $Row.cover_xc
         CoverEmb = N $Row.cover_emb; Embedded = N $Row.embedded; Described = N $Row.described
         SurfFrac = N $Row.surf_frac; SurfCovered = N $Row.surf_covered
+        SurfVisible = N $Row.surf_visible
         ListLike = N $Row.listlike; GridLike = N $Row.gridlike
         Swiper = N $Row.swiper; Scroll = N $Row.scroll
         Web = N $Row.web; XComponent = N $Row.xcomponent; Video = N $Row.video
@@ -3013,6 +3069,12 @@ function Invoke-Classify {
         if ($R.Cand.Count -gt 0) { Write-Host ("  candidates {0}" -f ($R.Cand -join ", ")) }
         Write-Host ("  confidence {0}  (score {1}, margin {2} over the runner-up)" -f $R.Conf, $R.Score, $R.Margin)
         Write-Host ("  ranked     {0}" -f $R.Ranked)
+        if ($R.Second) {
+            Write-Host ("  alongside  {0} ({1}) - native structure beside or over the surface." -f $R.Second, $R.SecondScore) -ForegroundColor Cyan
+            Write-Host  "             two scenes in one window: the surface produces at its own rate" -ForegroundColor DarkGray
+            Write-Host  "             while the UI thread works on this. Both cost, and the winner" -ForegroundColor DarkGray
+            Write-Host  "             alone describes only one of them." -ForegroundColor DarkGray
+        }
         Write-Host ("  modifiers  {0}" -f ($mods -join " | "))
         Write-Host ("  evidence   {0}" -f ($R.Ev -join "; "))
         if ($R.Resolve -ne "-") { Write-Host ("  resolve by {0}" -f $R.Resolve) -ForegroundColor DarkCyan }
@@ -3024,7 +3086,8 @@ function Invoke-Classify {
             Write-Host "             $($F.Described) of them carry their own subtree in this dump - described, not hidden" -ForegroundColor DarkCyan
         }
         if ($F.SurfFrac -ge 1) {
-            Write-Host ("             largest surface covers {0}/1000 of the viewport, and {1}/1000 of IT is behind native nodes" -f $F.SurfFrac, $F.SurfCovered)
+            Write-Host ("             largest surface covers {0}/1000 of the viewport, {1}/1000 of IT is behind native nodes" -f $F.SurfFrac, $F.SurfCovered)
+            Write-Host ("             so {0}/1000 of the panel is actually showing surface" -f $F.SurfVisible)
         }
         if ($F.XcHint -ne "NONE") {
             Write-Host ("  OPAQUE     hint {0} ({1}% confident)  type {2}  aspect {3}" -f $F.XcHint, $F.XcConf, $F.XcType, $F.XcAspect)
@@ -3114,6 +3177,8 @@ function Invoke-Classify {
         cover_opaque = $F.CoverOpaque; cover_web = $F.CoverWeb; cover_xc = $F.CoverXc
         cover_emb = $F.CoverEmb; described = $F.Described
         surf_frac = $F.SurfFrac; surf_covered = $F.SurfCovered
+        surf_visible = $F.SurfVisible
+        second = $R.Second; second_score = $R.SecondScore
         editable = $F.Editable; listlike = $F.ListLike; gridlike = $F.GridLike
         swiper = $F.Swiper; scroll = $F.Scroll; scrollers = $scrollers
         web = $F.Web; xcomponent = $F.XComponent; video = $F.Video; canvas = $F.Canvas
