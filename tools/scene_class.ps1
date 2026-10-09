@@ -59,6 +59,7 @@ param(
     [switch] $Classify,
     [switch] $FindRects,
     [switch] $Version,
+    [switch] $Separation,
     [switch] $RsProbe,
     [string] $RsFps,
     [string] $Calib = "scene_calib.csv"
@@ -1934,6 +1935,9 @@ $script:P = @{
     MarginStrong   = 2.5    # score margin over the runner-up for "structural"
     MarginWeak     = 1.0    # ...and for "weak"; below this, "low"
     CandMargin     = 2.0    # runner-up within this of the top joins candidates
+    ScoreCap       = 10.0   # no class may total more than this. See -Separation:
+                            # class ceilings ran from 1.5 to 15.5, so an argmax
+                            # over raw totals was not comparing like with like
 }
 
 function Import-Thresholds {
@@ -2082,8 +2086,15 @@ function Get-SceneClass {
     # survives a dump that carries no content strings at all.
     $manyIcons = ($iconish -ge $P.IconMin -or ($F.Total -gt 0 -and $iconish -ge $F.Total * $P.IconShare))
     # uitest reports a launcher page as a List inside a pager as often as a
-    # Grid, so cells is whichever container is actually carrying the items.
-    $cells = [math]::Max($F.GridLike, $F.ListLike)
+    # Grid, so cells is whichever container is actually carrying the items -
+    # but ONLY inside a pager. Without that gate a chat thread, which is a
+    # plain List of rows with avatars, satisfied "icons across cells" and
+    # scored ICON_GRID 5.0 / ICON_PAGER 3.0 against a CHAT that had nothing
+    # but its composer. Every vertical list on the device was a candidate
+    # launcher. A grid is a grid or it pages; a list is neither.
+    $cells = if ($F.GridLike -ge 1) { [math]::Max($F.GridLike, $F.ListLike) }
+             elseif ($F.Swiper -ge 1) { $F.ListLike }
+             else { 0 }
 
     if ($WinName -match '(?i)scbdesktop|launcher|home|workspace|negativescreen|appcenter|desktop') {
         if ($iconish -ge 3) {
@@ -2100,7 +2111,18 @@ function Get-SceneClass {
         if ($ratio -ge 0.25 -and $ratio -le 4.0) {
             Score "ICON_GRID"  4.0 "$iconish icons across $cells grid cells"
             Score "ICON_PAGER" 2.0 "$iconish icons across $cells grid cells"
-            if ($F.Swiper -ge 1) { Score "ICON_PAGER" 2.5 "and a pager - horizontal pages, not a scroll" }
+            # These two had ZERO exclusive evidence between them: every gate
+            # that scored one scored the other, cosine 0.75, so which of the
+            # pair won was decided by weight bookkeeping rather than by
+            # anything on the screen. The pager IS the discriminator, so it
+            # has to cut both ways or it is not one.
+            if ($F.Swiper -ge 1) {
+                Score "ICON_PAGER" 2.5 "and a pager - horizontal pages, not a scroll"
+                Score "ICON_GRID" (-2.0) "it pages horizontally - not one scrolling grid"
+            } else {
+                Score "ICON_GRID" 2.5 "a grid that scrolls vertically, with no pager"
+                Score "ICON_PAGER" (-2.0) "no pager - there are no pages to turn"
+            }
             # Captions confirm it when the dump carries them. A bonus, never a
             # gate: absent content strings must not read as "not an icon grid".
             if ($textKnown -and $F.AvgText -lt $P.LabelChars) {
@@ -2168,6 +2190,16 @@ function Get-SceneClass {
     if ($iconish -ge 1 -and $iconish -le 3 -and $F.Total -lt $P.SmallTree -and
         $F.Text -le 4 -and $F.Editable -eq 0 -and $mediaish -eq 0) {
         Score "MEDIA_VIEW" 4.0 "single dominant image, minimal chrome"
+        # The rule said "dominant" and never measured it: counts alone cannot
+        # tell one fullscreen photo from one small image on a sparse screen,
+        # and this was a one-gate class that could not score above 4.0 no
+        # matter what it saw. Say it with the rect when there is one.
+        if ($geo -and $F.LargestFrac -ge 500) {
+            Score "MEDIA_VIEW" 3.0 "and the image really does fill the frame ($($F.LargestFrac)/1000)"
+        }
+        if ($geo -and $F.LargestFrac -lt 200) {
+            Score "MEDIA_VIEW" (-2.5) "the largest leaf is small - a sparse screen, not a photo"
+        }
     }
 
     # ---- shapes that only a labelled corpus could have shown ---------------
@@ -2311,6 +2343,18 @@ function Get-SceneClass {
     }
 
     # ---- resolve -----------------------------------------------------------
+    #
+    # Classes do not have comparable ceilings. Before the cap, the most
+    # IMMERSIVE_SURFACE could ever score was 15.5 and the most MAP could ever
+    # score was 4.0 - not because a map is less certain, but because more
+    # rules happened to be written for surfaces. An argmax over totals on that
+    # scale is not comparing like with like: a class accumulates its way past
+    # a better answer that has nowhere left to climb. Capping bounds the
+    # runaway classes without changing the ordering inside any one of them.
+    # `-Separation` prints every ceiling and names the classes still below it.
+    foreach ($k in @($S.Keys)) {
+        if ($S[$k] -gt $P.ScoreCap) { $S[$k] = $P.ScoreCap }
+    }
     if ($S.Count -eq 0) {
         return @{ Class="UNCLASSIFIED"; Cand=@(); Conf="none"; Score=0.0; Margin=0.0
                   Ev=@("no evidence matched"); Resolve="-"; Ranked="" }
@@ -2781,6 +2825,309 @@ function Invoke-Classify {
     }
 }
 
+# ---------------------------------------------------------------- separation
+#
+# The classifier is an additive scorer and the answer is an argmax, so a class
+# is only ever as good as its DISTANCE from the next one. Two failures look
+# identical on the console and have nothing in common underneath:
+#
+#   shared drivers   two classes are scored by the same gates, so no screen
+#                    can ever separate them. Measured by the cosine between
+#                    their weight vectors, and by exclusive mass - the score a
+#                    class can earn from gates that score nothing else. A class
+#                    with no exclusive mass cannot be chosen on its own
+#                    evidence, only on somebody else's absence.
+#
+#   co-firing gates  two classes share no weight at all, cosine 0, and still
+#                    collide because their gates both open on the same screen.
+#                    Static analysis cannot see this; the labelled corpus can,
+#                    and that is what the -Calib half of this mode is for.
+#
+# Both are reported here as numbers rather than impressions, because "the
+# classes feel noisy" is not actionable and "ICON_GRID has zero exclusive mass
+# and a cosine of 0.75 with ICON_PAGER" is.
+
+function Get-RuleMatrix {
+    # Parse THIS file's Get-SceneClass for its Score calls and group them by
+    # the gate that encloses them. The matrix is read off the source rather
+    # than maintained by hand, so it cannot drift from the rules it describes.
+    $lines = @(Get-Content -LiteralPath $PSCommandPath)
+
+    $strip = {
+        param([string] $l)
+        $sb = New-Object System.Text.StringBuilder
+        $inq = $false; $q = [char]0
+        for ($j = 0; $j -lt $l.Length; $j++) {
+            $c = $l[$j]
+            if ($inq) {
+                if ($c -eq '`') { $j++ } elseif ($c -eq $q) { $inq = $false }
+                continue
+            }
+            if ($c -eq '"' -or $c -eq "'") { $inq = $true; $q = $c; continue }
+            if ($c -eq '#') { break }
+            [void]$sb.Append($c)
+        }
+        return $sb.ToString()
+    }
+
+    $start = -1
+    for ($i = 0; $i -lt $lines.Count; $i++) {
+        if ($lines[$i] -like 'function Get-SceneClass*') { $start = $i; break }
+    }
+    if ($start -lt 0) { return $null }
+    $d = 0; $end = $lines.Count - 1
+    for ($i = $start; $i -lt $lines.Count; $i++) {
+        $code = & $strip $lines[$i]
+        $d += ([regex]::Matches($code, '\{')).Count - ([regex]::Matches($code, '\}')).Count
+        if ($i -gt $start -and $d -eq 0) { $end = $i; break }
+    }
+
+    $pat   = [regex] 'Score\s+"([A-Z_]+)"\s+(\(?-?\d+(?:\.\d+)?\)?|\$\w+|\(\$[^)]*\))'
+    $W     = @{}      # gate id -> class -> weight
+    $Gate  = @{}      # gate id -> the condition that opens it
+    $fuzzy = @()      # Score calls whose weight is not a literal
+    $stack = New-Object System.Collections.ArrayList
+    $d = 0
+    for ($i = $start + 1; $i -le $end; $i++) {
+        $raw = $lines[$i]; $code = & $strip $raw
+        $o = ([regex]::Matches($code, '\{')).Count
+        $c = ([regex]::Matches($code, '\}')).Count
+        # Two shapes open and close on the same line and so never reach the
+        # stack: a one-line `if (...) { Score ... }` and a one-line switch arm
+        # `"CAMERA" { Score ... }`. Attributed to whatever block contained
+        # them they invent shared gates that do not exist, which is the exact
+        # opposite of the error this mode exists to find - the switch arms are
+        # mutually exclusive and were being reported as one gate scoring five
+        # classes together. Any balanced braced line carrying a Score is its
+        # own gate.
+        $hasScore = $pat.IsMatch($raw)
+        # `} else {` is balanced too, but it CLOSES one branch and OPENS
+        # another at the same depth, so the stack neither pops nor pushes and
+        # the else branch lands in the if branch's gate. That merge cancelled
+        # the pager discriminator against itself: +2.5 to one class and -2.0
+        # to the other, summed inside one gate, came out as +0.5/+0.5 and the
+        # pair still read as having no exclusive evidence.
+        $isElse = ($code -match '^\s*\}\s*(else|elseif)\b')
+        if ($isElse -and $o -eq $c -and $o -gt 0) {
+            $dep = if ($stack.Count -gt 0) { $stack[$stack.Count-1].Depth } else { $d }
+            if ($stack.Count -gt 0) { $stack.RemoveAt($stack.Count-1) }
+            [void]$stack.Add([PSCustomObject]@{ Depth = $dep; Id = $i + 1 })
+            $Gate[$i+1] = $raw.Trim()
+        }
+        $inline = ($o -eq $c -and $o -gt 0 -and $hasScore -and -not $isElse)
+        foreach ($m in $pat.Matches($raw)) {
+            $cls = $m.Groups[1].Value
+            $wt  = $m.Groups[2].Value.Trim('(', ')')
+            # -as, not TryParse: TryParse reads the current culture and
+            # would miss "4.5" on a comma-decimal machine, silently turning
+            # every literal weight into a nominal one.
+            $w   = $wt -as [double]
+            if ($null -eq $w) {
+                # A computed weight (the surface-hint switch scales by stated
+                # confidence). Counted at a nominal 2.0 and reported, so the
+                # ceiling is honest about being an estimate for that class.
+                $w = 2.0; $fuzzy += "line $($i+1): $cls $wt"
+            }
+            $gid = if ($inline) { $i + 1 } elseif ($stack.Count -gt 0) { $stack[$stack.Count-1].Id } else { 0 }
+            if (-not $W.ContainsKey($gid)) { $W[$gid] = @{}; $Gate[$gid] = $raw.Trim() }
+            if (-not $W[$gid].ContainsKey($cls)) { $W[$gid][$cls] = 0.0 }
+            $W[$gid][$cls] += $w
+        }
+        if ($o -gt $c -and -not $isElse) { [void]$stack.Add([PSCustomObject]@{ Depth = $d; Id = $i + 1 }); $Gate[$i+1] = $raw.Trim() }
+        $d += $o - $c
+        while ($stack.Count -gt 0 -and $d -le $stack[$stack.Count-1].Depth) { $stack.RemoveAt($stack.Count-1) }
+    }
+
+    $classes = @($W.Values | ForEach-Object { $_.Keys } | Select-Object -Unique | Sort-Object)
+    return [PSCustomObject]@{ W = $W; Gate = $Gate; Classes = $classes; Gates = @($W.Keys); Fuzzy = $fuzzy }
+}
+
+function Show-Separation {
+    param([string] $Calib)
+
+    $M = Get-RuleMatrix
+    if (-not $M) { Write-Host "could not parse the scorer" -ForegroundColor Red; return }
+    $W = $M.W; $classes = $M.Classes; $gates = $M.Gates
+
+    $ceil = @{}; $excl = @{}; $ngate = @{}
+    foreach ($c in $classes) {
+        $t = 0.0; $e = 0.0; $n = 0
+        foreach ($g in $gates) {
+            $v = 0.0
+            if ($W[$g].ContainsKey($c)) { $v = $W[$g][$c] }
+            if ($v -le 0) { continue }
+            $t += $v; $n++
+            $sharers = 0
+            foreach ($k in $W[$g].Keys) { if ($W[$g][$k] -gt 0) { $sharers++ } }
+            if ($sharers -eq 1) { $e += $v }
+        }
+        $ceil[$c] = $t; $excl[$c] = $e; $ngate[$c] = $n
+    }
+
+    Write-Host ""
+    Write-Host "CLASS SEPARATION" -ForegroundColor Cyan
+    Write-Host ("  {0} classes, {1} gates, {2} Score calls" -f $classes.Count, $gates.Count,
+                (($gates | ForEach-Object { $W[$_].Count }) | Measure-Object -Sum).Sum) -ForegroundColor DarkGray
+    if (@($M.Fuzzy).Count -gt 0) {
+        Write-Host ("  {0} weights are computed, not literal - counted at a nominal 2.0:" -f @($M.Fuzzy).Count) -ForegroundColor DarkGray
+        foreach ($f in @($M.Fuzzy)) { Write-Host "      $f" -ForegroundColor DarkGray }
+    }
+
+    # ---- ceilings ---------------------------------------------------------
+    # The decision is an argmax over these totals. If the ceilings differ, the
+    # argmax is comparing classes that cannot reach the same number, and the
+    # one with more rules written for it wins by bookkeeping.
+    Write-Host ""
+    Write-Host "  ceiling - the most each class can ever score" -ForegroundColor White
+    Write-Host ("  {0,-20} {1,5} {2,7} {3,10} {4,8}   {5}" -f "class", "gates", "ceiling", "exclusive", "shared", "")
+    $cap = $script:P.ScoreCap
+    foreach ($c in ($classes | Sort-Object { -$ceil[$_] })) {
+        $note = ""
+        if ($excl[$c] -le 0.001) { $note = "cannot be chosen on its own evidence" }
+        elseif ($ceil[$c] -lt ($cap * 0.6)) { $note = "under-specified - cannot reach the cap" }
+        elseif ($ceil[$c] -gt $cap) { $note = "capped at $cap" }
+        $col = if ($excl[$c] -le 0.001) { "Red" } elseif ($ceil[$c] -lt ($cap * 0.6)) { "Yellow" } else { "Gray" }
+        Write-Host ("  {0,-20} {1,5} {2,7:n1} {3,10:n1} {4,8:n1}   {5}" -f `
+                    $c, $ngate[$c], $ceil[$c], $excl[$c], ($ceil[$c] - $excl[$c]), $note) -ForegroundColor $col
+    }
+
+    # ---- shared drivers ---------------------------------------------------
+    # Cosine between the two classes' weight vectors over the gates. 1.0 means
+    # every gate that scores one scores the other in the same proportion: no
+    # screen can separate them, ever, and no threshold sweep will help.
+    Write-Host ""
+    Write-Host "  shared drivers - cosine between class weight vectors" -ForegroundColor White
+    $pairs = @()
+    for ($i = 0; $i -lt $classes.Count; $i++) {
+        for ($j = $i + 1; $j -lt $classes.Count; $j++) {
+            $a = $classes[$i]; $b = $classes[$j]
+            $dot = 0.0; $na = 0.0; $nb = 0.0
+            $shared = @()
+            foreach ($g in $gates) {
+                $x = 0.0; $y = 0.0
+                if ($W[$g].ContainsKey($a)) { $x = $W[$g][$a] }
+                if ($W[$g].ContainsKey($b)) { $y = $W[$g][$b] }
+                $dot += $x * $y; $na += $x * $x; $nb += $y * $y
+                if ($x -ne 0 -and $y -ne 0) { $shared += ("{0}({1:n1}/{2:n1})" -f $g, $x, $y) }
+            }
+            if ($na -le 0 -or $nb -le 0) { continue }
+            $cos = $dot / ([math]::Sqrt($na) * [math]::Sqrt($nb))
+            # The largest lead a can ever build over b: an upper bound, since
+            # it assumes every favourable gate can open at once. A SMALL value
+            # is the sound claim - it proves the pair is fragile. A large one
+            # proves nothing, because the gates may be mutually exclusive.
+            $lab = 0.0; $lba = 0.0
+            foreach ($g in $gates) {
+                $x = 0.0; $y = 0.0
+                if ($W[$g].ContainsKey($a)) { $x = $W[$g][$a] }
+                if ($W[$g].ContainsKey($b)) { $y = $W[$g][$b] }
+                $lab += [math]::Max(0.0, $x - $y); $lba += [math]::Max(0.0, $y - $x)
+            }
+            $pairs += [PSCustomObject]@{ A=$a; B=$b; Cos=$cos; Lead=[math]::Min($lab,$lba); Shared=($shared -join " ") }
+        }
+    }
+    foreach ($p in ($pairs | Where-Object { $_.Cos -gt 0.10 } | Sort-Object Cos -Descending | Select-Object -First 10)) {
+        $col = if ($p.Cos -ge 0.5) { "Red" } elseif ($p.Cos -ge 0.25) { "Yellow" } else { "Gray" }
+        Write-Host ("  cos {0,5:n2}  {1,-18}{2,-18} gates {3}" -f $p.Cos, $p.A, $p.B, $p.Shared) -ForegroundColor $col
+    }
+    $frag = @($pairs | Where-Object { $_.Lead -lt 2.0 -and $_.Cos -gt 0.10 })
+    if ($frag.Count -gt 0) {
+        Write-Host ""
+        Write-Host "  neither side can build a lead of 2.0 over the other:" -ForegroundColor Yellow
+        foreach ($p in ($frag | Sort-Object Lead | Select-Object -First 8)) {
+            Write-Host ("    {0,-18}{1,-18} best lead {2:n1}" -f $p.A, $p.B, $p.Lead) -ForegroundColor Yellow
+        }
+    }
+
+    if (-not $Calib -or -not (Test-Path $Calib)) {
+        Write-Host ""
+        Write-Host "  the rest needs labelled screens:  scene_class.cmd -Separation -Calib uitest.csv" -ForegroundColor DarkGray
+        Write-Host ""
+        return
+    }
+
+    # ---- co-firing, measured ----------------------------------------------
+    # Two classes with cosine 0 still collide when their gates open on the
+    # same screen. That is a property of the screens, not of the weights, so
+    # it can only be measured - this is the half of the question the static
+    # matrix above cannot answer.
+    $rows = @(Import-Csv $Calib | Where-Object { $_.truth -and $_.truth -ne "" })
+    if ($rows.Count -lt 4) { Write-Host "  too few labelled rows for the empirical half" -ForegroundColor Yellow; return }
+
+    $scores = @{}   # truth -> list of score hashtables
+    $conf   = @{}   # "truth->got" -> count
+    foreach ($r in $rows) {
+        $f = Convert-RowToFeatures $r
+        $res = Get-SceneClass -F $f -WinName ([string]$r.name)
+        $t = [string]$r.truth
+        if (-not $scores.ContainsKey($t)) { $scores[$t] = @() }
+        $scores[$t] += ,$res.All
+        if ($res.Class -ne $t) {
+            $k = "$t->$($res.Class)"
+            if (-not $conf.ContainsKey($k)) { $conf[$k] = 0 }
+            $conf[$k]++
+        }
+    }
+
+    Write-Host ""
+    Write-Host ("  measured on {0} labelled screens from {1}" -f $rows.Count, $Calib) -ForegroundColor White
+    if ($conf.Count -eq 0) { Write-Host "  no confusions" -ForegroundColor Green }
+
+    # Fisher separation on the one quantity the argmax actually uses: the
+    # score DIFFERENCE between the two classes. How many standard deviations
+    # apart are the two populations on that difference? Below 1 the pair is
+    # noise whatever the console says; above 2 it is a real boundary.
+    $sepOf = {
+        param($a, $b)
+        if (-not $scores.ContainsKey($a) -or -not $scores.ContainsKey($b)) { return $null }
+        $da = @(); $db = @()
+        foreach ($s in $scores[$a]) { $x=0.0; $y=0.0; if($s.ContainsKey($a)){$x=$s[$a]}; if($s.ContainsKey($b)){$y=$s[$b]}; $da += ($x-$y) }
+        foreach ($s in $scores[$b]) { $x=0.0; $y=0.0; if($s.ContainsKey($a)){$x=$s[$a]}; if($s.ContainsKey($b)){$y=$s[$b]}; $db += ($x-$y) }
+        if ($da.Count -lt 2 -or $db.Count -lt 2) { return $null }
+        $ma = ($da | Measure-Object -Average).Average
+        $mb = ($db | Measure-Object -Average).Average
+        $va = (($da | ForEach-Object { ($_ - $ma) * ($_ - $ma) }) | Measure-Object -Sum).Sum / ($da.Count - 1)
+        $vb = (($db | ForEach-Object { ($_ - $mb) * ($_ - $mb) }) | Measure-Object -Sum).Sum / ($db.Count - 1)
+        $den = [math]::Sqrt($va + $vb)
+        if ($den -lt 0.001) { if ([math]::Abs($ma - $mb) -lt 0.001) { return 0.0 } else { return 99.0 } }
+        return ([math]::Abs($ma - $mb) / $den)
+    }
+
+    foreach ($k in ($conf.Keys | Sort-Object { -$conf[$_] })) {
+        $a, $b = $k -split '->'
+        $sv = & $sepOf $a $b
+        $txt = if ($null -eq $sv) { "no counter-examples labelled - cannot measure" }
+               elseif ($sv -lt 1.0) { "{0:n1} sigma - NOISE, the two populations overlap" -f $sv }
+               elseif ($sv -lt 2.0) { "{0:n1} sigma - weak" -f $sv }
+               else { "{0:n1} sigma - separable, the rule is just wrong" -f $sv }
+        $col = if ($null -eq $sv) { "DarkGray" } elseif ($sv -lt 1.0) { "Red" } elseif ($sv -lt 2.0) { "Yellow" } else { "Gray" }
+        Write-Host ("  {0,3}x  {1,-18} read as {2,-18} {3}" -f $conf[$k], $a, $b, $txt) -ForegroundColor $col
+    }
+
+    # Every pair of labelled classes, not only the ones that went wrong: a
+    # pair that happens to be right today on 1.3 sigma will go wrong tomorrow.
+    Write-Host ""
+    Write-Host "  every labelled pair, by separation on the deciding difference" -ForegroundColor White
+    $labs = @($scores.Keys | Sort-Object)
+    $tbl = @()
+    for ($i = 0; $i -lt $labs.Count; $i++) {
+        for ($j = $i + 1; $j -lt $labs.Count; $j++) {
+            $sv = & $sepOf $labs[$i] $labs[$j]
+            if ($null -ne $sv) { $tbl += [PSCustomObject]@{ A=$labs[$i]; B=$labs[$j]; S=$sv } }
+        }
+    }
+    foreach ($t in ($tbl | Sort-Object S | Select-Object -First 12)) {
+        $col = if ($t.S -lt 1.0) { "Red" } elseif ($t.S -lt 2.0) { "Yellow" } else { "Gray" }
+        Write-Host ("  {0,5:n1} sigma  {1,-18}{2}" -f $t.S, $t.A, $t.B) -ForegroundColor $col
+    }
+    Write-Host ""
+    Write-Host "  below 1.0 sigma the boundary is noise: the fix is a new feature," -ForegroundColor DarkGray
+    Write-Host "  not a new weight. Above 2.0 the features already separate them and" -ForegroundColor DarkGray
+    Write-Host "  a wrong answer there is a rule bug you can find by hand." -ForegroundColor DarkGray
+    Write-Host ""
+}
+
+
 # ================================================================== main
 
 Import-Thresholds
@@ -2799,6 +3146,7 @@ if ($Version) {
     Write-Host ""
     Write-Host "  scopes       -Window  -Screen  -Classify  -ListWindows"
     Write-Host "  classify     -Watch  -Out  -Label  -Fit  -Apply  -Calib"
+    Write-Host "  validate     -Separation"
     Write-Host "  discovery    -FindRects  -RsProbe  -RsFps  -Deep  -Services"
     Write-Host "  diagnostics  -DumpOpt  -Explain  -Raw  -ShowCmd  -WindowId"
     Write-Host ""
@@ -2808,6 +3156,10 @@ if ($Version) {
 
 # -Fit runs entirely offline against the labelled rows. No phone, no hdc.
 if ($Fit) { Invoke-Fit -Path $Calib -Apply:$Apply; exit 0 }
+
+# -Separation reads the scorer itself. The static half needs nothing at all;
+# the empirical half needs the corpus. Neither needs the phone.
+if ($Separation) { Show-Separation -Calib $Calib; exit 0 }
 
 if (-not (Get-Command hdc -ErrorAction SilentlyContinue)) {
     Write-Host "error: hdc not on PATH" -ForegroundColor Red; exit 1

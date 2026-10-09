@@ -297,6 +297,52 @@ When the evidence genuinely does not separate them you get a **low margin**
 with the other in `candidates`, rather than a confident wrong answer. Filter
 your correlation on `margin`, not on `scene`.
 
+### Are the classes actually separated? — `-Separation`
+
+The answer is an `argmax`, so a class is only ever as good as its **distance**
+from the next one. Two failures look identical on the console and have nothing
+in common underneath, and `-Separation` measures both.
+
+```bat
+scene_class.cmd -Separation                      :: static, needs nothing
+scene_class.cmd -Separation -Calib uitest.csv    :: adds the measured half
+```
+
+**Shared drivers** — two classes scored by the same gates. No screen can ever
+separate them and no threshold sweep will help. Reported as the cosine between
+their weight vectors, and as **exclusive mass**: the score a class can earn
+from gates that score nothing else. A class with no exclusive mass cannot be
+chosen on its own evidence, only on somebody else's absence. `ICON_GRID` and
+`ICON_PAGER` were at cosine 0.75 with **zero** exclusive mass between them —
+which of the pair won was decided by weight bookkeeping, not by the screen.
+
+**Ceiling** — the most a class can ever score. These ran from 1.5 to 15.5, so
+the `argmax` was not comparing like with like: a class with more rules written
+for it accumulated past a better answer that had nowhere left to climb. Scores
+are now capped at `ScoreCap` (10.0), and `-Separation` names every class still
+below it as **under-specified** — it cannot reach the cap, so it loses ties it
+should win. That is a missing rule, not a wrong weight.
+
+**Co-firing gates** — the failure the static matrix *cannot* see. Two classes
+share no weight at all, cosine 0, and still collide because their gates open on
+the same screen. This is a property of the screens, so it has to be measured:
+with `-Calib`, each confusion is scored by the **Fisher separation** of the one
+quantity the `argmax` uses — the score difference between the two classes —
+across the rows labelled each way:
+
+```
+  J = |mean_a(s_a - s_b) - mean_b(s_a - s_b)| / sqrt(var_a + var_b)
+```
+
+reported in sigmas. **Below 1.0 the boundary is noise** and the fix is a new
+feature, not a new weight. Above 2.0 the features already separate the pair and
+a wrong answer is a rule bug you can find by hand. Every labelled pair is
+listed, not only the ones that went wrong: a pair that is right today on 1.3
+sigma will be wrong tomorrow.
+
+The rule matrix is read out of the script's own source, so it cannot drift from
+the rules it describes.
+
 ### All switches
 
 | Switch | Default | What it does |
@@ -312,6 +358,7 @@ your correlation on `margin`, not on `scene`.
 | `-Label <CLASS>` | none | record ground truth into the calibration file |
 | `-Fit` | off | re-score labelled rows offline; report and suggest |
 | `-Apply` | off | with `-Fit`, write the winning threshold change |
+| `-Separation` | off | measure how far apart the classes actually are. Offline; no phone |
 | `-Calib <file>` | `scene_calib.csv` | calibration file to read and write |
 | `-RsProbe` | off | which render_service dump arguments answer on this build |
 | `-RsFps <layer>` | none | submit rate for one composited layer |
