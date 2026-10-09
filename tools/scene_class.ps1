@@ -77,6 +77,8 @@ $script:PrevMono    = 0.0
 $script:StableTicks = 0
 $script:PrevClass   = ""
 $script:Layers      = 0
+$script:ImeTop      = 0.0
+$script:VpImeClipped = $false
 
 
 function Invoke-HdcRaw {
@@ -393,7 +395,18 @@ function Resolve-Scene {
     # shape without changing what the scene IS.
     foreach ($w in $visible) {
         if ($w.ZOrd -le $host_.ZOrd) { continue }
-        if ($w.Name -match '(?i)input_?method|softkeyboard|\bime\b') { $ctx += "IME_UP"; continue }
+        if ($w.Name -match '(?i)input_?method|softkeyboard|keyboard|\bime\b') {
+            $ctx += "IME_UP"
+            # Where the keyboard starts is the bottom of the usable screen. A
+            # composer sits just above it, which on a 2832px panel with the
+            # IME up is about 57% down - well short of EditBotMin, so the
+            # composer rule stood down and CHAT scored nothing on a chat.
+            # edit_pos has to be normalised against what the user can see.
+            if ($w.H -gt 0 -and $w.Y -gt 0) {
+                if ($script:ImeTop -le 0 -or $w.Y -lt $script:ImeTop) { $script:ImeTop = [double]$w.Y }
+            }
+            continue
+        }
         if ($w.Name -match '(?i)notification|dropdown|shade|controlpanel')   { $ctx += "SHADE_ABOVE"; continue }
         if ($w.Name -match '(?i)volume|toast|banner')                        { $ctx += "TRANSIENT_ABOVE"; continue }
         if (-not $w.IsOverlay) { $ctx += "WINDOW_ABOVE" }
@@ -677,6 +690,9 @@ function Get-OpaqueHint {
 # component tree's point of view it is still a hole, and the inside of it is a
 # separate producer's job.
 $script:OpaquePat = '^(XComponent|Web|Video|SurfaceView|EmbeddedComponent|UIExtensionComponent|Plugin|RichEditor_Surface)$'
+# The subset of the above that is another ArkUI instance in another process
+# rather than a raw buffer queue. Different hole, different way to close it.
+$script:EmbedPat  = '^(EmbeddedComponent|UIExtensionComponent|Plugin)$'
 
 $script:SurfaceKnownKeys = @(
     'type','xcomponenttype','id','inspectorkey','componentid','key','libraryname','library_name',
@@ -994,7 +1010,8 @@ function Show-Scope {
     $clipOn = [bool]$F.VpTrusted
     Write-Host ""
     if ($clipOn) {
-        Write-Host ("  viewport   {0}x{1}   panel {2}x{3}   clip ON" -f $F.VpW, $F.VpH, $F.ScreenW, $F.ScreenH)
+        Write-Host ("  viewport   {0}x{1}   panel {2}x{3}   clip ON{4}" -f $F.VpW, $F.VpH, $F.ScreenW, $F.ScreenH,
+                    $(if ($script:VpImeClipped) { "   (bottom cut at the keyboard)" } else { "" }))
         Write-Host ("  on screen  {0} of {1} nodes   ({2} scrolled out, {3} hidden)" -f `
                     $F.Total, $F.Nodes, $F.OffScreen, $F.Hidden)
     } else {
@@ -1607,10 +1624,19 @@ function Get-Features {
     # whose rect best resembles the panel quietly excluded whatever sat below
     # that node, and on both a launcher and a video app that was the bottom
     # bar. Five icons counted as "scrolled out" while plainly on screen.
+    $script:VpImeClipped = $false
     if ($script:WinRect -and $script:WinRect.W -gt 1 -and $script:WinRect.H -gt 1) {
         $vp = @{ L = [double]$script:WinRect.X; T = [double]$script:WinRect.Y
                  R = [double]($script:WinRect.X + $script:WinRect.W)
                  B = [double]($script:WinRect.Y + $script:WinRect.H) }
+        # ...stopping at the keyboard. The window's rect does not shrink when
+        # the IME opens - the IME is a separate window drawn over it - so the
+        # bottom 40% of that rect is not screen the user can see, and every
+        # position normalised against it is wrong by that much.
+        if ($script:ImeTop -gt $vp.T + 1 -and $script:ImeTop -lt $vp.B) {
+            $vp.B = $script:ImeTop
+            $script:VpImeClipped = $true
+        }
         $vpTrusted = $true
     }
 
@@ -1731,7 +1757,7 @@ function Get-Features {
     # around a hole, and the scene the user is looking at may be drawn ENTIRELY
     # inside that hole. A label given to such a screen describes pixels this
     # tree never contained.
-    $coverWeb = 0.0; $coverXc = 0.0
+    $coverWeb = 0.0; $coverXc = 0.0; $coverEmb = 0.0
     if ($vpArea -gt 1) {
         foreach ($n in $vis) {
             if ($n.Tag -notmatch $script:OpaquePat) { continue }
@@ -1744,12 +1770,24 @@ function Get-Features {
             # Nested surfaces would double count, so each is clamped to the
             # viewport and the total is clamped again below.
             $f = [math]::Min(1.0, $a / $vpArea)
-            if ($n.Tag -eq 'Web') { $coverWeb += $f } else { $coverXc += $f }
+            # Three destinations, not two. A Web region is recoverable in
+            # this process by the ArkWeb producer. An XComponent is a buffer
+            # queue and is outside ArkUI permanently. An EmbeddedComponent or
+            # UIExtensionComponent is NEITHER: it is another ArkUI instance,
+            # in another process, with its own pipeline - so the same
+            # collector running THERE describes it exactly, and the hole is
+            # closed by routing rather than by a different kind of producer.
+            # Lumping it in with XComponent said "permanently outside" about
+            # a region that is the easiest of the three to recover.
+            if     ($n.Tag -eq 'Web')                { $coverWeb += $f }
+            elseif ($n.Tag -match $script:EmbedPat)  { $coverEmb += $f }
+            else                                     { $coverXc  += $f }
         }
     }
     $coverWeb = [math]::Min(1.0, $coverWeb)
     $coverXc  = [math]::Min(1.0, $coverXc)
-    $coverOpaque = [math]::Min(1.0, $coverWeb + $coverXc)
+    $coverEmb = [math]::Min(1.0, $coverEmb)
+    $coverOpaque = [math]::Min(1.0, $coverWeb + $coverXc + $coverEmb)
 
     $checkable = 0
     foreach ($n in $vis) {
@@ -1793,13 +1831,29 @@ function Get-Features {
     # ---- render-cost multipliers, on visible nodes only ------------------
     $fxBlur=0; $fxShadow=0; $fxOpacity=0; $fxClip=0; $fxGrad=0
     $declRate=0; $lazy=0; $reusable=0; $cached=0
+    # uitest emits a FIXED attribute set per node, so every node carries a
+    # "clip" key and a "blur" key whether or not anything is set. The scan was
+    # written for the inspector dump, where an attribute appears only when it
+    # has a value, and under uitest it matched all 184 nodes: fx 1840, blur
+    # 184, clip 184, FX_HEAVY on a screen with no effects at all. A key is not
+    # a value. Where the dump gives "key": value, read the value; where it
+    # gives a bare word, keep the old behaviour.
+    $fxOn = {
+        param([string] $t, [string] $key)
+        $m = [regex]::Match($t, ('(?i)"' + $key + '"\s*:\s*"?([^",}\]]*)'))
+        if ($m.Success) {
+            $v = $m.Groups[1].Value.Trim()
+            return ($v -ne "" -and $v -notmatch '(?i)^(false|0|0\.0+|none|null|no)$')
+        }
+        return ($t -match ('(?i)' + $key))
+    }
     foreach ($n in $vis) {
         $t = $n.Text
-        if ($t -match '(?i)blur')                  { $fxBlur++ }
-        if ($t -match '(?i)shadow')                { $fxShadow++ }
-        if ($t -match '(?i)opacity')               { $fxOpacity++ }
-        if ($t -match '(?i)\bclip|\bmask')         { $fxClip++ }
-        if ($t -match '(?i)gradient')              { $fxGrad++ }
+        if (& $fxOn $t 'blur')                     { $fxBlur++ }
+        if (& $fxOn $t 'shadow')                   { $fxShadow++ }
+        if (& $fxOn $t 'opacity')                  { $fxOpacity++ }
+        if ((& $fxOn $t 'clip') -or (& $fxOn $t 'mask')) { $fxClip++ }
+        if (& $fxOn $t 'gradient')                 { $fxGrad++ }
         if ($t -match '(?i)lazyforeach')           { $lazy++ }
         if ($t -match '(?i)reusable|recycle')      { $reusable++ }
         $m = [regex]::Match($t, '(?i)expectedFrameRate\s*[:=]\s*"?(\d+)')
@@ -1848,6 +1902,7 @@ function Get-Features {
         Checkable  = $checkable
         CoverWeb   = [int]($coverWeb * 1000)     # permille of the viewport
         CoverXc    = [int]($coverXc  * 1000)
+        CoverEmb   = [int]($coverEmb * 1000)
         CoverOpaque= [int]($coverOpaque * 1000)
         IconLeft   = $iconLeft      # small images hugging the left edge
         WideImg    = $wideImg       # images spanning half the width or more
@@ -1860,6 +1915,11 @@ function Get-Features {
         Web        = (C 'Web')
         XComponent = (C 'XComponent')
         Video      = (C 'Video')
+        # Counted, because without it the console said "opaque 0" directly
+        # above "564 permille of this screen is behind a surface" - the
+        # coverage pass recognised these tags and nothing else did.
+        Embedded   = (C 'EmbeddedComponent') + (C 'UIExtensionComponent') + (C 'Plugin') +
+                     (C 'SurfaceView') + (C 'RichEditor_Surface')
         Canvas     = (C 'Canvas')
         TextLen    = $textLen
         TextMax    = $textMax
@@ -1925,7 +1985,7 @@ function Get-Churn {
 function Get-Modifiers {
     param($F, $Churn, $Win)
     $mods = @()
-    $opaque = $F.Web + $F.XComponent
+    $opaque = $F.Web + $F.XComponent + $F.Embedded
     $mediaish = $F.XComponent + $F.Video
     if (-not $Churn.First) {
         if ($Churn.Delta -eq 0) { $mods += "STATIC" }
@@ -1943,6 +2003,10 @@ function Get-Modifiers {
     if ($F.CoverOpaque -ge $P.OpaqueCover) { $mods += "SCENE_BEHIND_SURFACE" }
     if ($F.CoverWeb -ge $P.OpaqueCover)    { $mods += "NEEDS_ARKWEB" }
     if ($F.CoverXc  -ge $P.OpaqueCover)    { $mods += "NEEDS_SURFACE_PRODUCER" }
+    # The recoverable one: another ArkUI instance, in another process, with a
+    # tree of its own. The aggregator closes this hole by asking that process
+    # for its record, not by finding a different kind of producer.
+    if ($F.CoverEmb -ge $P.OpaqueCover)    { $mods += "NEEDS_PEER_CONTAINER" }
     if ($mediaish -ge 1) {
         if ($F.Slider -ge 1 -or $F.Button -ge 2) { $mods += "CHROME_VISIBLE" }
         else                                     { $mods += "CHROME_HIDDEN" }
@@ -2587,6 +2651,7 @@ function Convert-RowToFeatures {
         Toggle = N $Row.toggle; Checkable = N $Row.checkable; Editable = N $Row.editable
         IconLeft = N $Row.icon_left; WideImg = N $Row.wide_img; ImgGeo = N $Row.img_geo
         CoverOpaque = N $Row.cover_opaque; CoverWeb = N $Row.cover_web; CoverXc = N $Row.cover_xc
+        CoverEmb = N $Row.cover_emb; Embedded = N $Row.embedded
         ListLike = N $Row.listlike; GridLike = N $Row.gridlike
         Swiper = N $Row.swiper; Scroll = N $Row.scroll
         Web = N $Row.web; XComponent = N $Row.xcomponent; Video = N $Row.video
@@ -2791,7 +2856,7 @@ function Invoke-Classify {
         Write-Host ""
         Write-Host "  STRUCTURE  total $($F.Total)  text $($F.Text)  image $($F.Image)  button $($F.Button)"
         Write-Host "             slider $($F.Slider)  editable $($F.Editable)  scrollers $scrollers"
-        Write-Host "             opaque $($F.Web + $F.XComponent) (Web $($F.Web), XComponent $($F.XComponent))"
+        Write-Host "             opaque $($F.Web + $F.XComponent + $F.Embedded) (Web $($F.Web), XComponent $($F.XComponent), embedded $($F.Embedded))"
         if ($F.XcHint -ne "NONE") {
             Write-Host ("  OPAQUE     hint {0} ({1}% confident)  type {2}  aspect {3}" -f $F.XcHint, $F.XcConf, $F.XcType, $F.XcAspect)
             if ($F.XcName -or $F.XcLib) { Write-Host ("             id '{0}'  library '{1}'" -f $F.XcName, $F.XcLib) }
@@ -2806,6 +2871,9 @@ function Invoke-Classify {
         # script needed to decide is on these two lines.
         $clip = if ($F.VpTrusted) { "ON" } elseif ($F.ClipAborted) { "ABORTED" } elseif (-not $F.GeoOK) { "off (no rects)" } else { "off (viewport unconfirmed)" }
         Write-Host "  VIEWPORT   $($F.VpW)x$($F.VpH) vs panel $($F.ScreenW)x$($F.ScreenH)   clip $clip"
+        if ($script:VpImeClipped) {
+            Write-Host "             bottom cut at the keyboard: positions are against what you can see" -ForegroundColor DarkCyan
+        }
         Write-Host "             counted $($F.Visible) of $($F.Nodes) nodes  (scrolled out $($F.OffScreen), hidden $($F.Hidden))"
         if (-not $F.VpTrusted) {
             Write-Host "             geometry is advisory only; counts are over the whole tree" -ForegroundColor DarkYellow
@@ -2875,10 +2943,12 @@ function Invoke-Classify {
         checkable = $F.Checkable
         icon_left = $F.IconLeft; wide_img = $F.WideImg; img_geo = $F.ImgGeo
         cover_opaque = $F.CoverOpaque; cover_web = $F.CoverWeb; cover_xc = $F.CoverXc
+        cover_emb = $F.CoverEmb
         editable = $F.Editable; listlike = $F.ListLike; gridlike = $F.GridLike
         swiper = $F.Swiper; scroll = $F.Scroll; scrollers = $scrollers
         web = $F.Web; xcomponent = $F.XComponent; video = $F.Video; canvas = $F.Canvas
-        opaque = ($F.Web + $F.XComponent)
+        opaque = ($F.Web + $F.XComponent + $F.Embedded)
+        embedded = $F.Embedded
         textlen = $F.TextLen; textmax = $F.TextMax; avgtext = $F.AvgText
         edit_pos = $F.EditPos; slider_pos = $F.SliderPos; pos_source = $F.PosSource
         nodes = $F.Nodes; offscreen = $F.OffScreen; hidden = $F.Hidden
