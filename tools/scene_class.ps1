@@ -3057,9 +3057,45 @@ function Show-Separation {
     $rows = @(Import-Csv $Calib | Where-Object { $_.truth -and $_.truth -ne "" })
     if ($rows.Count -lt 4) { Write-Host "  too few labelled rows for the empirical half" -ForegroundColor Yellow; return }
 
+    # Rows are not interchangeable, and pooling them hides it. A row captured
+    # before a feature existed carries no COLUMN for it, and Import-Csv hands
+    # back $null rather than a zero - so every rule that needed it stood down
+    # when that row was replayed. Pooled with fresh rows it does not read as a
+    # missing measurement, it reads as a measurement of zero, and the pair it
+    # was supposed to separate comes out at 0.0 sigma. That is a fact about
+    # the corpus, not about the classifier, and the two must not be reported
+    # as one number.
+    $fresh = @($rows | Where-Object { $null -ne $_.icon_left -and $null -ne $_.wide_img })
+    $cover = @($rows | Where-Object { $null -ne $_.cover_opaque })
+    $geoN  = @($rows | Where-Object { $_.pos_source -and $_.pos_source -ne "none" })
+    Write-Host ""
+    Write-Host ("  corpus   {0} rows   {1} with rects   {2} with row geometry   {3} with coverage" -f `
+                $rows.Count, $geoN.Count, $fresh.Count, $cover.Count) -ForegroundColor White
+    if ($fresh.Count -lt $rows.Count) {
+        Write-Host ("  {0} rows predate icon_left/wide_img: on those rows ICON_LIST and FEED" -f ($rows.Count - $fresh.Count)) -ForegroundColor Yellow
+        Write-Host  "  cannot be scored from row geometry at all, and the row that could have" -ForegroundColor Yellow
+        Write-Host  "  separated them reads as a row that says they are the same." -ForegroundColor Yellow
+    }
+
+    Show-PairSeparation -Rows $rows -Title ("all {0} rows" -f $rows.Count)
+    if ($fresh.Count -ge 10 -and $fresh.Count -lt $rows.Count) {
+        Show-PairSeparation -Rows $fresh -Title ("the {0} rows that carry row geometry" -f $fresh.Count)
+    }
+
+    Write-Host ""
+    Write-Host "  below 1.0 sigma the boundary is noise: the fix is a new feature," -ForegroundColor DarkGray
+    Write-Host "  not a new weight. Above 2.0 the features already separate them and" -ForegroundColor DarkGray
+    Write-Host "  a wrong answer there is a rule bug you can find by hand." -ForegroundColor DarkGray
+    Write-Host ""
+}
+
+function Show-PairSeparation {
+    param($Rows, [string] $Title)
+
     $scores = @{}   # truth -> list of score hashtables
     $conf   = @{}   # "truth->got" -> count
-    foreach ($r in $rows) {
+    $ok     = 0
+    foreach ($r in $Rows) {
         $f = Convert-RowToFeatures $r
         $res = Get-SceneClass -F $f -WinName ([string]$r.name)
         $t = [string]$r.truth
@@ -3068,7 +3104,8 @@ function Show-Separation {
         # still a row, and dropping it would quietly flatter the separation.
         $all = if ($res.All) { $res.All } else { @{} }
         $scores[$t] += ,$all
-        if ($res.Class -ne $t) {
+        if ($res.Class -eq $t) { $ok++ }
+        else {
             $k = "$t->$($res.Class)"
             if (-not $conf.ContainsKey($k)) { $conf[$k] = 0 }
             $conf[$k]++
@@ -3076,7 +3113,8 @@ function Show-Separation {
     }
 
     Write-Host ""
-    Write-Host ("  measured on {0} labelled screens from {1}" -f $rows.Count, $Calib) -ForegroundColor White
+    Write-Host ("  === {0}: {1}/{2} correct ({3}%)" -f $Title, $ok, @($Rows).Count,
+                [int](100.0 * $ok / [math]::Max(1, @($Rows).Count))) -ForegroundColor Cyan
     if ($conf.Count -eq 0) { Write-Host "  no confusions" -ForegroundColor Green }
 
     # Fisher separation on the one quantity the argmax actually uses: the
@@ -3119,18 +3157,17 @@ function Show-Separation {
     for ($i = 0; $i -lt $labs.Count; $i++) {
         for ($j = $i + 1; $j -lt $labs.Count; $j++) {
             $sv = & $sepOf $labs[$i] $labs[$j]
-            if ($null -ne $sv) { $tbl += [PSCustomObject]@{ A=$labs[$i]; B=$labs[$j]; S=$sv } }
+            if ($null -ne $sv) {
+                $tbl += [PSCustomObject]@{ A=$labs[$i]; B=$labs[$j]; S=$sv
+                                           N=("{0}/{1}" -f @($scores[$labs[$i]]).Count, @($scores[$labs[$j]]).Count) }
+            }
         }
     }
     foreach ($t in ($tbl | Sort-Object S | Select-Object -First 12)) {
         $col = if ($t.S -lt 1.0) { "Red" } elseif ($t.S -lt 2.0) { "Yellow" } else { "Gray" }
-        Write-Host ("  {0,5:n1} sigma  {1,-18}{2}" -f $t.S, $t.A, $t.B) -ForegroundColor $col
+        Write-Host ("  {0,5:n1} sigma  {1,-18}{2,-18} n {3}" -f $t.S, $t.A, $t.B, $t.N) -ForegroundColor $col
     }
-    Write-Host ""
-    Write-Host "  below 1.0 sigma the boundary is noise: the fix is a new feature," -ForegroundColor DarkGray
-    Write-Host "  not a new weight. Above 2.0 the features already separate them and" -ForegroundColor DarkGray
-    Write-Host "  a wrong answer there is a rule bug you can find by hand." -ForegroundColor DarkGray
-    Write-Host ""
+
 }
 
 
