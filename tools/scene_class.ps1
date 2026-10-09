@@ -1801,18 +1801,85 @@ function Get-Features {
     # a video sits inside the XComponent's rect and is not in its subtree, and
     # that distinction is exactly the difference between chrome ON a surface
     # and a surface whose tree we actually have.
+    # ...and the same question the other way round. The coverage pass asks how
+    # much of the VIEWPORT is behind a surface. It never asked how much of the
+    # SURFACE is behind native nodes, so a video with a comments sheet over
+    # its lower half read exactly like a video playing fullscreen: one opaque
+    # node at 952 permille, seekbar low, MEDIA_PLAYER structural. Both are
+    # true at once and only the second number separates them.
+    #
+    # Occlusion inside the tree, by the same coordinate compression the window
+    # pass uses. Paint order is document order - a later node is drawn over an
+    # earlier one - so the candidates are the nodes that come after the
+    # surface's whole subtree, which is also what makes them not its children.
+    # Candidates covering less than half a percent are dropped and ones
+    # entirely inside a larger candidate are skipped, which keeps the grid at
+    # a couple of dozen rects however many nodes the screen has.
+    #
+    # It is an UPPER bound, for the same reason the window pass is: nothing in
+    # the dump says whether a node actually paints anything. A transparent
+    # container over the video counts as covering it.
     $described = 0
+    $surfCovered = 0.0; $surfArea = 0.0
     if ($nodes.Count -gt 0) {
         for ($i = 0; $i -lt $nodes.Count; $i++) {
             $nn = $nodes[$i]
             if ($nn.Tag -notmatch $script:OpaquePat) { continue }
             $inner = 0
-            for ($j = $i + 1; $j -lt $nodes.Count; $j++) {
-                if ($nodes[$j].Indent -le $nn.Indent) { break }
-                if ($nodes[$j].Rect) { $inner++ }
+            $end = $i + 1
+            while ($end -lt $nodes.Count -and $nodes[$end].Indent -gt $nn.Indent) {
+                if ($nodes[$end].Rect) { $inner++ }
+                $end++
             }
             $nn.Inner = $inner
             if ($inner -ge 3) { $described++ }
+
+            if (-not $nn.Rect) { continue }
+            $oL = $nn.Rect.L; $oT = $nn.Rect.T; $oR = $nn.Rect.R; $oB = $nn.Rect.B
+            $oA = ($oR - $oL) * ($oB - $oT)
+            if ($oA -le 1 -or $oA -lt $surfArea) { continue }
+
+            $kept = @()
+            $cands = @()
+            for ($j = $end; $j -lt $nodes.Count; $j++) {
+                $cn = $nodes[$j]
+                if (-not $cn.Rect) { continue }
+                $il = [math]::Max($oL, $cn.Rect.L); $it = [math]::Max($oT, $cn.Rect.T)
+                $ir = [math]::Min($oR, $cn.Rect.R); $ib = [math]::Min($oB, $cn.Rect.B)
+                if ($ir -le $il -or $ib -le $it) { continue }
+                $ia = ($ir - $il) * ($ib - $it)
+                if ($ia -lt ($oA * 0.005)) { continue }
+                $cands += [PSCustomObject]@{ L=$il; T=$it; R=$ir; B=$ib; A=$ia }
+            }
+            foreach ($q in ($cands | Sort-Object A -Descending)) {
+                $swallowed = $false
+                foreach ($k2 in $kept) {
+                    if ($k2.L -le $q.L -and $k2.T -le $q.T -and $k2.R -ge $q.R -and $k2.B -ge $q.B) { $swallowed = $true; break }
+                }
+                if ($swallowed) { continue }
+                $kept += $q
+                if ($kept.Count -ge 24) { break }
+            }
+
+            $cov = 0.0
+            if ($kept.Count -gt 0) {
+                $xs = @(@($oL, $oR) + @($kept | ForEach-Object { $_.L; $_.R }) | Sort-Object -Unique)
+                $ys = @(@($oT, $oB) + @($kept | ForEach-Object { $_.T; $_.B }) | Sort-Object -Unique)
+                for ($a = 0; $a -lt $xs.Count - 1; $a++) {
+                    $mx = ([double]$xs[$a] + [double]$xs[$a+1]) / 2.0
+                    for ($b2 = 0; $b2 -lt $ys.Count - 1; $b2++) {
+                        $my = ([double]$ys[$b2] + [double]$ys[$b2+1]) / 2.0
+                        foreach ($q in $kept) {
+                            if ($mx -ge $q.L -and $mx -lt $q.R -and $my -ge $q.T -and $my -lt $q.B) {
+                                $cov += ([double]$xs[$a+1] - [double]$xs[$a]) * ([double]$ys[$b2+1] - [double]$ys[$b2])
+                                break
+                            }
+                        }
+                    }
+                }
+            }
+            $surfArea = $oA
+            $surfCovered = $cov / $oA
         }
     }
 
@@ -1983,6 +2050,11 @@ function Get-Features {
         # silently discounted: it is the difference between "I cannot see in"
         # and "I did see in", and the aggregator should know which it got.
         Described  = $described
+        # Of the largest opaque region, the share hidden again by native nodes
+        # drawn over it. cover_opaque says what ArkUI cannot see; this says how
+        # much of that the user cannot see either.
+        SurfCovered= [int]($surfCovered * 1000)
+        SurfFrac   = if ($vpArea -gt 1) { [int](1000.0 * $surfArea / $vpArea) } else { 0 }
         CoverOpaque= [int]($coverOpaque * 1000)
         IconLeft   = $iconLeft      # small images hugging the left edge
         WideImg    = $wideImg       # images spanning half the width or more

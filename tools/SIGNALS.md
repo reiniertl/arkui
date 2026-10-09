@@ -399,6 +399,7 @@ being a transform — which is itself a finding, not a bug.
 | `CHROME_HIDDEN` | media controls faded — passive watching |
 | `EDITABLE_PRESENT` | an input affordance exists |
 | `COMPOSER_PRESENT` | an editable pinned **below** the content: expect an IME window above this one and a caret waking the UI thread with no input |
+| `SURFACE_BEHIND_UI` | a dominant surface, most of it hidden again by native nodes drawn over it. Two cost centres live at once: the surface still produces at its own rate while the UI thread works on what covers it |
 | `NEEDS_PEER_CONTAINER` | most of the viewport is an `EmbeddedComponent`/`UIExtensionComponent`: another ArkUI instance, in another process. The same collector running **there** describes it |
 | `SINGLE_THREAD_LAYOUT` | committed layout work is the UI thread: frequency helps, cores do not |
 | `DECODE_LIKELY` | image nodes arriving — decode may go parallel, the one case cores help |
