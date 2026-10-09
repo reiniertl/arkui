@@ -2159,6 +2159,9 @@ function Get-Modifiers {
     # tree of its own. The aggregator closes this hole by asking that process
     # for its record, not by finding a different kind of producer.
     if ($F.CoverEmb -ge $P.OpaqueCover)    { $mods += "NEEDS_PEER_CONTAINER" }
+    # The surface is still producing at its own rate; the user is looking at
+    # something else over most of it. Two cost centres, both live.
+    if ($F.SurfFrac -ge 500 -and $F.SurfCovered -ge $P.SurfaceCovered) { $mods += "SURFACE_BEHIND_UI" }
     if ($mediaish -ge 1) {
         if ($F.Slider -ge 1 -or $F.Button -ge 2) { $mods += "CHROME_VISIBLE" }
         else                                     { $mods += "CHROME_HIDDEN" }
@@ -2207,6 +2210,9 @@ $script:P = @{
     GalleryCaption = 10.5   # avg chars: captions on a thumbnail grid, not sentences
     SmallPage      = 150    # a preferences page is far shorter than a content list
     FullBleed      = 980    # permille of panel: a viewfinder, not a player
+    SurfaceCovered = 400    # permille of a dominant surface hidden again by the
+                            # native nodes drawn over it before the scene stops
+                            # being "the surface" and becomes "the UI on top of it"
     OpaqueCover    = 500    # permille of viewport hidden behind surfaces before
                             # the native structure stops describing the scene
     IconShare      = 0.15   # ...or this share of the tree, whichever hits first
@@ -2808,6 +2814,7 @@ function Convert-RowToFeatures {
         IconLeft = N $Row.icon_left; WideImg = N $Row.wide_img; ImgGeo = N $Row.img_geo
         CoverOpaque = N $Row.cover_opaque; CoverWeb = N $Row.cover_web; CoverXc = N $Row.cover_xc
         CoverEmb = N $Row.cover_emb; Embedded = N $Row.embedded; Described = N $Row.described
+        SurfFrac = N $Row.surf_frac; SurfCovered = N $Row.surf_covered
         ListLike = N $Row.listlike; GridLike = N $Row.gridlike
         Swiper = N $Row.swiper; Scroll = N $Row.scroll
         Web = N $Row.web; XComponent = N $Row.xcomponent; Video = N $Row.video
@@ -3016,6 +3023,9 @@ function Invoke-Classify {
         if ($F.Described -ge 1) {
             Write-Host "             $($F.Described) of them carry their own subtree in this dump - described, not hidden" -ForegroundColor DarkCyan
         }
+        if ($F.SurfFrac -ge 1) {
+            Write-Host ("             largest surface covers {0}/1000 of the viewport, and {1}/1000 of IT is behind native nodes" -f $F.SurfFrac, $F.SurfCovered)
+        }
         if ($F.XcHint -ne "NONE") {
             Write-Host ("  OPAQUE     hint {0} ({1}% confident)  type {2}  aspect {3}" -f $F.XcHint, $F.XcConf, $F.XcType, $F.XcAspect)
             if ($F.XcName -or $F.XcLib) { Write-Host ("             id '{0}'  library '{1}'" -f $F.XcName, $F.XcLib) }
@@ -3103,6 +3113,7 @@ function Invoke-Classify {
         icon_left = $F.IconLeft; wide_img = $F.WideImg; img_geo = $F.ImgGeo
         cover_opaque = $F.CoverOpaque; cover_web = $F.CoverWeb; cover_xc = $F.CoverXc
         cover_emb = $F.CoverEmb; described = $F.Described
+        surf_frac = $F.SurfFrac; surf_covered = $F.SurfCovered
         editable = $F.Editable; listlike = $F.ListLike; gridlike = $F.GridLike
         swiper = $F.Swiper; scroll = $F.Scroll; scrollers = $scrollers
         web = $F.Web; xcomponent = $F.XComponent; video = $F.Video; canvas = $F.Canvas
