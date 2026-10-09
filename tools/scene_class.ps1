@@ -2921,17 +2921,20 @@ function Get-RuleMatrix {
             # -as, not TryParse: TryParse reads the current culture and
             # would miss "4.5" on a comma-decimal machine, silently turning
             # every literal weight into a nominal one.
-            $w   = $wt -as [double]
-            if ($null -eq $w) {
+            # $wv, not $w: PowerShell variable names are case-INSENSITIVE,
+            # so $w and the $W matrix above are one variable, and the first
+            # weight parsed overwrote the whole matrix with a double.
+            $wv  = $wt -as [double]
+            if ($null -eq $wv) {
                 # A computed weight (the surface-hint switch scales by stated
                 # confidence). Counted at a nominal 2.0 and reported, so the
                 # ceiling is honest about being an estimate for that class.
-                $w = 2.0; $fuzzy += "line $($i+1): $cls $wt"
+                $wv = 2.0; $fuzzy += "line $($i+1): $cls $wt"
             }
             $gid = if ($inline) { $i + 1 } elseif ($stack.Count -gt 0) { $stack[$stack.Count-1].Id } else { 0 }
             if (-not $W.ContainsKey($gid)) { $W[$gid] = @{}; $Gate[$gid] = $raw.Trim() }
             if (-not $W[$gid].ContainsKey($cls)) { $W[$gid][$cls] = 0.0 }
-            $W[$gid][$cls] += $w
+            $W[$gid][$cls] += $wv
         }
         if ($o -gt $c -and -not $isElse) { [void]$stack.Add([PSCustomObject]@{ Depth = $d; Id = $i + 1 }); $Gate[$i+1] = $raw.Trim() }
         $d += $o - $c
@@ -3061,7 +3064,10 @@ function Show-Separation {
         $res = Get-SceneClass -F $f -WinName ([string]$r.name)
         $t = [string]$r.truth
         if (-not $scores.ContainsKey($t)) { $scores[$t] = @() }
-        $scores[$t] += ,$res.All
+        # A row that matched nothing returns early without an All table. It is
+        # still a row, and dropping it would quietly flatter the separation.
+        $all = if ($res.All) { $res.All } else { @{} }
+        $scores[$t] += ,$all
         if ($res.Class -ne $t) {
             $k = "$t->$($res.Class)"
             if (-not $conf.ContainsKey($k)) { $conf[$k] = 0 }
