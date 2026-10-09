@@ -297,6 +297,36 @@ When the evidence genuinely does not separate them you get a **low margin**
 with the other in `candidates`, rather than a confident wrong answer. Filter
 your correlation on `margin`, not on `scene`.
 
+### Window composition — `share` vs `unocc`
+
+`-ListWindows` prints two numbers per window and they answer different
+questions. **`share`** is the window's rect over the panel: how big it is.
+**`unocc`** is how much of the panel it actually *reaches*, after every window
+above it has taken its own. Two full-screen windows both have `share` 100%;
+their `unocc` sums to 100% between them.
+
+It is computed exactly, by coordinate compression — every rect edge becomes a
+grid line and each cell belongs to the highest-z window covering it.
+
+This is the signal nothing inside ArkUI can produce: a container sees its own
+window and no other. It is what tells a video player with a comments sheet and
+a keyboard on top apart from a video player, and the difference is not
+cosmetic — **a single opaque window covering the panel can go to a hardware
+overlay plane and skip GPU composition entirely. The moment a sheet and an IME
+land on top, that path is gone and every frame is blended.**
+
+Two cautions:
+
+- **Occluded is not idle.** A video surface behind a comments sheet keeps
+  decoding and submitting buffers unless the app paused it. `unocc` is about
+  composition cost, not producer cost; only `-RsFps <layer>` settles that.
+- **Transparency is invisible here.** Nothing in the WMS table declares it, so
+  the pass assumes every window is opaque. A transparent full-screen panel —
+  which is exactly the shape of an IME host window — will claim everything
+  beneath it. When the raw shares sum well past the panel the context carries
+  `OVERLAPPING_FULLSCREEN` and `unocc` is printed as an upper bound for the top
+  window and a lower bound for the ones under it.
+
 ### Are the classes actually separated? — `-Separation`
 
 The answer is an `argmax`, so a class is only ever as good as its **distance**

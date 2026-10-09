@@ -76,6 +76,7 @@ $script:PrevTally   = $null
 $script:PrevMono    = 0.0
 $script:StableTicks = 0
 $script:PrevClass   = ""
+$script:Layers      = 0
 
 
 function Invoke-HdcRaw {
@@ -180,7 +181,7 @@ $script:SystemWindowPat =
     'scbscreenlock|scbbanner|scbnotification|' +
     'blurview|backgroundblur|' +
     'statusbar|navigationbar|navbar|wallpaper|systemui|keyguard|lock|dock|' +
-    'recent|pointer|cursor|softkeyboard|inputmethod|ime|toast|volume|' +
+    'recent|pointer|cursor|keyboard|softkeyboard|inputmethod|ime|toast|volume|' +
     'notification|dropdown|controlpanel|launcherdock|divider|drag'
 
 # ---------------------------------------------------------------- scene scope
@@ -265,6 +266,64 @@ function Repair-WindowRects {
     }
 }
 
+# Area is not occlusion. Share is rect area over panel area, so two windows
+# that both fill the display both report 100% and the shares sum to 200%. What
+# actually reaches the panel at any point is the TOP window there, so "how much
+# of the display is this window" can only be answered after the windows above
+# it have taken their share.
+#
+# Exact, by coordinate compression: every rect edge becomes a grid line, and
+# each cell belongs to the highest-z window covering it. Ten windows is about
+# four hundred cells, so exactness costs nothing and region algebra is not
+# needed.
+#
+# It assumes every window is OPAQUE, because nothing in the WMS table says
+# otherwise, and a transparent full-screen panel will therefore claim
+# everything beneath it. That is not a detail: an IME host window is exactly
+# that shape, and it is why the name pattern still has to carry the overlay
+# decision rather than the geometry carrying it alone.
+function Set-Occlusion {
+    param([object[]] $Wins, [double] $PanelW, [double] $PanelH)
+
+    if (-not $Wins -or $Wins.Count -eq 0 -or $PanelW -le 0 -or $PanelH -le 0) { return 0 }
+    $rs = @()
+    foreach ($w in $Wins) {
+        Add-Member -InputObject $w -NotePropertyName Unocc -NotePropertyValue -1.0 -Force
+        if ($w.W -le 0 -or $w.H -le 0) { continue }
+        $l = [math]::Max(0.0, [double]$w.X)
+        $t = [math]::Max(0.0, [double]$w.Y)
+        $r = [math]::Min($PanelW, [double]$w.X + [double]$w.W)
+        $b = [math]::Min($PanelH, [double]$w.Y + [double]$w.H)
+        if ($r -le $l -or $b -le $t) { continue }
+        $w.Unocc = 0.0
+        $rs += [PSCustomObject]@{ Win = $w; Z = [int]$w.ZOrd; L = $l; T = $t; R = $r; B = $b }
+    }
+    if ($rs.Count -eq 0) { return 0 }
+
+    $xs = @(@(0.0, $PanelW) + @($rs | ForEach-Object { $_.L; $_.R }) | Sort-Object -Unique)
+    $ys = @(@(0.0, $PanelH) + @($rs | ForEach-Object { $_.T; $_.B }) | Sort-Object -Unique)
+    $area = $PanelW * $PanelH
+    $layers = @{}
+    for ($i = 0; $i -lt $xs.Count - 1; $i++) {
+        $cx = ([double]$xs[$i] + [double]$xs[$i+1]) / 2.0
+        for ($j = 0; $j -lt $ys.Count - 1; $j++) {
+            $cy = ([double]$ys[$j] + [double]$ys[$j+1]) / 2.0
+            $top = $null
+            foreach ($rr in $rs) {
+                if ($cx -ge $rr.L -and $cx -lt $rr.R -and $cy -ge $rr.T -and $cy -lt $rr.B) {
+                    if ($null -eq $top -or $rr.Z -gt $top.Z) { $top = $rr }
+                }
+            }
+            if ($top) {
+                $cell = ([double]$xs[$i+1] - [double]$xs[$i]) * ([double]$ys[$j+1] - [double]$ys[$j])
+                $top.Win.Unocc += $cell / $area
+                $layers[[string]$top.Win.WinId] = $true
+            }
+        }
+    }
+    return $layers.Count
+}
+
 function Resolve-Scene {
     param([object[]] $Table, [switch] $Quiet)
 
@@ -291,6 +350,21 @@ function Resolve-Scene {
         $bySize = ($share -ge 0 -and $share -lt 0.15)
         Add-Member -InputObject $w -NotePropertyName IsOverlay -NotePropertyValue ($byName -or $bySize) -Force
     }
+
+    # How much of the panel each window actually reaches, after the windows
+    # above it have taken theirs.
+    $pw = [double]$script:ScreenW; $ph = [double]$script:ScreenH
+    if ($pw -le 0 -or $ph -le 0) {
+        $big = $visible | Sort-Object { [double]$_.W * [double]$_.H } -Descending | Select-Object -First 1
+        if ($big) { $pw = [double]$big.W; $ph = [double]$big.H }
+    }
+    $script:Layers = Set-Occlusion -Wins $visible -PanelW $pw -PanelH $ph
+    # Raw shares summing well past the panel means full-screen rects stacked on
+    # each other, which in practice means transparency the table does not
+    # declare. Worth saying out loud rather than quietly dividing it up.
+    $sumShare = 0.0
+    foreach ($w in $visible) { if ($w.Share -gt 0) { $sumShare += $w.Share } }
+    if ($sumShare -ge 1.6) { $ctx += "OVERLAPPING_FULLSCREEN" }
 
     # Candidates: not chrome, and big enough to be the thing on screen.
     $content = @($visible | Where-Object { -not $_.IsOverlay -and ($_.Share -lt 0 -or $_.Share -ge 0.35) })
@@ -3227,16 +3301,39 @@ if ($ListWindows) {
     Write-Host ""
     Write-Host ("DISPLAY   panel {0}   {1} windows" -f $panel, $table.Count) -ForegroundColor Cyan
     Write-Host ""
-    Write-Host ("  {0,-5} {1,-28} {2,-6} {3,-20} {4,-7} {5,-8} {6}" -f "win", "name", "z", "rect", "share", "role", "pid")
+    Write-Host ("  {0,-5} {1,-28} {2,-6} {3,-20} {4,-7} {5,-7} {6,-8} {7}" -f `
+                "win", "name", "z", "rect", "share", "unocc", "role", "pid")
     foreach ($w in ($table | Sort-Object ZOrd -Descending)) {
         $rect  = if ($w.W -gt 0) { "{0},{1} {2}x{3}" -f $w.X, $w.Y, $w.W, $w.H } else { "-" }
         $share = if ($null -ne $w.Share -and $w.Share -ge 0) { "{0}%" -f [int]($w.Share * 100) } else { "?" }
+        # share is how big it is; unocc is how much of the panel it actually
+        # reaches. A window at 100% share and 0% unocc is completely hidden,
+        # and the two columns differing is the whole point of printing both.
+        $un    = if ($null -ne $w.Unocc -and $w.Unocc -ge 0) { "{0}%" -f [int]($w.Unocc * 100 + 0.5) } else { "?" }
         $role  = if ($host_ -and $w.WinId -eq $host_.WinId) { "HOST" }
                  elseif ($null -eq $w.Share) { "hidden" }
                  elseif ($w.IsOverlay) { "overlay" } else { "content" }
         $col   = if ($role -eq "HOST") { "Green" } elseif ($role -eq "content") { "Gray" } else { "DarkGray" }
-        Write-Host ("  {0,-5} {1,-28} {2,-6} {3,-20} {4,-7} {5,-8} {6}" -f `
-                    $w.WinId, $w.Name, $w.ZOrd, $rect, $share, $role, $w.Pid) -ForegroundColor $col
+        Write-Host ("  {0,-5} {1,-28} {2,-6} {3,-20} {4,-7} {5,-7} {6,-8} {7}" -f `
+                    $w.WinId, $w.Name, $w.ZOrd, $rect, $share, $un, $role, $w.Pid) -ForegroundColor $col
+    }
+    Write-Host ""
+    # The composition, as one line. A single opaque window covering the panel
+    # can go to a hardware overlay plane and skip GPU composition entirely;
+    # the moment a sheet and an IME land on top of it, that path is gone and
+    # every frame is blended. That is a power difference no tree can show.
+    $reach = @($table | Where-Object { $null -ne $_.Unocc -and $_.Unocc -ge 0.01 })
+    $topw  = $reach | Sort-Object Unocc -Descending | Select-Object -First 1
+    Write-Host ("  composition  {0} windows reach the panel" -f $reach.Count) -ForegroundColor Cyan
+    if ($topw) {
+        Write-Host ("               largest is {0} at {1}% - {2}" -f $topw.Name, [int]($topw.Unocc * 100 + 0.5),
+                    $(if ($topw.Unocc -ge 0.97) { "one window owns the display" }
+                      else { "no window owns the display, so every frame is composited" })) -ForegroundColor DarkGray
+    }
+    if ($script:SceneContext -contains "OVERLAPPING_FULLSCREEN") {
+        Write-Host "               rects overlap well past the panel: some of these are transparent" -ForegroundColor Yellow
+        Write-Host "               and the table does not say so, so unocc is an upper bound for the" -ForegroundColor Yellow
+        Write-Host "               top window and a lower bound for the ones under it." -ForegroundColor Yellow
     }
     if ($script:SceneContext -and $script:SceneContext.Count -gt 0) {
         Write-Host ("  context  {0}" -f ($script:SceneContext -join ", ")) -ForegroundColor DarkCyan
