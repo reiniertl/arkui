@@ -60,6 +60,7 @@ param(
     [switch] $FindRects,
     [switch] $Version,
     [switch] $Separation,
+    [switch] $Attrs,
     [switch] $RsProbe,
     [string] $RsFps,
     [string] $Calib = "scene_calib.csv"
@@ -1645,15 +1646,25 @@ function Get-Features {
         # it. Background-sized nodes are excluded, or the root would answer
         # the question with the panel height it always has.
         if (-not $script:VpImeClipped -and ($script:SceneContext -contains "IME_UP")) {
-            $winH = $vp.B - $vp.T
-            $lowest = 0.0
+            $winH = $vp.B - $vp.T; $winW = $vp.R - $vp.L
+            # NOT the lowest node: the keyboard's own nodes are in this dump
+            # too - 176 nodes with the IME up against 142 without - so the
+            # lowest node is a key at the bottom of the panel and nothing is
+            # ever clipped. What marks the keyboard's top edge is the app's
+            # content container, which ArkUI shrank to avoid it: full width,
+            # starting at the top, ending mid-panel. Take the largest such
+            # box and clip to ITS bottom.
+            $best = $null; $bestA = 0.0
             foreach ($n in $nodes) {
                 if (-not $n.Rect) { continue }
-                if (($n.Rect.B - $n.Rect.T) -ge $winH * 0.5) { continue }
-                if ($n.Rect.B -gt $lowest) { $lowest = $n.Rect.B }
+                $w = $n.Rect.R - $n.Rect.L; $h = $n.Rect.B - $n.Rect.T
+                if ($w -lt $winW * 0.9) { continue }
+                if ($h -lt $winH * 0.3 -or $h -ge $winH * 0.95) { continue }
+                if ($n.Rect.T -gt $vp.T + $winH * 0.15) { continue }
+                if (($w * $h) -gt $bestA) { $bestA = $w * $h; $best = $n }
             }
-            if ($lowest -gt ($vp.T + $winH * 0.4) -and $lowest -lt ($vp.B - 1)) {
-                $vp.B = $lowest
+            if ($best -and $best.Rect.B -gt ($vp.T + $winH * 0.4) -and $best.Rect.B -lt ($vp.B - 1)) {
+                $vp.B = $best.Rect.B
                 $script:VpImeClipped = $true
             }
         }
@@ -1899,7 +1910,11 @@ function Get-Features {
         if ($ms.Count -gt 0) {
             foreach ($m in $ms) {
                 $v = $m.Groups[2].Value.Trim()
-                if ($v -ne "" -and $v -notmatch '(?i)^(false|0|0\.0+|none|null|no|unset|default)$') { return $true }
+                # Anywhere in the value, not anchored: a style enum spells
+                # off as BlurStyle.NONE or NoMaterial, and an anchored test
+                # reads both as on.
+                if ($v -ne "" -and $v -notmatch '(?i)(false|none|null|unset|default|^no$)' -and
+                    $v -notmatch '^0+(\.0+)?$') { return $true }
             }
             return $false
         }
@@ -3383,6 +3398,64 @@ function Show-PairSeparation {
 }
 
 
+# ---------------------------------------------------------------- attributes
+#
+# What the dump actually spells. Two fx fixes in a row missed because the
+# keyword was guessed rather than read: clip was "clip", blur was
+# backgroundBlurStyle, and a scan written against a guess matches a key name
+# instead of a value and reports an effect on every node on screen. The dump
+# is too large to send off an airgapped box, so the script has to summarise
+# it: every distinct attribute key, how many nodes carry it, and the distinct
+# values it takes. Small enough to read, specific enough to write a rule on.
+function Show-Attrs {
+    param([int] $Id)
+
+    $lines = Get-Tree -Id $Id
+    if (-not $lines -or $lines.Count -lt 2) { Write-Host "empty tree for window $Id" -ForegroundColor Yellow; return }
+
+    $keys = @{}
+    $pat  = [regex] '"([A-Za-z0-9_]+)"\s*:\s*("(?:[^"\\]|\\.)*"|[^,}\]]+)'
+    foreach ($l in $lines) {
+        $seen = @{}
+        foreach ($m in $pat.Matches($l)) {
+            $k = $m.Groups[1].Value
+            $v = $m.Groups[2].Value.Trim().Trim('"')
+            if ($v.Length -gt 24) { $v = $v.Substring(0, 24) + "..." }
+            if (-not $keys.ContainsKey($k)) { $keys[$k] = @{ N = 0; V = @{} } }
+            if (-not $seen.ContainsKey($k)) { $keys[$k].N++; $seen[$k] = $true }
+            if ($keys[$k].V.Count -lt 6) { $keys[$k].V[$v] = $true }
+        }
+    }
+
+    Write-Host ""
+    if ($keys.Count -eq 0) {
+        Write-Host "no `"key`": value pairs in this dump - it is not the JSON shape." -ForegroundColor Yellow
+        Write-Host "the first lines, verbatim:" -ForegroundColor DarkGray
+        foreach ($l in ($lines | Select-Object -First 6)) { Write-Host ("  " + $l.Trim()) -ForegroundColor DarkGray }
+        return
+    }
+
+    Write-Host ("ATTRIBUTES  window {0}   {1} lines   {2} distinct keys" -f $Id, $lines.Count, $keys.Count) -ForegroundColor Cyan
+    $fxPat = '(?i)blur|shadow|opacity|clip|mask|gradient|radius|effect|bright|saturat'
+    foreach ($group in @(
+        @{ T = "effects - what the render-cost scan reads"; P = $fxPat; Col = "White" },
+        @{ T = "everything else";                          P = $null;  Col = "DarkGray" })) {
+        $names = @($keys.Keys | Where-Object {
+            if ($group.P) { $_ -match $group.P } else { $_ -notmatch $fxPat }
+        } | Sort-Object)
+        if ($names.Count -eq 0) { continue }
+        Write-Host ""
+        Write-Host ("  {0}" -f $group.T) -ForegroundColor $group.Col
+        foreach ($k in $names) {
+            $vals = (@($keys[$k].V.Keys | Sort-Object) -join " | ")
+            if ($vals.Length -gt 90) { $vals = $vals.Substring(0, 90) + " ..." }
+            Write-Host ("    {0,-28} {1,5} nodes   {2}" -f $k, $keys[$k].N, $vals)
+        }
+    }
+    Write-Host ""
+}
+
+
 # ================================================================== main
 
 Import-Thresholds
@@ -3403,7 +3476,7 @@ if ($Version) {
     Write-Host "  classify     -Watch  -Out  -Label  -Fit  -Apply  -Calib"
     Write-Host "  validate     -Separation"
     Write-Host "  discovery    -FindRects  -RsProbe  -RsFps  -Deep  -Services"
-    Write-Host "  diagnostics  -DumpOpt  -Explain  -Raw  -ShowCmd  -WindowId"
+    Write-Host "  diagnostics  -DumpOpt  -Explain  -Raw  -ShowCmd  -WindowId  -Attrs"
     Write-Host ""
     Write-Host "  repo  https://github.com/reiniertl/arkui" -ForegroundColor DarkGray
     exit 0
@@ -3426,6 +3499,12 @@ if ($table.Count -eq 0) {
     Write-Host "error: could not read the window table; pass -WindowId" -ForegroundColor Red; exit 1
 }
 
+if ($Attrs) {
+    $id = $WindowId
+    if ($id -le 0) { $fgw = Resolve-Scene -Table $table -Quiet; if ($fgw) { $id = $fgw.WinId } }
+    Set-WinRect -Row ($table | Where-Object { $_.WinId -eq $id } | Select-Object -First 1)
+    Show-Attrs -Id $id; exit 0
+}
 if ($Services) { Show-Services; exit 0 }
 if ($RsProbe) { Show-RsProbe; exit 0 }
 if ($RsFps)   { Show-RsFps -Layer $RsFps; exit 0 }

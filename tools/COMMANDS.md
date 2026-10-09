@@ -389,6 +389,7 @@ the rules it describes.
 | `-Fit` | off | re-score labelled rows offline; report and suggest |
 | `-Apply` | off | with `-Fit`, write the winning threshold change |
 | `-Separation` | off | measure how far apart the classes actually are. Offline; no phone |
+| `-Attrs` | off | every distinct attribute key in the dump, with its values. What the dump actually spells |
 | `-Calib <file>` | `scene_calib.csv` | calibration file to read and write |
 | `-RsProbe` | off | which render_service dump arguments answer on this build |
 | `-RsFps <layer>` | none | submit rate for one composited layer |
