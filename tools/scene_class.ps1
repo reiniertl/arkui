@@ -2227,7 +2227,11 @@ function Get-SceneClass {
         if ($why) { $E[$cls] += $why }
     }
 
-    $opaque    = $F.XComponent + $F.Web
+    # Embedded too. The modifier pass counted it and the classifier did not,
+    # because the two lines differ only in spacing - so every rule gated on
+    # "no opaque region" still fired on a window whose content is an
+    # EmbeddedComponent, and SETTINGS scored 3.5 on a chat.
+    $opaque    = $F.XComponent + $F.Web + $F.Embedded
     $mediaish  = $F.XComponent + $F.Video
     $scrollers = $F.ListLike + $F.GridLike + $F.Scroll + $F.Swiper
     $iconish   = $F.Image + $F.Icon
