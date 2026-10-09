@@ -1873,6 +1873,12 @@ function Get-Modifiers {
         else                                     { $mods += "CHROME_HIDDEN" }
     }
     if ($F.Editable -ge 1) { $mods += "EDITABLE_PRESENT" }
+    # More specific than EDITABLE_PRESENT, and worth more to a scheduler: an
+    # editable pinned below the content is a composer, which implies an IME
+    # window above this one and a caret waking the UI thread with no input.
+    if ($F.GeoOK -and $F.Editable -ge 1 -and $F.EditPos -ge $P.EditBotMin) {
+        $mods += "COMPOSER_PRESENT"
+    }
     # ArkUI's committed layout work is the UI thread: frequency helps, cores do
     # not. Image nodes arriving are the exception - decode may go parallel.
     $mods += "SINGLE_THREAD_LAYOUT"
@@ -1969,7 +1975,7 @@ $script:ClassInfo = @{
     SETTINGS          = @{ Cand=@("SETTINGS","PREFERENCES","ACCOUNT");     Resolve="-" }
     ICON_LIST         = @{ Cand=@("ICON_LIST","CONTACTS","CONVERSATIONS");  Resolve="-" }
     MAP               = @{ Cand=@("MAP","NAVIGATION");                     Resolve="bound producer on the surface" }
-    CHAT              = @{ Cand=@("CHAT");                                 Resolve="IME state separates composing from reading" }
+    CHAT              = @{ Cand=@("CHAT","COMMENTS","THREAD");            Resolve="IME state separates composing from reading" }
     FORM              = @{ Cand=@("FORM");                                 Resolve="IME state" }
     EDITOR            = @{ Cand=@("DRAWING","PHOTO_EDIT","ANNOTATION");    Resolve="-" }
     MEDIA_VIEW        = @{ Cand=@("PHOTO_VIEW","FULLSCREEN_IMAGE");        Resolve="a pager sibling means a swipeable gallery" }
@@ -2115,12 +2121,31 @@ function Get-SceneClass {
     if ($F.Toggle -ge $P.ToggleSettings -and $scrollers -ge 1) {
         Score "SETTINGS" 4.5 "$($F.Toggle) switches in a scroller"
     }
+    # A composer - an editable pinned below the content - is the one feature
+    # that separates a conversation from the list of conversations. Both are
+    # a scroller of rows with a small image on the left, so ICON_LIST would
+    # otherwise out-score CHAT on exactly that screen. The split is a cost
+    # difference before it is a taxonomy: a composer means a focused editable,
+    # which means an IME window composited above this one, a caret animating
+    # with nobody touching the screen, a viewport that resizes when the
+    # keyboard opens, and content that appends at the tail with no input at
+    # all. An icon list is still until the user moves it.
+    $composer = ($F.Editable -ge 1 -and $geo -and $F.EditPos -ge $P.EditBotMin)
     if ($F.Editable -ge 1 -and $scrollers -ge 1 -and $geo) {
         if ($F.EditPos -ge 0 -and $F.EditPos -le $P.EditTopMax) {
             Score "LIST" 3.5 "editable at $([int]($F.EditPos*100))% down - a search header, not a composer"
         }
-        if ($F.EditPos -ge $P.EditBotMin) {
-            Score "CHAT" 3.5 "editable at $([int]($F.EditPos*100))% down - a composer below the content"
+        if ($composer) {
+            Score "CHAT" 4.5 "editable at $([int]($F.EditPos*100))% down - a composer below the content"
+            # Avatars on the left are what a chat SHARES with an icon list, so
+            # on their own they are evidence for neither. Beside a composer
+            # they are evidence for this one.
+            if ($F.IconLeft -ge 2) {
+                Score "CHAT" 1.0 "$($F.IconLeft) small images on the left edge - avatars above a composer"
+            }
+            Score "ICON_LIST" (-2.5) "these rows sit above a composer - a conversation, not the list of them"
+            Score "FEED"      (-2.0) "these rows sit above a composer"
+            Score "LIST"      (-1.5) "these rows sit above a composer"
         }
     }
     if ($F.Editable -ge 1 -and $scrollers -ge 1 -and $F.Text -ge 8 -and $textKnown -and

@@ -387,6 +387,7 @@ being a transform — which is itself a finding, not a bug.
 | `CHROME_VISIBLE` | media controls shown — interacting |
 | `CHROME_HIDDEN` | media controls faded — passive watching |
 | `EDITABLE_PRESENT` | an input affordance exists |
+| `COMPOSER_PRESENT` | an editable pinned **below** the content: expect an IME window above this one and a caret waking the UI thread with no input |
 | `SINGLE_THREAD_LAYOUT` | committed layout work is the UI thread: frequency helps, cores do not |
 | `DECODE_LIKELY` | image nodes arriving — decode may go parallel, the one case cores help |
 | `BLUR_PRESENT` | readback plus an extra pass |

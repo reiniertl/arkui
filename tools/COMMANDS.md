@@ -265,7 +265,7 @@ Scrollers — all have icons and text, separated by item size and text length:
 | `FEED` | Cards: an image spanning the row with text around or below it | Images span half the width or more. A full-width decode per card, and tall items |
 | `GALLERY_GRID` | Thumbnail grid: photos or videos | Images roughly one per cell, captions rather than sentences |
 | `READING` | Article, document | Text dominates images, with a long contiguous block |
-| `CHAT` | Conversation | An input at the **bottom**, below the content, with message-length text |
+| `CHAT` | A conversation or a comment thread | An input at the **bottom**, below the content. A composer outranks the rows above it, so avatars beside it read as a chat, not as an icon list |
 
 Everything else:
 
@@ -279,6 +279,16 @@ Everything else:
 | `PAGING` | A pager, contents unclear | A `Swiper` with a small tree and no stronger signal |
 | `SPARSE` | Too few elements to judge | Usually a parse problem — check `-Window` |
 | `UNCLASSIFIED` | No evidence matched at all | — |
+
+`ICON_LIST` and `CHAT` are the same shape — a scroller of rows with a small
+image on the left — and the only structural thing that separates them is an
+editable pinned below the content. It is worth separating because the cost
+differs: a composer means a focused editable, an IME window composited above
+this one, a caret waking the UI thread with no input at all, a viewport that
+resizes when the keyboard opens, and rows appending at the tail on their own.
+An icon list is still until the user moves it. The **list** of conversations
+stays `ICON_LIST` (it is in that class's candidate set); the conversation
+itself, and a comments sheet, are `CHAT`.
 
 Three pairs are deliberately close and will often share a candidate set:
 `ICON_PAGER`/`ICON_GRID`, `LIST`/`ICON_LIST`/`FEED`, and
