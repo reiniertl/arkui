@@ -1757,10 +1757,40 @@ function Get-Features {
     # around a hole, and the scene the user is looking at may be drawn ENTIRELY
     # inside that hole. A label given to such a screen describes pixels this
     # tree never contained.
+    # An opaque node is only a HOLE if the dump STOPS at it. uitest projects
+    # accessibility, and accessibility has to cross an embedded-UI boundary or
+    # the content inside would be unreachable - so for an EmbeddedComponent or
+    # a UIExtensionComponent the nodes inside it are in this dump, with rects,
+    # and the region is described rather than hidden. Counting it anyway put
+    # "952 permille of this screen is behind a surface" on a chat whose
+    # avatars and composer the same pass had just read, and told the labeller
+    # the row was worthless.
+    #
+    # Descendants in the TREE, not nodes inside the RECT. A seekbar drawn over
+    # a video sits inside the XComponent's rect and is not in its subtree, and
+    # that distinction is exactly the difference between chrome ON a surface
+    # and a surface whose tree we actually have.
+    $described = 0
+    if ($nodes.Count -gt 0) {
+        for ($i = 0; $i -lt $nodes.Count; $i++) {
+            $nn = $nodes[$i]
+            if ($nn.Tag -notmatch $script:OpaquePat) { continue }
+            $inner = 0
+            for ($j = $i + 1; $j -lt $nodes.Count; $j++) {
+                if ($nodes[$j].Indent -le $nn.Indent) { break }
+                if ($nodes[$j].Rect) { $inner++ }
+            }
+            $nn.Inner = $inner
+            if ($inner -ge 3) { $described++ }
+        }
+    }
+
     $coverWeb = 0.0; $coverXc = 0.0; $coverEmb = 0.0
     if ($vpArea -gt 1) {
         foreach ($n in $vis) {
             if ($n.Tag -notmatch $script:OpaquePat) { continue }
+            # Not a hole: we have its tree.
+            if ($n.Inner -ge 3) { continue }
             $a = 0.0
             if ($n.VisW -gt 0 -and $n.VisH -gt 0) { $a = $n.VisW * $n.VisH }
             elseif ($n.Rect) {
@@ -1903,6 +1933,10 @@ function Get-Features {
         CoverWeb   = [int]($coverWeb * 1000)     # permille of the viewport
         CoverXc    = [int]($coverXc  * 1000)
         CoverEmb   = [int]($coverEmb * 1000)
+        # Opaque nodes whose interior the dump actually carried. Reported, not
+        # silently discounted: it is the difference between "I cannot see in"
+        # and "I did see in", and the aggregator should know which it got.
+        Described  = $described
         CoverOpaque= [int]($coverOpaque * 1000)
         IconLeft   = $iconLeft      # small images hugging the left edge
         WideImg    = $wideImg       # images spanning half the width or more
@@ -2651,7 +2685,7 @@ function Convert-RowToFeatures {
         Toggle = N $Row.toggle; Checkable = N $Row.checkable; Editable = N $Row.editable
         IconLeft = N $Row.icon_left; WideImg = N $Row.wide_img; ImgGeo = N $Row.img_geo
         CoverOpaque = N $Row.cover_opaque; CoverWeb = N $Row.cover_web; CoverXc = N $Row.cover_xc
-        CoverEmb = N $Row.cover_emb; Embedded = N $Row.embedded
+        CoverEmb = N $Row.cover_emb; Embedded = N $Row.embedded; Described = N $Row.described
         ListLike = N $Row.listlike; GridLike = N $Row.gridlike
         Swiper = N $Row.swiper; Scroll = N $Row.scroll
         Web = N $Row.web; XComponent = N $Row.xcomponent; Video = N $Row.video
@@ -2857,6 +2891,9 @@ function Invoke-Classify {
         Write-Host "  STRUCTURE  total $($F.Total)  text $($F.Text)  image $($F.Image)  button $($F.Button)"
         Write-Host "             slider $($F.Slider)  editable $($F.Editable)  scrollers $scrollers"
         Write-Host "             opaque $($F.Web + $F.XComponent + $F.Embedded) (Web $($F.Web), XComponent $($F.XComponent), embedded $($F.Embedded))"
+        if ($F.Described -ge 1) {
+            Write-Host "             $($F.Described) of them carry their own subtree in this dump - described, not hidden" -ForegroundColor DarkCyan
+        }
         if ($F.XcHint -ne "NONE") {
             Write-Host ("  OPAQUE     hint {0} ({1}% confident)  type {2}  aspect {3}" -f $F.XcHint, $F.XcConf, $F.XcType, $F.XcAspect)
             if ($F.XcName -or $F.XcLib) { Write-Host ("             id '{0}'  library '{1}'" -f $F.XcName, $F.XcLib) }
@@ -2943,7 +2980,7 @@ function Invoke-Classify {
         checkable = $F.Checkable
         icon_left = $F.IconLeft; wide_img = $F.WideImg; img_geo = $F.ImgGeo
         cover_opaque = $F.CoverOpaque; cover_web = $F.CoverWeb; cover_xc = $F.CoverXc
-        cover_emb = $F.CoverEmb
+        cover_emb = $F.CoverEmb; described = $F.Described
         editable = $F.Editable; listlike = $F.ListLike; gridlike = $F.GridLike
         swiper = $F.Swiper; scroll = $F.Scroll; scrollers = $scrollers
         web = $F.Web; xcomponent = $F.XComponent; video = $F.Video; canvas = $F.Canvas

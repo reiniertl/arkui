@@ -255,6 +255,17 @@ direct power difference, and ArkUI does not know which it is.
 
 ## Coverage — how complete this record is
 
+**An opaque node is only a hole if the dump stops at it.** `uitest` projects
+accessibility, and accessibility has to cross an embedded-UI boundary or the
+content inside would be unreachable — so for an `EmbeddedComponent` or a
+`UIExtensionComponent` the nodes inside it are in the dump, with rects. The
+region is *described*, not hidden, and it does not count as coverage. The test
+is descendants in the **tree**, not nodes inside the **rect**: a seekbar drawn
+over a video sits inside the `XComponent`'s rect and is not in its subtree, and
+that is exactly the difference between chrome on a surface and a surface whose
+tree we have. The `described` column counts the opaque nodes that turned out
+not to be holes.
+
 ArkUI describes the nodes it owns. A region behind an `XComponent` is app
 content it will never see; a region behind a `Web` node belongs to a separate
 producer. So every record states how much of the viewport it could not read.
