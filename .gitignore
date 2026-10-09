@@ -15,3 +15,16 @@ layout*.json
 inv_*.txt
 *.pyc
 __pycache__/
+
+# Screenshots and capture sessions. These are pictures of a real phone being
+# used, and this repository is PUBLIC. Nothing from a capture run goes in it -
+# not the images, not the layout dumps, not the labelled rows that point at
+# them. Keep them on the machine that drives the device.
+captures/
+*.png
+*.jpg
+*.jpeg
+*.webp
+*.bmp
+uitest.csv
+*.calib.csv
