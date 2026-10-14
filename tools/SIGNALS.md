@@ -330,6 +330,79 @@ push its composer to 0.05 merely because the content behind it is long.
 | `largest_frac` | Largest visible **leaf**, per-mille of the viewport. Leaf, not node: the root always fills the window, and measuring it makes every screen look like fullscreen video |
 | `largest_aspect` | Its width ÷ height. ~1.78 suggests video |
 
+## Shape — the structural reading
+
+The class list answers *which app does this resemble* by proxy, and twenty-three
+names is more than ArkUI can actually tell apart. `shape` answers a question it
+**can** settle from rects and document order alone: what the screen is made of.
+A contacts list, a chat thread, a comments sheet and a settings page are one
+shape, because to the renderer they are one screen.
+
+Nothing in this section reads a component tag except `pager` and `bar_edit`, and
+both are qualifiers rather than decisions. These columns are emitted **beside**
+the class, not folded into it. If the two ever disagree, the class is the one
+that is wrong: the shape is measured, the class is argued.
+
+| Value | Meaning |
+|---|---|
+| `SINGLE` | One region covers most of the viewport and nothing repeats inside it |
+| `ROWS` | Repeating equal-sized children, one column |
+| `LATTICE` | Repeating equal-sized children, two or more columns |
+| `SPLIT` | The viewport divides into stacked regions of unlike structure |
+| `PANEL` | A few unlike children, no repetition, not filling the viewport |
+
+| Column | Description |
+|---|---|
+| `shape` | One of the five above |
+| `cols` | Distinct x-origin clusters among the repeated items. This, not caption length, is what separates a gallery from a feed |
+| `rep_n` | How many items repeat |
+| `rep_frac` | Per-mille of the content band they cover |
+| `item_h` | Median item height, per-mille of the viewport |
+| `item_aspect` | Median item width ÷ height. A tall card and a short row are different decode costs |
+| `bar_top`, `bar_bot` | Anchored full-width strips, per-mille of the viewport |
+| `bar_edit` | 1 when the bottom bar holds an editable. **A shape fact.** Whether the IME is up and a caret is blinking is not — that is behaviour, and belongs in its own field |
+| `split_n` | Stacked regions, each ≥20% of the band, together ≥80% of it |
+| `split_ratio` | The largest part, per-mille of the band |
+| `split_main` | The shape of that largest part. Kept flat — one extra column — rather than nesting a whole record per part |
+| `overlay` | Per-mille of the band that a later, non-descendant region draws over an earlier one. A sheet, a dialog, a snackbar |
+| `pager` | 1 when a `Swiper`/`Tabs` covers ≥60% of the band. A qualifier: a pager's **page** has the shape |
+
+### Why the order of the tests is the argument
+
+- A surface filling the viewport (`surf_frac ≥ 500`) is `SINGLE` whatever is
+  drawn over it.
+- **A split is asked before a repeat.** A comments sheet under a video *is* a
+  repeat — the repeat is the lower half — and calling that screen `ROWS` loses
+  the video entirely. What makes it a split rather than a list is that the
+  repeat does not reach across the band: something structurally unlike it is
+  sharing the band.
+- A repeat covering the band is `ROWS` or `LATTICE` on column count alone.
+- Otherwise, one region ≥60% of the band is `SINGLE`; anything else is `PANEL`.
+
+Items are grouped by **size, not tag**. Grouping by tag breaks on the real
+thing: one row in a chat carries an image and the next does not, and they are
+still the same row. What makes them the same row is that they are the same size.
+
+Two traps this had to be built around, both found in test:
+
+- **The last row of a list is a bottom bar** by every geometric test — full
+  width, short, flush against the bottom edge. So the repeat is found first,
+  over the whole viewport, and its members are excluded from bar detection.
+- **A two-column grid is usually emitted as rows of pairs**, so the outer
+  repeat reads one column. The search looks one level into the first item
+  before believing `cols = 1`.
+
+### What this does that `surf_visible` could not
+
+The three TikTok states separate exactly, including the pair `surf_visible`
+could not tell apart (261 vs 242 per-mille):
+
+| State | `shape` | `split_main` | `rep_n` | `rep_frac` |
+|---|---|---|---|---|
+| Full player | `SINGLE` | — | — | — |
+| Video pushed up, comments below | `SPLIT` | `ROWS` | 8 | 564 |
+| Comments fill the window | `ROWS` | — | 14 | 997 |
+
 ## Render-cost multipliers — keyword scan
 
 The same node count costs very different amounts depending on what is applied

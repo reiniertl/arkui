@@ -2020,6 +2020,14 @@ function Get-Features {
           else { [PSCustomObject]@{ Name=""; Lib=""; XType=""; A11y=""; Secure=0; Hdr=0
                                     Aspect=0.0; Hint="NONE"; Conf=0; Flags=""; Why="" } }
 
+    # ---- shape ------------------------------------------------------------
+    # Measured off the same visible, clipped node set everything else uses,
+    # so the shape and the class are two readings of one screen rather than
+    # two screens. SurfFrac is passed in because a surface that fills the
+    # viewport settles the shape before any of the geometry is consulted.
+    $shp = Get-Shape -Nodes $vis -Vp $vp -SurfFrac $(
+        if ($vpArea -gt 1) { [int](1000.0 * $surfArea / $vpArea) } else { 0 })
+
     [PSCustomObject]@{
         Tally      = $tally          # visible only - churn tracks the screen
         TallyAll   = $tallyAll
@@ -2071,6 +2079,24 @@ function Get-Features {
                          [int]((1000.0 * $surfArea / $vpArea) * (1.0 - $surfCovered))
                      } else { 0 }
         CoverOpaque= [int]($coverOpaque * 1000)
+        # ---- shape: the structural reading, independent of the class list ---
+        # A class name says which app this resembles. These say what the
+        # screen is MADE OF, and they are what survives when the class list
+        # turns out to be the wrong twenty-three names.
+        Shape      = $shp.Shape
+        Cols       = $shp.Cols        # distinct x-origins among repeated items
+        RepN       = $shp.RepN        # how many items repeat
+        RepFrac    = $shp.RepFrac     # permille of the content band they cover
+        ItemH      = $shp.ItemH       # permille of the viewport, per item
+        ItemAspect = $shp.ItemAspect
+        BarTop     = $shp.BarTop      # anchored full-width strips, permille
+        BarBot     = $shp.BarBot
+        BarEdit    = $shp.BarEdit     # ...and whether one holds an editable
+        SplitN     = $shp.SplitN
+        SplitRatio = $shp.SplitRatio
+        SplitMain  = $shp.SplitMain   # the shape of the larger part
+        Overlay    = $shp.Overlay     # permille of the band drawn over again
+        Pager      = $shp.Pager
         IconLeft   = $iconLeft      # small images hugging the left edge
         WideImg    = $wideImg       # images spanning half the width or more
         ImgGeo     = $imgGeo        # images we had a rect for at all
@@ -2112,6 +2138,333 @@ function Get-Features {
 # Sum of absolute per-tag changes, normalised per second. The tally it diffs
 # is the VISIBLE one, so scrolling a long page registers as change even though
 # the document behind it did not move.
+# ---- shape: what the screen is made of, in geometry alone ----------------
+#
+# The class list answers "which app is this" by proxy - MEDIA_PLAYER, CHAT,
+# SETTINGS, twenty-three names - and that is more than ArkUI can actually
+# tell apart. What it CAN tell apart is structure: how many columns, whether
+# anything repeats, whether the viewport divides, what is anchored to an
+# edge. Six shapes have covered every screen looked at so far, and a
+# contacts list, a chat thread, a comments sheet and a settings page are all
+# the same one of them - because to the renderer they ARE the same screen.
+#
+#   SINGLE   one region covers most of the viewport, nothing repeats
+#   ROWS     repeating equal children, one column
+#   LATTICE  repeating equal children, two or more columns
+#   SPLIT    the viewport divides into stacked regions of unlike structure
+#   PANEL    a few unlike children, no repetition, not filling the viewport
+#   PAGER    a qualifier, not a shape: a pager's PAGE has the shape
+#
+# Nothing here reads a tag except the pager and the editable, and both are
+# qualifiers rather than decisions. This is the half of the record that does
+# not need the class list to be right.
+$script:ShapeTolSize  = 0.20   # repeat items: +-20% of the median, both axes
+$script:ShapeRepMin   = 3      # fewest children that can be a repeat
+$script:ShapeRepShare = 0.60   # ...and the share of the parent's children
+$script:ShapeRepFrac  = 350    # permille of the band a repeat must cover
+$script:ShapeBarW     = 0.90   # an anchored bar spans this much width
+$script:ShapeBarH     = 0.18   # ...and no more than this much height
+$script:ShapeBarEdge  = 0.03   # ...and touches the edge within this
+$script:ShapeSplitMin = 0.20   # a split part is this much of the band
+$script:ShapeSingle   = 0.60   # one region this big, no repeat, is SINGLE
+$script:ShapeOvlMin   = 0.20   # an overlay covers this much of an earlier one
+$script:ShapePagerMin = 0.60   # a pager this big is the dominant organiser
+$script:ShapePagerPat = '^(Swiper|Tabs|TabContent|ViewPager)$'
+$script:ShapeEditPat  = '^(TextInput|TextArea|Search|RichEditor)$'
+
+function Get-ShapeMedian {
+    param([double[]] $V)
+    if (-not $V -or $V.Count -eq 0) { return 0.0 }
+    $s = @($V | Sort-Object)
+    $k = $s.Count
+    $half = [int][math]::Floor($k / 2)
+    if ($k % 2 -eq 1) { return [double]$s[$half] }
+    return ([double]$s[$half - 1] + [double]$s[$half]) / 2.0
+}
+
+# Direct children of every node, in ONE pass. The obvious version - scan
+# forward from each node - is quadratic, and the repeat search visits every
+# node, so a 400-node dump would be scanned 400 times. One stack does it once.
+function Get-ShapeKids {
+    param([int[]] $Ind)
+    $cnt = $Ind.Count
+    $kids = New-Object 'object[]' $cnt
+    for ($i = 0; $i -lt $cnt; $i++) { $kids[$i] = New-Object System.Collections.ArrayList }
+    $stack = New-Object System.Collections.ArrayList
+    for ($i = 0; $i -lt $cnt; $i++) {
+        while ($stack.Count -gt 0 -and $Ind[$stack[$stack.Count-1]] -ge $Ind[$i]) {
+            $stack.RemoveAt($stack.Count - 1)
+        }
+        if ($stack.Count -gt 0) { [void]$kids[$stack[$stack.Count-1]].Add($i) }
+        [void]$stack.Add($i)
+    }
+    return ,$kids
+}
+
+# The run of same-SIZED children of node $i, or $null.
+#
+# Geometry, deliberately, not tags. Grouping by tag breaks on the real
+# thing: one row in a chat carries an image and the next does not, and they
+# are still the same row. What makes them the same row is that they are the
+# same size.
+function Get-ShapeRepeat {
+    param($RC, $Kids, [int] $Idx)
+    $kk = @()
+    foreach ($k in $Kids[$Idx]) { if ($RC[$k]) { $kk += $k } }
+    if ($kk.Count -lt $script:ShapeRepMin) { return $null }
+    $hs = @(); $ws = @()
+    foreach ($k in $kk) { $hs += ($RC[$k].B - $RC[$k].T); $ws += ($RC[$k].R - $RC[$k].L) }
+    $mh = Get-ShapeMedian $hs; $mw = Get-ShapeMedian $ws
+    if ($mh -le 1 -or $mw -le 1) { return $null }
+    $run = @(); $acc = 0.0
+    foreach ($k in $kk) {
+        $hh = $RC[$k].B - $RC[$k].T; $ww = $RC[$k].R - $RC[$k].L
+        if ([math]::Abs($hh - $mh) -le $mh * $script:ShapeTolSize -and
+            [math]::Abs($ww - $mw) -le $mw * $script:ShapeTolSize) {
+            $run += $k; $acc += $RC[$k].A
+        }
+    }
+    if ($run.Count -lt $script:ShapeRepMin -or
+        $run.Count -lt ($kk.Count * $script:ShapeRepShare)) { return $null }
+    return @{ Items = $run; Mh = $mh; Mw = $mw; Area = $acc }
+}
+
+# Best repeat inside the band, by covered area.
+function Get-ShapeBestRepeat {
+    param($RC, $Kids, $Band)
+    $best = $null
+    for ($i = 0; $i -lt $RC.Count; $i++) {
+        $grp = Get-ShapeRepeat -RC $RC -Kids $Kids -Idx $i
+        if (-not $grp) { continue }
+        if ($RC[$i] -and ($RC[$i].B -le $Band.T -or $RC[$i].T -ge $Band.B)) { continue }
+        if (-not $best -or $grp.Area -gt $best.Area) { $best = $grp }
+    }
+    return $best
+}
+
+# Distinct x-origin clusters among the items.
+function Get-ShapeCols {
+    param($RC, $Items, [double] $VpW)
+    $tol = [math]::Max(8.0, $VpW * 0.02)
+    $xs = @($Items | ForEach-Object { [double]$RC[$_].L } | Sort-Object)
+    if ($xs.Count -eq 0) { return 0 }
+    if ($xs.Count -eq 1) { return 1 }
+    $cols = 1; $last = $xs[0]
+    foreach ($x in $xs[1..($xs.Count-1)]) {
+        if (($x - $last) -gt $tol) { $cols++ }
+        $last = $x
+    }
+    return $cols
+}
+
+function Get-Shape {
+    param($Nodes, $Vp, [int] $SurfFrac = 0, [int] $Depth = 0)
+
+    $out = [ordered]@{
+        Shape = 'PANEL'; Cols = 0; RepN = 0; RepFrac = 0; ItemH = 0
+        ItemAspect = 0.0; BarTop = 0; BarBot = 0; BarEdit = 0
+        SplitN = 0; SplitRatio = 0; SplitMain = ''; Overlay = 0; Pager = 0
+    }
+    if (-not $Vp -or -not $Nodes) { return [PSCustomObject]$out }
+    $vpw = $Vp.R - $Vp.L; $vph = $Vp.B - $Vp.T
+    $vpa = $vpw * $vph
+    if ($vpa -le 1 -or $Nodes.Count -eq 0) { return [PSCustomObject]$out }
+
+    # Rects clipped to the viewport ONCE, here, so every later test measures
+    # what is on screen. The case that cares is a bar hanging past the bottom
+    # edge: unclipped it is too tall to be a bar.
+    $cnt = $Nodes.Count
+    $RC  = New-Object 'object[]' $cnt
+    $IND = New-Object 'int[]' $cnt
+    $TAG = New-Object 'string[]' $cnt
+    for ($i = 0; $i -lt $cnt; $i++) {
+        $nd = $Nodes[$i]
+        $IND[$i] = [int]$nd.Indent
+        $TAG[$i] = [string]$nd.Tag
+        $RC[$i]  = $null
+        if ($nd.Rect) {
+            $cl = [math]::Max([double]$nd.Rect.L, $Vp.L)
+            $ct = [math]::Max([double]$nd.Rect.T, $Vp.T)
+            $cr = [math]::Min([double]$nd.Rect.R, $Vp.R)
+            $cb = [math]::Min([double]$nd.Rect.B, $Vp.B)
+            if (($cr - $cl) -gt 0.5 -and ($cb - $ct) -gt 0.5) {
+                $RC[$i] = @{ L=$cl; T=$ct; R=$cr; B=$cb; A=(($cr-$cl)*($cb-$ct)) }
+            }
+        }
+    }
+    $Kids = Get-ShapeKids -Ind $IND
+
+    # ---- anchored bars ---------------------------------------------------
+    # A bar is not content: measure the band without removing it and every
+    # screen with a nav bar reads as a two-part split.
+    #
+    # The repeat is found FIRST, over the whole viewport, for one reason -
+    # the LAST ROW OF A LIST is full width, short, and sits on the bottom
+    # edge, which is also the definition of a bottom bar. A row with eight
+    # identical siblings is not a bar, so the repeat has to be known before
+    # the question can be asked at all.
+    $pre = Get-ShapeBestRepeat -RC $RC -Kids $Kids -Band $Vp
+    $inRep = @{}
+    if ($pre) { foreach ($k in $pre.Items) { $inRep[$k] = $true } }
+
+    $topH = 0.0; $botH = 0.0; $botRect = $null
+    for ($i = 0; $i -lt $cnt; $i++) {
+        if (-not $RC[$i] -or $inRep.ContainsKey($i)) { continue }
+        $bx = $RC[$i]
+        $rw = $bx.R - $bx.L; $rh = $bx.B - $bx.T
+        if ($rw -lt $vpw * $script:ShapeBarW -or $rh -gt $vph * $script:ShapeBarH -or $rh -le 1) { continue }
+        if ([math]::Abs($bx.T - $Vp.T) -le $vph * $script:ShapeBarEdge -and $rh -gt $topH) { $topH = $rh }
+        if ([math]::Abs($bx.B - $Vp.B) -le $vph * $script:ShapeBarEdge -and $rh -gt $botH) {
+            $botH = $rh; $botRect = $bx
+        }
+    }
+    $out.BarTop = [int](1000.0 * $topH / $vph)
+    $out.BarBot = [int](1000.0 * $botH / $vph)
+    if ($botRect) {
+        for ($i = 0; $i -lt $cnt; $i++) {
+            if ($TAG[$i] -notmatch $script:ShapeEditPat -or -not $RC[$i]) { continue }
+            $cy = ($RC[$i].T + $RC[$i].B) / 2.0
+            if ($cy -ge $botRect.T -and $cy -le $botRect.B) { $out.BarEdit = 1; break }
+        }
+    }
+
+    $band = @{ L=$Vp.L; T=($Vp.T + $topH); R=$Vp.R; B=($Vp.B - $botH) }
+    $bh = $band.B - $band.T
+    $ba = ($band.R - $band.L) * $bh
+    if ($ba -le 1) { $band = $Vp; $bh = $vph; $ba = $vpa }
+
+    # ---- pager -----------------------------------------------------------
+    for ($i = 0; $i -lt $cnt; $i++) {
+        if ($TAG[$i] -match $script:ShapePagerPat -and $RC[$i] -and
+            $RC[$i].A -ge ($ba * $script:ShapePagerMin)) { $out.Pager = 1; break }
+    }
+
+    # ---- repeat ----------------------------------------------------------
+    $grp = Get-ShapeBestRepeat -RC $RC -Kids $Kids -Band $band
+    $repSpan = 0.0
+    if ($grp) {
+        $rt = 1e18; $rb = -1e18
+        foreach ($k in $grp.Items) {
+            if ($RC[$k].T -lt $rt) { $rt = $RC[$k].T }
+            if ($RC[$k].B -gt $rb) { $rb = $RC[$k].B }
+        }
+        $repSpan = [math]::Max(0.0, [math]::Min($rb, $band.B) - [math]::Max($rt, $band.T))
+
+        $cols = Get-ShapeCols -RC $RC -Items $grp.Items -VpW $vpw
+        # A two-column grid is often emitted as rows of pairs, so the outer
+        # repeat reads one column. Look one level in before believing it.
+        if ($cols -eq 1) {
+            $inner = Get-ShapeRepeat -RC $RC -Kids $Kids -Idx $grp.Items[0]
+            if ($inner) {
+                $ic = Get-ShapeCols -RC $RC -Items $inner.Items -VpW $vpw
+                if ($ic -ge 2 -and ($inner.Mw * $ic) -le ($grp.Mw * 1.25)) {
+                    $cols = $ic
+                    $grp.Mh = $inner.Mh; $grp.Mw = $inner.Mw
+                }
+            }
+        }
+        $out.Cols    = $cols
+        $out.RepN    = $grp.Items.Count * $(if ($cols -gt 1) { $cols } else { 1 })
+        $out.RepFrac = [int](1000.0 * $grp.Area / $ba)
+        $out.ItemH   = [int](1000.0 * $grp.Mh / $vph)
+        $out.ItemAspect = if ($grp.Mh -gt 0) { [math]::Round($grp.Mw / $grp.Mh, 2) } else { 0.0 }
+    }
+
+    # ---- split -----------------------------------------------------------
+    # Stacked regions, each a fifth of the band, that between them account
+    # for most of it. Read off the children of the DEEPEST container still
+    # spanning the band, so a split is found where the page divides and not
+    # wherever a card happens to sit.
+    $mainPart = $null
+    $host_ = -1
+    for ($i = 0; $i -lt $cnt; $i++) {
+        if (-not $RC[$i]) { continue }
+        if (($RC[$i].R - $RC[$i].L) -ge (($band.R - $band.L) * 0.9) -and $RC[$i].A -ge ($ba * 0.8)) {
+            $host_ = $i
+        }
+    }
+    if ($host_ -ge 0) {
+        $parts = @()
+        foreach ($k in $Kids[$host_]) {
+            if (-not $RC[$k]) { continue }
+            $ph = [math]::Min($RC[$k].B, $band.B) - [math]::Max($RC[$k].T, $band.T)
+            if ($ph -ge ($bh * $script:ShapeSplitMin) -and
+                ($RC[$k].R - $RC[$k].L) -ge (($band.R - $band.L) * 0.8)) {
+                $parts += ,@{ H = $ph; Rect = $RC[$k] }
+            }
+        }
+        $tot = 0.0; $mx = 0.0
+        foreach ($p in $parts) { $tot += $p.H; if ($p.H -gt $mx) { $mx = $p.H; $mainPart = $p.Rect } }
+        if ($parts.Count -ge 2 -and $tot -ge ($bh * 0.8)) {
+            $out.SplitN = $parts.Count
+            $out.SplitRatio = [int](1000.0 * $mx / $bh)
+        } else { $mainPart = $null }
+    }
+
+    # ---- overlay ---------------------------------------------------------
+    # A region drawn over an earlier one, covering a fifth of it. Document
+    # order is paint order, so "later" is "on top"; a DESCENDANT of the
+    # region is not an overlay, it is its content.
+    $big = @()
+    for ($i = 0; $i -lt $cnt; $i++) {
+        if ($RC[$i] -and $RC[$i].A -ge ($ba * $script:ShapeOvlMin)) { $big += $i }
+    }
+    for ($a = 0; $a -lt $big.Count; $a++) {
+        for ($b2 = $a + 1; $b2 -lt $big.Count; $b2++) {
+            $ia = $big[$a]; $ib = $big[$b2]
+            if ($IND[$ib] -gt $IND[$ia]) { continue }
+            $ow = [math]::Max(0.0, [math]::Min($RC[$ia].R, $RC[$ib].R) - [math]::Max($RC[$ia].L, $RC[$ib].L))
+            $oh = [math]::Max(0.0, [math]::Min($RC[$ia].B, $RC[$ib].B) - [math]::Max($RC[$ia].T, $RC[$ib].T))
+            $ov = $ow * $oh
+            if ($ov -ge ($RC[$ia].A * $script:ShapeOvlMin)) {
+                $f = [int](1000.0 * $ov / $ba)
+                if ($f -gt $out.Overlay) { $out.Overlay = $f }
+            }
+        }
+    }
+
+    # ---- the shape -------------------------------------------------------
+    # Order is the whole argument. A surface filling the screen is SINGLE
+    # whatever is drawn on it. A split is asked BEFORE a repeat, because a
+    # comments sheet under a video IS a repeat - the repeat is the lower half
+    # - and calling that screen ROWS loses the video entirely. What makes it
+    # a split and not a list is that the repeat does not reach across the
+    # band: something structurally unlike it is sharing the band.
+    if ($SurfFrac -ge 500) {
+        $out.Shape = 'SINGLE'
+    } elseif ($out.SplitN -ge 2 -and $repSpan -lt ($bh * 0.8)) {
+        $out.Shape = 'SPLIT'
+        if ($mainPart -and $Depth -lt 1) {
+            $subNodes = New-Object System.Collections.ArrayList
+            for ($i = 0; $i -lt $cnt; $i++) {
+                if (-not $RC[$i]) { continue }
+                $cy = ($RC[$i].T + $RC[$i].B) / 2.0
+                if ($cy -ge $mainPart.T -and $cy -le $mainPart.B) {
+                    [void]$subNodes.Add(@{ Tag=$TAG[$i]; Indent=$IND[$i]
+                                        Rect=@{ L=$RC[$i].L; T=$RC[$i].T; R=$RC[$i].R; B=$RC[$i].B } })
+                }
+            }
+            if ($subNodes.Count -gt 0) {
+                $sub = Get-Shape -Nodes $subNodes -Vp $mainPart -SurfFrac 0 -Depth ($Depth + 1)
+                $out.SplitMain = $sub.Shape
+            }
+        }
+    } elseif ($out.RepN -ge $script:ShapeRepMin -and $out.RepFrac -ge $script:ShapeRepFrac) {
+        $out.Shape = if ($out.Cols -ge 2) { 'LATTICE' } else { 'ROWS' }
+    } elseif ($out.SplitN -ge 2) {
+        $out.Shape = 'SPLIT'
+    } else {
+        $biggest = 0.0
+        for ($i = 0; $i -lt $cnt; $i++) {
+            if (-not $RC[$i]) { continue }
+            if ($RC[$i].A -ge ($ba * 0.98)) { continue }   # the band itself, or the root
+            if ($RC[$i].A -gt $biggest) { $biggest = $RC[$i].A }
+        }
+        $out.Shape = if ($biggest -ge ($ba * $script:ShapeSingle)) { 'SINGLE' } else { 'PANEL' }
+    }
+    return [PSCustomObject]$out
+}
+
 function Get-Churn {
     param($Tally, [double] $Mono)
     if (-not $script:PrevTally) {
@@ -2871,6 +3224,13 @@ function Convert-RowToFeatures {
         CoverEmb = N $Row.cover_emb; Embedded = N $Row.embedded; Described = N $Row.described
         SurfFrac = N $Row.surf_frac; SurfCovered = N $Row.surf_covered
         SurfVisible = N $Row.surf_visible
+        Cols = N $Row.cols; RepN = N $Row.rep_n; RepFrac = N $Row.rep_frac
+        ItemH = N $Row.item_h; ItemAspect = N $Row.item_aspect
+        BarTop = N $Row.bar_top; BarBot = N $Row.bar_bot; BarEdit = N $Row.bar_edit
+        SplitN = N $Row.split_n; SplitRatio = N $Row.split_ratio
+        Overlay = N $Row.overlay; Pager = N $Row.pager
+        Shape = $(if ($Row.shape) { [string]$Row.shape } else { "" })
+        SplitMain = $(if ($Row.split_main) { [string]$Row.split_main } else { "" })
         ListLike = N $Row.listlike; GridLike = N $Row.gridlike
         Swiper = N $Row.swiper; Scroll = N $Row.scroll
         Web = N $Row.web; XComponent = N $Row.xcomponent; Video = N $Row.video
@@ -3069,6 +3429,21 @@ function Invoke-Classify {
         if ($R.Cand.Count -gt 0) { Write-Host ("  candidates {0}" -f ($R.Cand -join ", ")) }
         Write-Host ("  confidence {0}  (score {1}, margin {2} over the runner-up)" -f $R.Conf, $R.Score, $R.Margin)
         Write-Host ("  ranked     {0}" -f $R.Ranked)
+
+        # The structural reading, printed beside the class rather than inside
+        # it. If the two ever disagree it is the class that is wrong: the
+        # shape is measured, the class is argued.
+        $sq = @()
+        if ($F.Cols -gt 0)   { $sq += "$($F.Cols) col" }
+        if ($F.RepN -gt 0)   { $sq += "$($F.RepN) items at $($F.RepFrac) permille, aspect $($F.ItemAspect)" }
+        if ($F.SplitN -ge 2) { $sq += "$($F.SplitN) parts, largest $($F.SplitRatio) permille$(if ($F.SplitMain) { " ($($F.SplitMain))" })" }
+        if ($F.BarTop -gt 0) { $sq += "top bar $($F.BarTop)" }
+        if ($F.BarBot -gt 0) { $sq += "bottom bar $($F.BarBot)$(if ($F.BarEdit) { " with an editable" })" }
+        if ($F.Overlay -gt 0){ $sq += "overlay $($F.Overlay) permille" }
+        if ($F.Pager -gt 0)  { $sq += "paged" }
+        Write-Host ("  shape      {0}{1}" -f $F.Shape,
+                    $(if ($sq.Count -gt 0) { "   " + ($sq -join ", ") } else { "" })) -ForegroundColor Cyan
+
         if ($R.Second) {
             Write-Host ("  alongside  {0} ({1}) - native structure beside or over the surface." -f $R.Second, $R.SecondScore) -ForegroundColor Cyan
             Write-Host  "             two scenes in one window: the surface produces at its own rate" -ForegroundColor DarkGray
@@ -3148,9 +3523,12 @@ function Invoke-Classify {
     }
 
     if ($Raw) {
-        $f = Join-Path (Get-Location) ("tree_w{0}.txt" -f $Id)
-        $lines | Set-Content -Path $f -Encoding UTF8
-        Write-Host "  raw -> $f"
+        # NOT $f: PowerShell variable names are case-insensitive and $F is
+        # the feature set three lines up. It survived only because nothing
+        # read $F after this point, which is not a property to rely on.
+        $rawPath = Join-Path (Get-Location) ("tree_w{0}.txt" -f $Id)
+        $lines | Set-Content -Path $rawPath -Encoding UTF8
+        Write-Host "  raw -> $rawPath"
         $allTotal = 0; foreach ($v in $F.TallyAll.Values) { $allTotal += $v }
         Write-Host "  DOCUMENT   $($F.Total) tags on screen of $allTotal in the whole tree"
         Write-Host "  TOP TAGS (on-screen only; should be component names):"
@@ -3179,6 +3557,11 @@ function Invoke-Classify {
         surf_frac = $F.SurfFrac; surf_covered = $F.SurfCovered
         surf_visible = $F.SurfVisible
         second = $R.Second; second_score = $R.SecondScore
+        shape = $F.Shape; cols = $F.Cols; rep_n = $F.RepN; rep_frac = $F.RepFrac
+        item_h = $F.ItemH; item_aspect = $F.ItemAspect
+        bar_top = $F.BarTop; bar_bot = $F.BarBot; bar_edit = $F.BarEdit
+        split_n = $F.SplitN; split_ratio = $F.SplitRatio; split_main = $F.SplitMain
+        overlay = $F.Overlay; pager = $F.Pager
         editable = $F.Editable; listlike = $F.ListLike; gridlike = $F.GridLike
         swiper = $F.Swiper; scroll = $F.Scroll; scrollers = $scrollers
         web = $F.Web; xcomponent = $F.XComponent; video = $F.Video; canvas = $F.Canvas
