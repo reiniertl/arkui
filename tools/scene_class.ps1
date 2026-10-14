@@ -63,6 +63,10 @@ param(
     [switch] $Attrs,
     [switch] $RsProbe,
     [string] $RsFps,
+    [int]    $Capture = 0,
+    [string] $CaptureDir = "captures",
+    [int]    $Every = 0,
+    [string] $Rebuild,
     [string] $Calib = "scene_calib.csv"
 )
 
@@ -80,6 +84,7 @@ $script:PrevClass   = ""
 $script:Layers      = 0
 $script:ImeTop      = 0.0
 $script:VpImeClipped = $false
+$script:LastRawJson = ""
 
 
 function Invoke-HdcRaw {
@@ -1310,6 +1315,9 @@ function Get-UiTestTree {
         return @()
     }
     $joined = ($raw -join "")
+    # Kept so -Capture can write the dump it actually classified, byte for
+    # byte, instead of fetching a third one that may describe a later screen.
+    $script:LastRawJson = $joined
     if ($joined -notmatch '"attributes"') {
         Write-Host "uitest answered but the output is not a layout dump:" -ForegroundColor Yellow
         Write-Host ("  " + $joined.Substring(0, [math]::Min(160, $joined.Length))) -ForegroundColor DarkGray
@@ -3395,16 +3403,20 @@ function Invoke-Fit {
 # ---------------------------------------------------------------- one pass
 
 function Invoke-Classify {
-    param([int] $Id, [object[]] $Table, [switch] $Terse)
+    # -PreLines hands in a dump that has already been fetched. -Capture needs
+    # it because it takes two dumps around the screenshot and must classify
+    # one of THOSE: fetching a third would describe a screen the picture does
+    # not show, which is the one thing the whole mode exists to prevent.
+    param([int] $Id, [object[]] $Table, [switch] $Terse, [string[]] $PreLines, [switch] $Quiet)
 
     $mono = Get-DeviceMono
     $win  = $Table | Where-Object { $_.WinId -eq $Id } | Select-Object -First 1
     $name = if ($win) { $win.Name } else { "?" }
 
     Set-WinRect -Row $win
-    $lines = Get-Tree -Id $Id
+    $lines = if ($PreLines -and $PreLines.Count -gt 1) { $PreLines } else { Get-Tree -Id $Id }
     if (-not $lines -or $lines.Count -lt 2) {
-        Write-Host "empty tree for window $Id - app restarted after param set?" -ForegroundColor Yellow
+        if (-not $Quiet) { Write-Host "empty tree for window $Id - app restarted after param set?" -ForegroundColor Yellow }
         return $null
     }
     $F     = Get-Features -Lines $lines
@@ -3419,7 +3431,10 @@ function Invoke-Classify {
     $colour = switch ($R.Conf) { "structural" {"Green"} "weak" {"Yellow"} default {"DarkYellow"} }
     $scrollers = $F.ListLike + $F.GridLike + $F.Scroll + $F.Swiper
 
-    if ($Terse) {
+    if ($Quiet) {
+        # -Capture prints its own one-line-per-sample progress; the full
+        # block three hundred times would bury it.
+    } elseif ($Terse) {
         Write-Host ("{0,11:F3}  {1,-18} {2,-44} {3,-10} {4}" -f `
                     $mono, $R.Class, ($mods -join "|"), "+$($churn.Added)/-$($churn.Removed)", $name) -ForegroundColor $colour
     } else {
@@ -3999,6 +4014,308 @@ Import-Thresholds
 # so "did I copy the new one" is a real question with no good answer unless the
 # file can state its own identity. The hash is of the file itself, so it cannot
 # drift from a version constant somebody forgot to bump.
+# ---- capture: dumps and matching screenshots, for clustering -------------
+#
+# The classifier in this file is a DISTILLED form - twenty-three class names
+# written by hand before the data existed. This mode exists to do it the
+# other way round: record what screens actually look like, cluster them on
+# geometry alone, and let the class set fall out of the clusters.
+#
+# Three things it has to get right, and each of them was a real failure mode
+# before it was a guard:
+#
+#   1. A screenshot and a dump taken a second apart are two different
+#      screens if the user was scrolling. Every sample is dump - shot - dump,
+#      and the pair is kept only when the two dumps agree. A capture run with
+#      silently mismatched pairs does not fail loudly; it quietly teaches the
+#      clusterer that a feed looks like a settings page.
+#
+#   2. The RAW DUMP is saved, not just the feature row. Every feature here is
+#      a pure function of a dump, so a feature thought of later costs a
+#      re-run of the extractor over a directory - seconds, offline. If only
+#      the row is kept, every feature not thought of in advance costs another
+#      session with the phone in hand. -Rebuild is what makes that true.
+#
+#   3. The screenshot command is PROBED, not assumed. This build has already
+#      spelled three things differently from the guess - blur, the IME top
+#      edge, twice - and a capture mode that writes zero-byte PNGs for half
+#      an hour is worse than one that refuses to start.
+$script:ShotCmd  = ""
+$script:ShotName = ""
+
+function Get-DeviceFileSize {
+    param([string] $Path)
+    $resp = Invoke-HdcRaw "shell `"wc -c < $Path 2>/dev/null`""
+    foreach ($l in $resp) {
+        $m = [regex]::Match("$l", '^\s*(\d+)')
+        if ($m.Success) { return [long]$m.Groups[1].Value }
+    }
+    return 0
+}
+
+function Find-ShotCommand {
+    $dev = "/data/local/tmp/ark_shot.png"
+    # Ordered by how likely they are on an OpenHarmony-derived build, but the
+    # order is only a preference - whichever one puts bytes on the device wins.
+    $cands = @(
+        @{ Name = "snapshot_display -f";    Line = "shell `"snapshot_display -f $dev`"" },
+        @{ Name = "snapshot_display -i 0";  Line = "shell `"snapshot_display -i 0 -f $dev`"" },
+        @{ Name = "uitest screenCap -p";    Line = "shell `"uitest screenCap -p $dev`"" },
+        @{ Name = "screencap -p";           Line = "shell `"screencap -p $dev`"" }
+    )
+    Write-Host "probing for a screenshot command..." -ForegroundColor Cyan
+    foreach ($c in $cands) {
+        Invoke-HdcRaw "shell `"rm -f $dev`"" | Out-Null
+        $resp = Invoke-HdcRaw $c.Line
+        $sz = Get-DeviceFileSize $dev
+        if ($sz -gt 10000) {
+            Write-Host ("  {0,-22} OK  ({1:N0} bytes)" -f $c.Name, $sz) -ForegroundColor Green
+            $script:ShotCmd  = $c.Line
+            $script:ShotName = $c.Name
+            return $true
+        }
+        $why = if ($sz -gt 0) { "$sz bytes - too small to be a frame" }
+               elseif ($resp -and ($resp -join " ").Trim()) { ($resp -join " ").Trim() }
+               else { "no file" }
+        if ($why.Length -gt 60) { $why = $why.Substring(0, 60) }
+        Write-Host ("  {0,-22} no  ({1})" -f $c.Name, $why) -ForegroundColor DarkGray
+    }
+    Write-Host ""
+    Write-Host "No screenshot command answered. Capture needs one - the whole point is" -ForegroundColor Red
+    Write-Host "the picture beside the dump. Find what this build calls it:" -ForegroundColor Red
+    Write-Host "  hdc shell ls /system/bin | findstr /i snap" -ForegroundColor Yellow
+    Write-Host "  hdc shell ls /system/bin | findstr /i screen" -ForegroundColor Yellow
+    Write-Host "and tell me the name; it is one line to add." -ForegroundColor Yellow
+    return $false
+}
+
+# A cheap, stable fingerprint of what is on screen: every node's bounds, in
+# document order. It changes the instant anything moves, which is exactly the
+# question - did the screen hold still while the screenshot was taken.
+#
+# Bounds and not the whole dump, deliberately: a blinking caret or a clock
+# changes text without the screen having moved, and discarding those samples
+# would throw away every chat and every status bar.
+function Get-DumpSignature {
+    param([string] $Json)
+    $ms = [regex]::Matches($Json, '"bounds"\s*:\s*"([^"]*)"')
+    if ($ms.Count -eq 0) { return "" }
+    $sb = New-Object System.Text.StringBuilder
+    foreach ($m in $ms) { [void]$sb.Append($m.Groups[1].Value); [void]$sb.Append(';') }
+    $algo = [System.Security.Cryptography.MD5]::Create()
+    $raw  = $algo.ComputeHash([System.Text.Encoding]::UTF8.GetBytes($sb.ToString()))
+    $algo.Dispose()
+    return ("{0}-{1}" -f $ms.Count, (([System.BitConverter]::ToString($raw)) -replace '-','').Substring(0,16))
+}
+
+# Everything Get-Features reads from script scope that is NOT in the dump.
+# Written beside each capture so the extractor can be re-run offline against
+# exactly the state it saw.
+function Write-CaptureMeta {
+    param([string] $Path, $Win)
+    $meta = @()
+    $meta += "screen_w=$($script:ScreenW)"
+    $meta += "screen_h=$($script:ScreenH)"
+    $meta += "ime_top=$($script:ImeTop)"
+    $meta += "layers=$($script:Layers)"
+    $meta += "context=" + ($script:SceneContext -join "|")
+    if ($Win) {
+        $meta += "win_id=$($Win.WinId)"
+        $meta += "win_name=$($Win.Name)"
+        $meta += "win_pid=$($Win.Pid)"
+        $meta += "win_x=$($Win.X)"; $meta += "win_y=$($Win.Y)"
+        $meta += "win_w=$($Win.W)"; $meta += "win_h=$($Win.H)"
+    }
+    $meta | Set-Content -Path $Path -Encoding UTF8
+}
+
+function Read-CaptureMeta {
+    param([string] $Path)
+    $kv = @{}
+    if (-not (Test-Path $Path)) { return $kv }
+    foreach ($l in (Get-Content -Path $Path)) {
+        $i = $l.IndexOf('=')
+        if ($i -gt 0) { $kv[$l.Substring(0, $i)] = $l.Substring($i + 1) }
+    }
+    return $kv
+}
+
+function Invoke-Capture {
+    param([int] $Seconds, [string] $Dir, [int] $Every)
+
+    if ($DumpOpt -ne "uitest") {
+        Write-Host "capture needs -DumpOpt uitest: it is the only source that carries rects." -ForegroundColor Red
+        return
+    }
+    if (-not (Find-ShotCommand)) { return }
+
+    $stamp   = (Get-Date).ToString("yyyyMMdd_HHmmss")
+    $session = Join-Path $Dir $stamp
+    [void](New-Item -ItemType Directory -Force -Path $session)
+    $rowsCsv = Join-Path $session "rows.csv"
+    $dev     = "/data/local/tmp/ark_shot.png"
+
+    Write-Host ""
+    Write-Host ("capturing to {0} for {1}s - Ctrl+C to stop early" -f $session, $Seconds) -ForegroundColor Cyan
+    Write-Host  "use the phone normally. Open things, scroll them, leave them alone." -ForegroundColor DarkGray
+    Write-Host  "a sample is dump - screenshot - dump, and is dropped if the screen moved." -ForegroundColor DarkGray
+    Write-Host ""
+    Write-Host ("{0,5}  {1,-8} {2,-10} {3,-22} {4}" -f "n","result","shape","window","note")
+
+    $t0 = Get-Date
+    $idx = 0; $kept = 0; $moved = 0; $dups = 0; $failed = 0
+    $lastSig = ""
+
+    while (((Get-Date) - $t0).TotalSeconds -lt $Seconds) {
+        $tick = Get-Date
+        $table = Get-WindowTable
+        if ($table.Count -eq 0) { $failed++; Start-Sleep -Milliseconds 500; continue }
+        $fg = Resolve-Scene -Table $table -Quiet
+        $fgId = if ($fg) { [int]$fg.WinId } else { 0 }
+        $win  = $table | Where-Object { $_.WinId -eq $fgId } | Select-Object -First 1
+        Set-WinRect -Row $win
+
+        $linesA = Get-Tree -Id $fgId
+        $jsonA  = $script:LastRawJson
+        $sigA   = Get-DumpSignature $jsonA
+        if (-not $linesA -or $linesA.Count -lt 2 -or $sigA -eq "") {
+            $failed++
+            Write-Host ("{0,5}  {1,-8} {2,-10} {3,-22} {4}" -f $idx, "empty", "-", "-", "no usable dump") -ForegroundColor DarkGray
+            Start-Sleep -Milliseconds 500
+            continue
+        }
+
+        Invoke-HdcRaw "shell `"rm -f $dev`"" | Out-Null
+        Invoke-HdcRaw $script:ShotCmd | Out-Null
+
+        $linesB = Get-Tree -Id $fgId
+        $sigB   = Get-DumpSignature $script:LastRawJson
+
+        $name = if ($win) { $win.Name } else { "?" }
+        if ($sigA -ne $sigB) {
+            # Not a failure: the user was scrolling, which is most of what a
+            # phone does. Dropping the pair is the whole guard.
+            $moved++
+            Write-Host ("{0,5}  {1,-8} {2,-10} {3,-22} {4}" -f $idx, "moved", "-", $name, "screen changed mid-sample") -ForegroundColor DarkGray
+            if ($Every -gt 0) { Start-Sleep -Seconds $Every }
+            continue
+        }
+
+        $row = Invoke-Classify -Id $fgId -Table $table -Terse:$false -PreLines $linesA -Quiet
+        if (-not $row) { $failed++; continue }
+
+        # The signature goes on the row so the clusterer can collapse repeats
+        # exactly, and so the number of rows sharing one signature measures
+        # how long that screen was actually on screen. Dwell is a weight.
+        $dup = ($sigA -eq $lastSig)
+        $shot = ""
+        if (-not $dup) {
+            $idx++
+            $stem = "{0:D4}" -f $idx
+            $shot = "$stem.png"
+            $local = Join-Path $session $shot
+            Invoke-HdcRaw ("file recv {0} `"{1}`"" -f $dev, $local) | Out-Null
+            if (-not (Test-Path $local) -or (Get-Item $local).Length -lt 10000) {
+                $shot = ""
+                Write-Host ("{0,5}  {1,-8} {2,-10} {3,-22} {4}" -f $idx, "noshot", $row.shape, $name, "recv produced nothing") -ForegroundColor Yellow
+            }
+            ($jsonA) | Set-Content -Path (Join-Path $session "$stem.json") -Encoding UTF8
+            Write-CaptureMeta -Path (Join-Path $session "$stem.meta") -Win $win
+            $kept++
+        } else { $dups++ }
+        $lastSig = $sigA
+
+        $row | Add-Member -NotePropertyName sig  -NotePropertyValue $sigA -Force
+        $row | Add-Member -NotePropertyName shot -NotePropertyValue $shot -Force
+        if (Test-Path $rowsCsv) { $row | Export-Csv -Path $rowsCsv -NoTypeInformation -Append }
+        else                    { $row | Export-Csv -Path $rowsCsv -NoTypeInformation }
+
+        if (-not $dup) {
+            Write-Host ("{0,5}  {1,-8} {2,-10} {3,-22} {4}" -f $idx, "kept", $row.shape, $name, $row.scene) -ForegroundColor Green
+        } else {
+            Write-Host ("{0,5}  {1,-8} {2,-10} {3,-22} {4}" -f $idx, "same", $row.shape, $name, "dwell +1, no new shot") -ForegroundColor DarkGray
+        }
+        if ($Every -gt 0) { Start-Sleep -Seconds $Every }
+    }
+
+    $secs = [int]((Get-Date) - $t0).TotalSeconds
+    Write-Host ""
+    Write-Host ("captured {0}s: {1} distinct screens, {2} repeat samples, {3} dropped mid-move, {4} failed" -f `
+                $secs, $kept, $dups, $moved, $failed) -ForegroundColor Cyan
+    Write-Host ("  -> {0}" -f $session)
+    if ($moved -gt $kept) {
+        Write-Host "  more samples were dropped than kept. That is scrolling, not a bug," -ForegroundColor Yellow
+        Write-Host "  but if you want more yield, pause a beat on each screen." -ForegroundColor Yellow
+    }
+    if ($kept -ge 20) {
+        Write-Host ""
+        Write-Host ("next:  cluster.cmd {0}" -f $session) -ForegroundColor Cyan
+    }
+}
+
+# Re-extract every feature from the saved dumps, without the phone. This is
+# what makes a capture session worth more than the features that existed on
+# the day it was taken.
+function Invoke-Rebuild {
+    param([string] $Dir)
+    if (-not (Test-Path $Dir)) {
+        Write-Host "no such capture directory: $Dir" -ForegroundColor Red
+        return
+    }
+    $dumps = @(Get-ChildItem -Path $Dir -Filter "*.json" | Sort-Object Name)
+    if ($dumps.Count -eq 0) {
+        Write-Host "no saved dumps in $Dir" -ForegroundColor Yellow
+        return
+    }
+    $rowsCsv = Join-Path $Dir "rows.rebuilt.csv"
+    if (Test-Path $rowsCsv) { Remove-Item $rowsCsv }
+    Write-Host ("rebuilding {0} dumps in {1}" -f $dumps.Count, $Dir) -ForegroundColor Cyan
+    $done = 0
+    foreach ($d in $dumps) {
+        $stem = [System.IO.Path]::GetFileNameWithoutExtension($d.Name)
+        $kv = Read-CaptureMeta -Path (Join-Path $Dir "$stem.meta")
+        $script:ScreenW = [int]($kv['screen_w']); $script:ScreenH = [int]($kv['screen_h'])
+        $script:ImeTop  = [double]($kv['ime_top'])
+        $script:Layers  = [int]($kv['layers'])
+        $script:SceneContext = @()
+        if ($kv['context']) { $script:SceneContext = @($kv['context'] -split '\|' | Where-Object { $_ }) }
+        $script:WinRect = $null
+        if ($kv['win_w']) {
+            $script:WinRect = @{ X = [double]$kv['win_x']; Y = [double]$kv['win_y']
+                                 W = [double]$kv['win_w']; H = [double]$kv['win_h'] }
+        }
+        $json = (Get-Content -Path $d.FullName -Raw)
+        $flat = ConvertFrom-UiTestLayout -Json $json
+        $lines = Select-UiTestWindow -Lines $flat -Id ([int]($kv['win_id']))
+        if (-not $lines -or $lines.Count -lt 2) { continue }
+        $feat = Get-Features -Lines $lines
+        $cls  = Get-SceneClass -F $feat -WinName ([string]$kv['win_name'])
+        $out2 = [PSCustomObject]@{
+            stem = $stem; shot = "$stem.png"
+            window = $kv['win_name']; pid = $kv['win_pid']
+            scene = $cls.Class; score = $cls.Score
+            shape = $feat.Shape; cols = $feat.Cols; rep_n = $feat.RepN; rep_frac = $feat.RepFrac
+            item_h = $feat.ItemH; item_aspect = $feat.ItemAspect
+            bar_top = $feat.BarTop; bar_bot = $feat.BarBot; bar_edit = $feat.BarEdit
+            split_n = $feat.SplitN; split_ratio = $feat.SplitRatio; split_main = $feat.SplitMain
+            overlay = $feat.Overlay; pager = $feat.Pager
+            surf_frac = $feat.SurfFrac; surf_covered = $feat.SurfCovered; surf_visible = $feat.SurfVisible
+            cover_web = $feat.CoverWeb; cover_xc = $feat.CoverXc; cover_emb = $feat.CoverEmb
+            described = $feat.Described
+            total = $feat.Total; text = $feat.Text; image = $feat.Image
+            editable = $feat.Editable; listlike = $feat.ListLike; gridlike = $feat.GridLike
+            swiper = $feat.Swiper; scroll = $feat.Scroll
+            avgtext = $feat.AvgText; overdraw = $feat.Overdraw
+            largest_frac = $feat.LargestFrac; largest_aspect = $feat.LargestAspect
+        }
+        if (Test-Path $rowsCsv) { $out2 | Export-Csv -Path $rowsCsv -NoTypeInformation -Append }
+        else                    { $out2 | Export-Csv -Path $rowsCsv -NoTypeInformation }
+        $done++
+        if ($done % 25 -eq 0) { Write-Host ("  {0}/{1}" -f $done, $dumps.Count) -ForegroundColor DarkGray }
+    }
+    Write-Host ("rebuilt {0} rows -> {1}" -f $done, $rowsCsv) -ForegroundColor Green
+}
+
 if ($Version) {
     $self = $PSCommandPath
     $h = (Get-FileHash -Path $self -Algorithm SHA256).Hash.Substring(0, 12).ToLower()
@@ -4024,6 +4341,11 @@ if ($Fit) { Invoke-Fit -Path $Calib -Apply:$Apply; exit 0 }
 # the empirical half needs the corpus. Neither needs the phone.
 if ($Separation) { Show-Separation -Calib $Calib; exit 0 }
 
+# Offline. No device, no hdc - which is the whole point of having saved the
+# dumps: a feature thought of later costs a re-run here, not another session
+# with the phone in hand.
+if ($Rebuild) { Invoke-Rebuild -Dir $Rebuild; exit 0 }
+
 if (-not (Get-Command hdc -ErrorAction SilentlyContinue)) {
     Write-Host "error: hdc not on PATH" -ForegroundColor Red; exit 1
 }
@@ -4040,6 +4362,7 @@ if ($Attrs) {
     Set-WinRect -Row ($table | Where-Object { $_.WinId -eq $id } | Select-Object -First 1)
     Show-Attrs -Id $id; exit 0
 }
+if ($Capture -gt 0) { Invoke-Capture -Seconds $Capture -Dir $CaptureDir -Every $Every; exit 0 }
 if ($Services) { Show-Services; exit 0 }
 if ($RsProbe) { Show-RsProbe; exit 0 }
 if ($RsFps)   { Show-RsFps -Layer $RsFps; exit 0 }

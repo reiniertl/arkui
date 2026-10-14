@@ -389,6 +389,10 @@ the rules it describes.
 | `-Fit` | off | re-score labelled rows offline; report and suggest |
 | `-Apply` | off | with `-Fit`, write the winning threshold change |
 | `-Separation` | off | measure how far apart the classes actually are. Offline; no phone |
+| `-Capture <s>` | off | record dumps, screenshots and rows for `s` seconds, for clustering |
+| `-CaptureDir <d>` | `captures` | where capture sessions are written |
+| `-Every <s>` | 0 | wait this long between samples (0 = as fast as the device answers) |
+| `-Rebuild <dir>` | none | re-extract every feature from a session's saved dumps. Offline; no phone |
 | `-Attrs` | off | every distinct attribute key in the dump, with its values. What the dump actually spells |
 | `-Calib <file>` | `scene_calib.csv` | calibration file to read and write |
 | `-RsProbe` | off | which render_service dump arguments answer on this build |
@@ -400,6 +404,58 @@ the rules it describes.
 | `-Raw` | off | write `tree_w<id>.txt` and print the tag tally |
 | `-ShowCmd` | off | print each hdc command before running it |
 | `-Version` | off | line count and SHA-256 of this file, and the switch list |
+
+### Capture and cluster — `-Capture`
+
+The classifier is a *distilled* form: twenty-three class names written by hand
+before any data existed. `-Capture` exists to do it the other way round —
+record what screens actually look like, cluster them on geometry alone, and let
+the class set fall out of the clusters.
+
+```
+scene_class.cmd -Capture 1800 -DumpOpt uitest
+```
+
+Then use the phone normally for half an hour. Open things, scroll them, leave
+them alone. Each sample is **dump → screenshot → dump**, and the triple is kept
+only when the two dumps agree — otherwise you were scrolling, and the picture
+and the tree describe different screens. A run that drops more samples than it
+keeps is normal; that is what a phone does.
+
+It writes, per distinct screen, into `captures\<timestamp>\`:
+
+| File | What it is |
+|---|---|
+| `NNNN.json` | the raw uitest dump, exactly as classified |
+| `NNNN.png` | the matching screenshot |
+| `NNNN.meta` | panel size, window rect, IME top — everything the extractor reads that is not in the dump |
+| `rows.csv` | one row per **sample**, with `sig` and `shot`, so repeats measure dwell |
+
+**The raw dump is saved on purpose.** Every feature is a pure function of a
+dump, so a feature thought of later costs a re-run of the extractor over a
+directory — seconds, offline:
+
+```
+scene_class.cmd -Rebuild captures\20261014_101500
+```
+
+If only the rows were kept, every feature not thought of in advance would cost
+another session with the phone in hand.
+
+**The screenshot command is probed, not assumed.** This build has already
+spelled three things differently from the guess. `-Capture` tries each
+candidate, checks a file of plausible size actually arrived, and names the one
+that worked before it starts. If none answers it says so and stops, rather than
+writing zero-byte PNGs for half an hour.
+
+Then:
+
+```
+cluster.cmd captures\20261014_101500
+```
+
+See **[cluster/README.md](cluster/README.md)** for the vector, the algorithm,
+and what the purity alarm does and does not mean.
 
 ---
 
@@ -507,5 +563,10 @@ share no clock with the phone.
 | `scene_surfaces.csv` | `-Window`/`-Screen` with `-Out` | one row per opaque node, with its metadata and scope |
 | `tree_w<id>.txt` | `-Raw` | the raw component dump |
 | `coverage.csv` | `probe_batch` | one row per audited scene |
+| `captures/<ts>/` | `-Capture` | dumps, screenshots, meta and rows for one session |
+| `clusters.js` | `cluster.cmd` | the clustering result, loaded by `viewer.html` |
+
+Nothing under `captures/` is in the repository. It is public, and these are
+pictures of a real phone being used.
 
 See **[SIGNALS.md](SIGNALS.md)** for what every column means.

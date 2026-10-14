@@ -28,3 +28,17 @@ captures/
 *.bmp
 uitest.csv
 *.calib.csv
+
+# The clustering tool builds its own virtual environment on first run.
+.venv/
+tools/cluster/.venv/
+
+# Written into a capture directory by cluster.py. Already covered by
+# captures/ above, listed so it is explicit: clusters.js embeds the feature
+# rows and the screenshot filenames of a real phone session.
+clusters.js
+labels.json
+thumbs/
+rows.csv
+rows.rebuilt.csv
+*.meta
