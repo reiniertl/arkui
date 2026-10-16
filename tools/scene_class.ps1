@@ -68,6 +68,7 @@ param(
     [int]    $Every = 0,
     [int]    $MoveTol = 200,
     [string] $Rebuild,
+    [string] $Tags,
     [string] $Calib = "scene_calib.csv"
 )
 
@@ -4442,6 +4443,85 @@ function Invoke-Capture {
     }
 }
 
+# What this build actually calls things, read off the dumps already captured.
+#
+# Every opaque-region test in this file is an EXACT tag match - $n.Tag -eq
+# 'Web' and so on. A build that spells it differently reports no Web regions
+# at all rather than failing, and "no Web anywhere in 147 screens" then gets
+# believed. This answers that question offline, from data already on disk,
+# instead of costing another session with the phone.
+function Invoke-Tags {
+    param([string] $Dir)
+    if (-not (Test-Path $Dir)) {
+        Write-Host "no such capture directory: $Dir" -ForegroundColor Red
+        return
+    }
+    $dumps = @(Get-ChildItem -Path $Dir -File |
+               Where-Object { $_.Name -like "*.json" -or $_.Name -like "*.json.gz" } |
+               Sort-Object Name)
+    if ($dumps.Count -eq 0) {
+        Write-Host "no saved dumps in $Dir" -ForegroundColor Yellow
+        return
+    }
+
+    $count = @{}       # tag -> nodes seen
+    $onScreens = @{}   # tag -> dumps it appeared in
+    $withRect = @{}    # tag -> nodes that carried a rect
+    $done = 0
+    foreach ($d in $dumps) {
+        $json  = Read-DumpFile -Path $d.FullName
+        $flat  = ConvertFrom-UiTestLayout -Json $json
+        $nodes = Get-Nodes -Lines $flat
+        $here  = @{}
+        foreach ($n in $nodes) {
+            $t = [string]$n.Tag
+            if (-not $t) { continue }
+            if ($count.ContainsKey($t)) { $count[$t] = $count[$t] + 1 } else { $count[$t] = 1 }
+            if ($n.Rect) {
+                if ($withRect.ContainsKey($t)) { $withRect[$t] = $withRect[$t] + 1 } else { $withRect[$t] = 1 }
+            }
+            $here[$t] = $true
+        }
+        foreach ($t in $here.Keys) {
+            if ($onScreens.ContainsKey($t)) { $onScreens[$t] = $onScreens[$t] + 1 } else { $onScreens[$t] = 1 }
+        }
+        $done++
+        if ($done % 50 -eq 0) { Write-Host ("  {0}/{1}" -f $done, $dumps.Count) -ForegroundColor DarkGray }
+    }
+
+    Write-Host ""
+    Write-Host ("every tag across {0} dumps in {1}" -f $dumps.Count, $Dir) -ForegroundColor Cyan
+    Write-Host ("{0,-34} {1,8} {2,8} {3,8}  {4}" -f "tag", "nodes", "dumps", "w/rect", "opaque?")
+    foreach ($kv in ($count.GetEnumerator() | Sort-Object Value -Descending)) {
+        $t = $kv.Key
+        $op = if ($t -match $script:OpaquePat) { "MATCHES" } else { "" }
+        $wr = if ($withRect.ContainsKey($t)) { $withRect[$t] } else { 0 }
+        $col = if ($op) { "Green" } else { "Gray" }
+        Write-Host ("{0,-34} {1,8} {2,8} {3,8}  {4}" -f $t, $kv.Value, $onScreens[$t], $wr, $op) -ForegroundColor $col
+    }
+
+    Write-Host ""
+    Write-Host "the opaque pattern this build is matched against:" -ForegroundColor DarkGray
+    Write-Host ("  {0}" -f $script:OpaquePat) -ForegroundColor DarkGray
+    $hit = @($count.Keys | Where-Object { $_ -match $script:OpaquePat })
+    if ($hit.Count -eq 0) {
+        Write-Host "NOTHING matched it. Every cover_* reads 0 and the blind-spot" -ForegroundColor Red
+        Write-Host "numbers are meaningless. Find the real names in the list above." -ForegroundColor Red
+    } else {
+        Write-Host ("matched: {0}" -f ($hit -join ", ")) -ForegroundColor Green
+        $near = @($count.Keys | Where-Object {
+            $_ -notmatch $script:OpaquePat -and
+            $_ -match '(?i)web|surface|xcomp|video|texture|render|embed|extension|plugin' })
+        if ($near.Count -gt 0) {
+            Write-Host ""
+            Write-Host "NOT matched, but named like something opaque - check these:" -ForegroundColor Yellow
+            foreach ($t in ($near | Sort-Object)) {
+                Write-Host ("  {0,-32} {1} nodes in {2} dumps" -f $t, $count[$t], $onScreens[$t]) -ForegroundColor Yellow
+            }
+        }
+    }
+}
+
 # Re-extract every feature from the saved dumps, without the phone. This is
 # what makes a capture session worth more than the features that existed on
 # the day it was taken.
@@ -4563,6 +4643,7 @@ if ($Separation) { Show-Separation -Calib $Calib; exit 0 }
 # Offline. No device, no hdc - which is the whole point of having saved the
 # dumps: a feature thought of later costs a re-run here, not another session
 # with the phone in hand.
+if ($Tags)    { Invoke-Tags    -Dir $Tags;    exit 0 }
 if ($Rebuild) { Invoke-Rebuild -Dir $Rebuild; exit 0 }
 
 if (-not (Get-Command hdc -ErrorAction SilentlyContinue)) {

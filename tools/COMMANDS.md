@@ -394,6 +394,7 @@ the rules it describes.
 | `-Every <s>` | 0 | wait this long between samples (0 = as fast as the device answers) |
 | `-MoveTol <n>` | 200 | permille of the structural rects that may differ between the two dumps and still keep the sample |
 | `-Rebuild <dir>` | none | re-extract every feature from a session's saved dumps. Offline; no phone |
+| `-Tags <dir>` | none | every tag this build emits, counted over a session's dumps. Offline; no phone |
 | `-Attrs` | off | every distinct attribute key in the dump, with its values. What the dump actually spells |
 | `-Calib <file>` | `scene_calib.csv` | calibration file to read and write |
 | `-RsProbe` | off | which render_service dump arguments answer on this build |
@@ -498,6 +499,20 @@ by counting signatures in `rows.csv` beside them. On a test session the rebuilt
 file reproduced the live one exactly — same screens, same dwell, same moving
 counts, same clusters. If `rows.csv` is missing it says so and dwell falls back
 to 1 everywhere.
+
+**`-Tags` says what this build calls things.** Every opaque-region test is an
+exact tag match — `Tag -eq 'Web'`. A build that spells it differently does not
+fail; it reports *no Web regions at all*, and then that gets believed. `-Tags`
+counts every tag across a session's saved dumps, marks which ones the opaque
+pattern matches, and lists the ones that are named like something opaque and
+are **not** matched:
+
+```
+scene_class.cmd -Tags captures\20261016_132521
+```
+
+Offline, from dumps already on disk. If `cover_web` is 0 across a session that
+clearly contained a browser, this is the command that says why.
 
 **Sessions accumulate into one measurement.** Every `-Capture` writes its own
 timestamped folder, and `cluster.cmd` takes as many as you give it:
