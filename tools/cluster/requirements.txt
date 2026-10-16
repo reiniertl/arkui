@@ -1,6 +1,11 @@
 # Pinned, because a clustering run that silently changes algorithm between
 # sessions is not a measurement. scikit-learn 1.3 brought HDBSCAN into the
 # library itself, which is why the separate hdbscan package is not here.
+#
+# These versions have wheels for CPython 3.10 - 3.13. cluster.cmd prefers an
+# interpreter in that range, installs with --only-binary=:all: so a missing
+# wheel says so instead of starting a compile, and falls back to the newest
+# wheels that do exist if the pins cannot be satisfied.
 numpy==2.1.3
 scikit-learn==1.5.2
 scipy==1.14.1

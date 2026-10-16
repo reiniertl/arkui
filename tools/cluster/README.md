@@ -94,6 +94,27 @@ tree every second; on an exact signature it would arrive as two hundred
 distinct screens and drown everything else. On the structural one it is a
 single screen with a dwell of two hundred, which is what it is.
 
+## Installing
+
+```
+cluster\cluster.cmd captures\<timestamp>
+```
+
+First run builds `.venv` beside the script and installs the pinned wheels.
+Nothing is installed into the system Python.
+
+It chooses the interpreter rather than taking `py -3`, which is the newest
+installed one. On a Python too new for the pinned versions pip falls back to
+numpy's *source* tarball and asks for a C compiler, and the error it prints is
+about meson rather than about the Python version. So: 3.12, 3.11, 3.10 or 3.13
+in that order, `--only-binary=:all:` so a missing wheel is reported instead of
+compiled, and if the pins cannot be met at all, the newest wheels that can.
+
+The "already installed" marker is `.venv\.deps-ok`, written only after a
+successful install. A venv whose install failed still contains an interpreter,
+and testing for that turned one legible pip error into an `ImportError` on the
+next run.
+
 ## Which column is the app
 
 `name`. `window` is the numeric window id, and it was being counted as the app
