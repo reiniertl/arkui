@@ -16,6 +16,14 @@ one *view*. Nothing about the app predicts the screen, so nothing identifying
 the app enters the vector. The package name is used exactly once, in the
 purity alarm, *after* the clustering.
 
+**Nothing the scorer produces enters the vector.** Not `scene`, not `score`,
+not `confidence`, `margin`, `candidates` or `ranked` — the last five are not
+even read. The seventeen columns clustered on are all measurements of the
+geometry. So when the report cross-tabs `scene` against the clusters it is a
+test of the class list rather than a restatement of it: where a class name
+lands in one cluster it earned that, and where it is spread over five, the
+cluster is the measurement and the name is the guess.
+
 **The hand-written taxonomy is held out.** `shape` is a guess at the answer.
 Feeding the guess in and reading it back out proves nothing, so it is scored
 against the clusters instead. A cluster that is cleanly one shape confirms it;

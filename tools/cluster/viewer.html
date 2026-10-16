@@ -247,7 +247,17 @@
       c.shapes.map(function (s) {
         return "<tr><td>" + esc(s[0]) + "</td><td>" + s[1] + "</td></tr>";
       }).join("") + "</table></div>";
-    h += "<div><h2>Apps in this cluster</h2><table><tr><th>window</th><th>n</th></tr>" +
+    h += "<div><h2>Scorer's class — also held out</h2><table><tr><th>scene</th><th>n</th></tr>" +
+      (c.scenes || []).map(function (s) {
+        return "<tr><td>" + esc(s[0]) + "</td><td>" + s[1] + "</td></tr>";
+      }).join("") +
+      "</table>" +
+      ((c.scenes || []).length >= 3
+        ? "<div class='tiny warn' style='margin-top:6px'>Several names for one " +
+          "geometry. Nothing the scorer produces enters the vector, so this is a " +
+          "test of the class list, not a restatement of it.</div>"
+        : "") + "</div>";
+    h += "<div><h2>Apps in this cluster</h2><table><tr><th>app</th><th>n</th></tr>" +
       c.apps.map(function (a) {
         return "<tr><td>" + esc(a[0]) + "</td><td>" + a[1] + "</td></tr>";
       }).join("") + "</table></div>";

@@ -378,6 +378,7 @@ def main():
         top_app, top_n = apps.most_common(1)[0]
         purity = top_n / len(members)
         shapes = Counter(m.get("shape", "?") for m in members)
+        scenes = Counter(m.get("scene", "?") for m in members)
 
         med = {}
         for name, kind, _ in FEATURES:
@@ -396,6 +397,7 @@ def main():
             "purity": round(purity, 3),
             "top_app": top_app,
             "shapes": shapes.most_common(),
+            "scenes": scenes.most_common(),
             "medians": med,
             "jitter": jitter,
             "moving": int(moved_to.get(int(cid), 0)),
@@ -611,6 +613,52 @@ def report(clusters, rows, sil, flagged):
             note = "  <- too coarse: the data wants this split"
         print("  %-10s %-8d %s%s" % (shp, hand[shp]["screens"],
                                      ",".join(str(i) for i in ids), note))
+
+    # The same question asked of the scorer's own answer. `scene` is one of
+    # twenty-three class names written by hand before any data existed, and
+    # nothing it produces - not the class, not the score, not the confidence -
+    # enters the vector. So this table is a genuine test of it rather than a
+    # restatement: where it agrees with a cluster it earned that, and where it
+    # does not, the cluster is the measurement and the name is the guess.
+    scen = {}
+    for c in clusters:
+        if c["id"] == -1:
+            continue
+        for sc, k in c.get("scenes", []):
+            scen.setdefault(sc, {"screens": 0, "clusters": set()})
+            scen[sc]["screens"] += k
+            scen[sc]["clusters"].add(c["id"])
+    if scen:
+        split = sum(1 for v in scen.values() if len(v["clusters"]) >= 3)
+        print("\nthe scorer's class against the measured clusters")
+        print("  (held out of the vector entirely - this is a test, not a restatement):")
+        print("  %-16s %-8s %s" % ("scene", "screens", "clusters it is spread over"))
+        for sc in sorted(scen, key=lambda k: -scen[k]["screens"]):
+            ids = sorted(scen[sc]["clusters"])
+            note = ""
+            if len(ids) == 1:
+                note = "  <- clean"
+            elif len(ids) >= 3:
+                note = "  <- too coarse, or firing on the wrong evidence"
+            print("  %-16s %-8d %s%s" % (sc, scen[sc]["screens"],
+                                         ",".join(str(i) for i in ids), note))
+
+        # And the other direction, which is the more damning one: a cluster is
+        # ONE kind of screen by construction, so several class names inside it
+        # are several names for the same thing.
+        muddled = [c for c in clusters
+                   if c["id"] != -1 and len(c.get("scenes", [])) >= 3]
+        if muddled:
+            print("\n  clusters the scorer could not keep to one name:")
+            for c in muddled:
+                names = ", ".join("%s %d" % (k, v) for k, v in c["scenes"][:5])
+                print("    cluster %-3d %s" % (c["id"], names))
+            print("    these screens group tightly on geometry, so either those")
+            print("    names are one class, or the rule firing is the wrong one.")
+        if split:
+            print("\n  %d of %d class names are spread over 3+ clusters. The class"
+                  % (split, len(scen)))
+            print("  list was written before any data existed; this is the data.")
 
     b = blind_spots(rows, clusters)
     print("\nwhere ArkUI is blind, over %d distinct screens:" % b["n"])
