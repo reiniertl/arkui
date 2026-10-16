@@ -4172,11 +4172,53 @@ function Get-SetHold {
     return [int][math]::Round(1000.0 * $inter / $union, [System.MidpointRounding]::AwayFromZero)
 }
 
+# A uitest dump is JSON and compresses about ten to one, which is the
+# difference between keeping the moving samples' trees and not being able to
+# afford them. GZipStream lives in System.dll, so this needs no Add-Type.
+#
+# If compression fails for any reason the plain file is written instead and
+# the name returned says so: losing the dump is far worse than losing the
+# space, and -Rebuild reads both.
+function Save-DumpFile {
+    param([string] $Json, [string] $Stem, [string] $Dir)
+    $gz = Join-Path $Dir "$Stem.json.gz"
+    try {
+        $bytes = [System.Text.Encoding]::UTF8.GetBytes($Json)
+        $fs = [System.IO.File]::Create($gz)
+        try {
+            $zs = New-Object System.IO.Compression.GZipStream(
+                      $fs, [System.IO.Compression.CompressionMode]::Compress)
+            # The GZip stream must be disposed before the file stream, or the
+            # trailer is never flushed and the archive is silently truncated.
+            try { $zs.Write($bytes, 0, $bytes.Length) } finally { $zs.Dispose() }
+        } finally { $fs.Dispose() }
+        return "$Stem.json.gz"
+    } catch {
+        if (Test-Path $gz) { Remove-Item -LiteralPath $gz -ErrorAction SilentlyContinue }
+        $Json | Set-Content -Path (Join-Path $Dir "$Stem.json") -Encoding UTF8
+        return "$Stem.json"
+    }
+}
+
+function Read-DumpFile {
+    param([string] $Path)
+    if ($Path -notlike "*.gz") { return (Get-Content -LiteralPath $Path -Raw) }
+    $fs = [System.IO.File]::OpenRead($Path)
+    try {
+        $zs = New-Object System.IO.Compression.GZipStream(
+                  $fs, [System.IO.Compression.CompressionMode]::Decompress)
+        try {
+            $sr = New-Object System.IO.StreamReader($zs, [System.Text.Encoding]::UTF8)
+            try { return $sr.ReadToEnd() } finally { $sr.Dispose() }
+        } finally { $zs.Dispose() }
+    } finally { $fs.Dispose() }
+}
+
 # Everything Get-Features reads from script scope that is NOT in the dump.
 # Written beside each capture so the extractor can be re-run offline against
 # exactly the state it saw.
 function Write-CaptureMeta {
-    param([string] $Path, $Win)
+    param([string] $Path, $Win, [hashtable] $Extra)
     $meta = @()
     $meta += "screen_w=$($script:ScreenW)"
     $meta += "screen_h=$($script:ScreenH)"
@@ -4189,6 +4231,14 @@ function Write-CaptureMeta {
         $meta += "win_pid=$($Win.Pid)"
         $meta += "win_x=$($Win.X)"; $meta += "win_y=$($Win.Y)"
         $meta += "win_w=$($Win.W)"; $meta += "win_h=$($Win.H)"
+    }
+    # The capture-time facts that are not recoverable from the dump: which
+    # screen this was, how still it was, how much churned, whether a picture
+    # exists. Without them a rebuild hands back a strictly weaker dataset than
+    # the capture it was rebuilt from, which defeats the point of saving the
+    # dumps at all.
+    if ($Extra) {
+        foreach ($k in ($Extra.Keys | Sort-Object)) { $meta += ("{0}={1}" -f $k, $Extra[$k]) }
     }
     $meta | Set-Content -Path $Path -Encoding UTF8
 }
@@ -4238,6 +4288,8 @@ function Invoke-Capture {
     $idx = 0; $kept = 0; $moved = 0; $dups = 0; $failed = 0
     $lastSig = ""
     $keepAt  = 1000 - $Tol
+    $mseq    = 0       # moving samples get their own stem series
+    $lastWin = -1      # churn is a diff, and a diff across apps is noise
     # Dump B of a dropped sample is a fresh dump of the same window, which is
     # exactly what dump A of the next sample would be. Carrying it halves the
     # cost of a retry, and a uitest dump is the slowest thing in this loop.
@@ -4251,6 +4303,12 @@ function Invoke-Capture {
         $fgId = if ($fg) { [int]$fg.WinId } else { 0 }
         $win  = $table | Where-Object { $_.WinId -eq $fgId } | Select-Object -First 1
         Set-WinRect -Row $win
+
+        # Get-Churn holds ONE previous tally for the whole process. Without
+        # this, the first sample of every app is differenced against the last
+        # sample of the app before it, and churn_added reads as a page load
+        # that never happened.
+        if ($fgId -ne $lastWin) { $script:PrevTally = $null; $lastWin = $fgId }
 
         if ($carry -and $carry.Id -eq $fgId) {
             $linesA = $carry.Lines; $jsonA = $carry.Json; $sigA = $carry.Sig
@@ -4299,6 +4357,12 @@ function Invoke-Capture {
             $mshape = "-"
             if ($mrow) {
                 $mshape = $mrow.shape
+                $mseq++
+                $mstem = "m{0:D4}" -f $mseq
+                [void](Save-DumpFile -Json $jsonA -Stem $mstem -Dir $session)
+                Write-CaptureMeta -Path (Join-Path $session "$mstem.meta") -Win $win -Extra @{
+                    sig = $sigA.Hash; shot = ""; jitter = $jitter; still = $holdBig }
+                $mrow | Add-Member -NotePropertyName stem   -NotePropertyValue $mstem -Force
                 $mrow | Add-Member -NotePropertyName sig    -NotePropertyValue $sigA.Hash -Force
                 $mrow | Add-Member -NotePropertyName shot   -NotePropertyValue "" -Force
                 $mrow | Add-Member -NotePropertyName jitter -NotePropertyValue $jitter -Force
@@ -4319,6 +4383,7 @@ function Invoke-Capture {
         # how long that screen was actually on screen. Dwell is a weight.
         $dup = ($sigA.Hash -eq $lastSig)
         $shot = ""
+        $stem = ""
         if (-not $dup) {
             $idx++
             $stem = "{0:D4}" -f $idx
@@ -4326,15 +4391,20 @@ function Invoke-Capture {
             $local = Join-Path $session $shot
             Invoke-HdcRaw ("file recv {0} `"{1}`"" -f $dev, $local) | Out-Null
             if (-not (Test-Path $local) -or (Get-Item $local).Length -lt 10000) {
+                # The dump and the meta are still written. The stem on the row
+                # is what lets them be found again - without it a failed recv
+                # orphans a perfectly good tree.
                 $shot = ""
                 Write-Host ("{0,5}  {1,-8} {2,-10} {3,-22} {4}" -f $idx, "noshot", $row.shape, $name, "recv produced nothing") -ForegroundColor Yellow
             }
-            ($jsonA) | Set-Content -Path (Join-Path $session "$stem.json") -Encoding UTF8
-            Write-CaptureMeta -Path (Join-Path $session "$stem.meta") -Win $win
+            [void](Save-DumpFile -Json $jsonA -Stem $stem -Dir $session)
+            Write-CaptureMeta -Path (Join-Path $session "$stem.meta") -Win $win -Extra @{
+                sig = $sigA.Hash; shot = $shot; jitter = $jitter; still = $holdBig }
             $kept++
         } else { $dups++ }
         $lastSig = $sigA.Hash
 
+        $row | Add-Member -NotePropertyName stem   -NotePropertyValue $stem -Force
         $row | Add-Member -NotePropertyName sig    -NotePropertyValue $sigA.Hash -Force
         $row | Add-Member -NotePropertyName shot   -NotePropertyValue $shot -Force
         $row | Add-Member -NotePropertyName jitter -NotePropertyValue $jitter -Force
@@ -4357,7 +4427,9 @@ function Invoke-Capture {
     $pct  = if ($rows -gt 0) { [int](100.0 * $moved / $rows) } else { 0 }
     Write-Host ("captured {0}s: {1} distinct screens, {2} repeat samples, {3} rows while moving ({4}%), {5} failed" -f `
                 $secs, $kept, $dups, $moved, $pct, $failed) -ForegroundColor Cyan
-    Write-Host ("  -> {0}" -f $session)
+    $mb = 0
+    foreach ($f in (Get-ChildItem -LiteralPath $session -File)) { $mb += $f.Length }
+    Write-Host ("  -> {0}   {1} MB on disk" -f $session, [int]($mb / 1MB))
     if ($moved -gt $kept) {
         Write-Host "  most samples were taken while the screen was moving. If you were" -ForegroundColor Yellow
         Write-Host "  scrolling most of the time that is correct, and those rows are in" -ForegroundColor Yellow
@@ -4379,17 +4451,38 @@ function Invoke-Rebuild {
         Write-Host "no such capture directory: $Dir" -ForegroundColor Red
         return
     }
-    $dumps = @(Get-ChildItem -Path $Dir -Filter "*.json" | Sort-Object Name)
+    $dumps = @(Get-ChildItem -Path $Dir -File |
+                Where-Object { $_.Name -like "*.json" -or $_.Name -like "*.json.gz" } |
+                Sort-Object Name)
     if ($dumps.Count -eq 0) {
         Write-Host "no saved dumps in $Dir" -ForegroundColor Yellow
         return
     }
+
+    # Dwell cannot be recovered from the dumps: a repeat sample saves no dump,
+    # by design. It is recovered from rows.csv instead, by counting the samples
+    # that shared a signature. Without this a rebuild silently flattens every
+    # screen to dwell 1 and the clusters stop describing how the phone was used.
+    $dwell = @{}
+    $origCsv = Join-Path $Dir "rows.csv"
+    if (Test-Path $origCsv) {
+        foreach ($r in (Import-Csv -Path $origCsv)) {
+            $k = [string]$r.sig
+            if ($k) {
+                if ($dwell.ContainsKey($k)) { $dwell[$k] = $dwell[$k] + 1 } else { $dwell[$k] = 1 }
+            }
+        }
+        Write-Host ("  dwell recovered from rows.csv over {0} signatures" -f $dwell.Count) -ForegroundColor DarkGray
+    } else {
+        Write-Host "  no rows.csv beside the dumps: dwell will be 1 everywhere" -ForegroundColor Yellow
+    }
+
     $rowsCsv = Join-Path $Dir "rows.rebuilt.csv"
     if (Test-Path $rowsCsv) { Remove-Item $rowsCsv }
     Write-Host ("rebuilding {0} dumps in {1}" -f $dumps.Count, $Dir) -ForegroundColor Cyan
     $done = 0
     foreach ($d in $dumps) {
-        $stem = [System.IO.Path]::GetFileNameWithoutExtension($d.Name)
+        $stem = $d.Name -replace '\.json(\.gz)?$', ''
         $kv = Read-CaptureMeta -Path (Join-Path $Dir "$stem.meta")
         $script:ScreenW = [int]($kv['screen_w']); $script:ScreenH = [int]($kv['screen_h'])
         $script:ImeTop  = [double]($kv['ime_top'])
@@ -4401,15 +4494,24 @@ function Invoke-Rebuild {
             $script:WinRect = @{ X = [double]$kv['win_x']; Y = [double]$kv['win_y']
                                  W = [double]$kv['win_w']; H = [double]$kv['win_h'] }
         }
-        $json = (Get-Content -Path $d.FullName -Raw)
+        $json = Read-DumpFile -Path $d.FullName
         $flat = ConvertFrom-UiTestLayout -Json $json
         $lines = Select-UiTestWindow -Lines $flat -Id ([int]($kv['win_id']))
         if (-not $lines -or $lines.Count -lt 2) { continue }
         $feat = Get-Features -Lines $lines
         $cls  = Get-SceneClass -F $feat -WinName ([string]$kv['win_name'])
+        $sig = [string]$kv['sig']
         $out2 = [PSCustomObject]@{
-            stem = $stem; shot = "$stem.png"
-            window = $kv['win_name']; pid = $kv['win_pid']
+            stem = $stem
+            shot = if ($kv.ContainsKey('shot')) { [string]$kv['shot'] } else { "$stem.png" }
+            sig = $sig
+            dwell  = if ($sig -and $dwell.ContainsKey($sig)) { $dwell[$sig] } else { 1 }
+            jitter = if ($kv.ContainsKey('jitter')) { [int]$kv['jitter'] } else { 0 }
+            still  = if ($kv.ContainsKey('still'))  { [int]$kv['still'] }  else { 1000 }
+            # window is the numeric id and name is the app, exactly as rows.csv
+            # spells them. They used to disagree, and anything joining the two
+            # files silently counted window ids as apps.
+            window = $kv['win_id']; name = $kv['win_name']; pid = $kv['win_pid']
             scene = $cls.Class; score = $cls.Score
             shape = $feat.Shape; cols = $feat.Cols; rep_n = $feat.RepN; rep_frac = $feat.RepFrac
             item_h = $feat.ItemH; item_aspect = $feat.ItemAspect

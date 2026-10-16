@@ -459,14 +459,27 @@ reported as a `moving` count per cluster. `--include-moving` clusters them
 instead; on a test session that turned 160 screens into 996 near-identical ones,
 which is why it is not the default.
 
-It writes, per distinct screen, into `captures\<timestamp>\`:
+It writes into `captures\<timestamp>\`:
 
-| File | What it is |
-|---|---|
-| `NNNN.json` | the raw uitest dump, exactly as classified |
-| `NNNN.png` | the matching screenshot |
-| `NNNN.meta` | panel size, window rect, IME top — everything the extractor reads that is not in the dump |
-| `rows.csv` | one row per **sample**, with `sig`, `shot`, `jitter` and `still`, so repeats measure dwell |
+| File | Written for | What it is |
+|---|---|---|
+| `NNNN.json.gz` | a new still screen | the raw uitest dump, exactly as classified |
+| `NNNN.png` | a new still screen | the matching screenshot |
+| `NNNN.meta` | a new still screen | panel size, window rect, IME top, plus `sig`, `shot`, `jitter` and `still` |
+| `mNNNN.json.gz` | a moving sample | the dump. No screenshot exists — the picture would not match it |
+| `mNNNN.meta` | a moving sample | the same keys, with `still` recording how far it missed |
+| `rows.csv` | **every** sample | one row each, naming its files through `stem` |
+
+Dumps are gzipped. They are JSON and compress about ten to one, which is the
+difference between keeping the moving samples' trees and not being able to
+afford them. If compression fails the plain `.json` is written instead and
+`-Rebuild` reads either.
+
+**Every row names its files.** `shot` is empty in three different situations —
+a moving sample, a repeat, and a screenshot that failed to transfer — so it is
+not an identifier. `stem` is. Without it a failed `file recv` orphaned a
+perfectly good dump: the files were on disk and nothing in `rows.csv` said
+which row they belonged to.
 
 **The raw dump is saved on purpose.** Every feature is a pure function of a
 dump, so a feature thought of later costs a re-run of the extractor over a
@@ -478,6 +491,13 @@ scene_class.cmd -Rebuild captures\20261014_101500
 
 If only the rows were kept, every feature not thought of in advance would cost
 another session with the phone in hand.
+
+`-Rebuild` reproduces the capture rather than a subset of it. A repeat sample
+saves no dump by design, so dwell cannot come from the dumps; it is recovered
+by counting signatures in `rows.csv` beside them. On a test session the rebuilt
+file reproduced the live one exactly — same screens, same dwell, same moving
+counts, same clusters. If `rows.csv` is missing it says so and dwell falls back
+to 1 everywhere.
 
 **The screenshot command is probed, not assumed.** This build has already
 spelled three things differently from the guess. `-Capture` tries each

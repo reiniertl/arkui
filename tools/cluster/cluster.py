@@ -72,7 +72,8 @@ FEATURES = [
 # the tree churned between the two dumps that bracketed the screenshot: a
 # measure of animation, which belongs beside a cluster rather than inside the
 # definition of one. A still list and an animating list are the same shape.
-HELD_OUT = ("shape", "split_main", "scene", "window", "pid", "described", "jitter")
+HELD_OUT = ("shape", "split_main", "scene", "name", "window", "pid", "described",
+            "jitter", "still")
 
 
 def transform(kind, raw):
@@ -107,6 +108,18 @@ def load_rows(d):
     sys.exit("no rows.csv or rows.rebuilt.csv in %s" % d)
 
 
+def app_of(row):
+    """Which app this screen belongs to.
+
+    `window` is the numeric window id; `name` is the app. They were read the
+    wrong way round, which made every purity figure a count of window ids -
+    stable while an app stays up, and silently splitting it in two the moment
+    it is killed and relaunched. That is exactly the shape of evidence the
+    design-language alarm keys on, so it had to be wrong in the alarm's favour.
+    """
+    return row.get("name") or row.get("window") or "?"
+
+
 def dedupe(rows):
     """One entry per distinct screen; how many samples it had is its dwell.
 
@@ -124,7 +137,9 @@ def dedupe(rows):
     for key, members in groups.items():
         pick = next((m for m in members if m.get("shot")), members[0])
         pick = dict(pick)
-        pick["dwell"] = len(members)
+        # A rebuilt CSV already carries the dwell recovered from rows.csv;
+        # a live one has one line per sample and counts them here.
+        pick["dwell"] = sum(max(1, int(float(m.get("dwell") or 1))) for m in members)
         pick["sig"] = key
         out.append(pick)
     return out
@@ -289,7 +304,7 @@ def main():
         centre = sub.mean(axis=0)
         order = sorted(idx, key=lambda i: float(np.linalg.norm(Z[i] - centre)))
 
-        apps = Counter(m.get("window", "?") for m in members)
+        apps = Counter(app_of(m) for m in members)
         top_app, top_n = apps.most_common(1)[0]
         purity = top_n / len(members)
         shapes = Counter(m.get("shape", "?") for m in members)
@@ -318,7 +333,7 @@ def main():
                 "shot": rows[i].get("shot", ""),
                 "shape": rows[i].get("shape", ""),
                 "scene": rows[i].get("scene", ""),
-                "window": rows[i].get("window", ""),
+                "window": app_of(rows[i]),
                 "dwell": int(rows[i].get("dwell", 1)),
                 "x": round(float(coords[i][0]), 4),
                 "y": round(float(coords[i][1]), 4),

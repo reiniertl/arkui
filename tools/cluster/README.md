@@ -94,6 +94,13 @@ tree every second; on an exact signature it would arrive as two hundred
 distinct screens and drown everything else. On the structural one it is a
 single screen with a dwell of two hundred, which is what it is.
 
+## Which column is the app
+
+`name`. `window` is the numeric window id, and it was being counted as the app
+— stable while an app stays up, and silently splitting it in two the moment it
+is killed and relaunched. One app appearing as two is precisely the evidence
+the design-language alarm keys on, so the error was in the alarm's favour.
+
 ## Samples taken while the screen was moving
 
 A row whose `still` is below `--still` (default 800) was captured mid-scroll.
