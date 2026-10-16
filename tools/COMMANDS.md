@@ -499,6 +499,29 @@ file reproduced the live one exactly — same screens, same dwell, same moving
 counts, same clusters. If `rows.csv` is missing it says so and dwell falls back
 to 1 everywhere.
 
+**Sessions accumulate into one measurement.** Every `-Capture` writes its own
+timestamped folder, and `cluster.cmd` takes as many as you give it:
+
+```
+cluster\cluster.cmd captures\20261016_132521 captures\20261017_090000
+cluster\cluster.cmd captures\2026*
+```
+
+Nothing is merged on disk and nothing is copied. The layout signature is the
+join: the same screen captured on two different days hashes the same, so it
+stays one screen and its dwell adds up. On a test pair of sessions seeing 80
+screens each out of a world of 120, the merge produced 106 screens rather than
+160 — the 54 seen twice folded together, which is the whole point.
+
+The second form works because `cmd.exe` does not expand wildcards, so the
+pattern arrives at the tool intact and is expanded there.
+
+Output for several sessions goes to `captures\merged\` — beside them, not
+inside one of them, because a merged view living in the first session would be
+deleted with it. `--out <dir>` puts it anywhere. A single session still writes
+into itself, exactly as before. Each screen carries the session it came from,
+visible in the viewer's held-out panel.
+
 **The screenshot command is probed, not assumed.** This build has already
 spelled three things differently from the guess. `-Capture` tries each
 candidate, checks a file of plausible size actually arrived, and names the one

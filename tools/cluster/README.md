@@ -115,6 +115,23 @@ successful install. A venv whose install failed still contains an interpreter,
 and testing for that turned one legible pip error into an `ImportError` on the
 next run.
 
+## Several sessions, one measurement
+
+```
+cluster.cmd <dir> [<dir> ...]
+```
+
+Capture sessions are never merged on disk. The layout signature does the join:
+the same screen seen on two different days hashes the same, so dedupe folds the
+samples together and the dwell adds up. All the loader does is rewrite each
+screenshot path relative to wherever the viewer will sit, so the sessions stay
+where they are and nothing is duplicated.
+
+Accumulating is therefore the normal case, not a special mode. Capture for half
+an hour whenever it suits, and cluster over everything so far. The only thing
+that changes with more sessions is that `min_cluster_size` grows with the
+screen count, so small clusters that were noise in one session can become real.
+
 ## Which column is the app
 
 `name`. `window` is the numeric window id, and it was being counted as the app

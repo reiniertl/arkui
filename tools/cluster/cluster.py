@@ -26,6 +26,7 @@ Usage:  cluster.cmd <capture-dir> [--min-cluster N] [--no-thumbs]
 
 import argparse
 import csv
+import glob
 import json
 import math
 import os
@@ -73,7 +74,7 @@ FEATURES = [
 # measure of animation, which belongs beside a cluster rather than inside the
 # definition of one. A still list and an animating list are the same shape.
 HELD_OUT = ("shape", "split_main", "scene", "name", "window", "pid", "described",
-            "jitter", "still")
+            "jitter", "still", "session")
 
 
 def transform(kind, raw):
@@ -106,6 +107,44 @@ def load_rows(d):
             with open(p, newline="", encoding="utf-8-sig") as fh:
                 return name, list(csv.DictReader(fh))
     sys.exit("no rows.csv or rows.rebuilt.csv in %s" % d)
+
+
+def rel(path, start):
+    """A forward-slash relative path, because it ends up in a browser."""
+    return os.path.relpath(path, start).replace(os.sep, "/")
+
+
+def load_sessions(dirs, out):
+    """Several capture sessions, read as one measurement.
+
+    Nothing has to be merged on disk. The layout signature is the join: the
+    same screen captured on two different days hashes the same, so dedupe
+    folds them together and the dwell adds up by itself. All this does is
+    make every screenshot path relative to wherever the viewer will sit, so
+    the sessions can stay where they are.
+    """
+    rows = []
+    for d in dirs:
+        name, got = load_rows(d)
+        tag = os.path.basename(os.path.normpath(d))
+        for r in got:
+            shot = (r.get("shot") or "").strip()
+            if shot:
+                r["shot"] = rel(os.path.join(d, shot), out)
+            r["session"] = tag
+            rows.append(r)
+        print("  %-24s %5d samples from %s" % (tag, len(got), name))
+    return rows
+
+
+def thumb_name(shot):
+    """Must match thumb() in viewer.html exactly.
+
+    The leading "../" goes first. A merged view sits beside its sessions, so
+    every shot path starts with one, and a file called "..__0003.jpg" is
+    hidden on anything unix-shaped and confusing everywhere else.
+    """
+    return shot.replace("../", "").replace("/", "__").replace(".png", ".jpg")
 
 
 def app_of(row):
@@ -178,22 +217,22 @@ def apply_matrix(rows, fit):
     return Z * weights
 
 
-def thumbs(session, rows, width=240):
+def thumbs(out_dir, rows, width=240):
     """Small copies for the viewer.  The full-resolution PNG stays on disk."""
     try:
         from PIL import Image
     except ImportError:
         print("  pillow missing - skipping thumbnails, viewer will use full images")
         return False
-    out = os.path.join(session, "thumbs")
+    out = os.path.join(out_dir, "thumbs")
     os.makedirs(out, exist_ok=True)
     made = 0
     for r in rows:
         shot = r.get("shot") or ""
         if not shot:
             continue
-        src = os.path.join(session, shot)
-        dst = os.path.join(out, shot.replace(".png", ".jpg"))
+        src = os.path.join(out_dir, shot)
+        dst = os.path.join(out, thumb_name(shot))
         if not os.path.exists(src) or os.path.exists(dst):
             continue
         try:
@@ -211,7 +250,13 @@ def thumbs(session, rows, width=240):
 def main():
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("session", help="a capture directory written by -Capture")
+    ap.add_argument("session", nargs="+",
+                    help="one or more capture directories written by -Capture. "
+                         "Several are read as ONE measurement: dwell accumulates "
+                         "across them, because the same screen hashes the same")
+    ap.add_argument("--out", default="",
+                    help="where clusters.js, viewer.html and thumbs/ are written. "
+                         "Default: the session itself, or captures\\merged for several")
     ap.add_argument("--min-cluster", type=int, default=0,
                     help="smallest group that counts as a cluster (default: 2%% of screens, min 5)")
     ap.add_argument("--still", type=int, default=800,
@@ -223,9 +268,34 @@ def main():
     ap.add_argument("--no-thumbs", action="store_true")
     args = ap.parse_args()
 
-    session = os.path.abspath(args.session)
-    src, raw = load_rows(session)
-    print("read %d samples from %s" % (len(raw), src))
+    # cmd.exe does not expand wildcards, so captures\2026* arrives literally.
+    dirs = []
+    for a in args.session:
+        hits = sorted(glob.glob(a)) if any(c in a for c in "*?[") else [a]
+        if not hits:
+            sys.exit("nothing matches %s" % a)
+        dirs.extend(hits)
+    dirs = [os.path.abspath(d) for d in dirs]
+    for d in dirs:
+        if not os.path.isdir(d):
+            sys.exit("not a directory: %s" % d)
+
+    if args.out:
+        out = os.path.abspath(args.out)
+    elif len(dirs) == 1:
+        out = dirs[0]
+    else:
+        # Beside the sessions, not inside one of them: a merged view that
+        # lived in the first session would be deleted with it.
+        parents = {os.path.dirname(d) for d in dirs}
+        if len(parents) != 1:
+            sys.exit("sessions are in different folders - say where to write with --out")
+        out = os.path.join(parents.pop(), "merged")
+    os.makedirs(out, exist_ok=True)
+
+    print("reading %d session%s" % (len(dirs), "" if len(dirs) == 1 else "s"))
+    raw = load_sessions(dirs, out)
+    print("  %d samples in all" % len(raw))
 
     # A sample taken mid-scroll has a real tree but no matching picture, and
     # its layout signature is a one-off - the list happened to be at that
@@ -348,10 +418,11 @@ def main():
     report(out_clusters, rows, sil, flagged)
 
     if not args.no_thumbs:
-        thumbs(session, rows)
+        thumbs(out, rows)
 
     payload = {
-        "session": os.path.basename(session),
+        "session": " + ".join(os.path.basename(d) for d in dirs),
+        "sessions": [os.path.basename(d) for d in dirs],
         "n_samples": len(raw),
         "n_screens": len(rows),
         "silhouette": sil,
@@ -360,7 +431,7 @@ def main():
         "clusters": out_clusters,
         "blind": blind_spots(rows, out_clusters),
     }
-    js = os.path.join(session, "clusters.js")
+    js = os.path.join(out, "clusters.js")
     with open(js, "w", encoding="utf-8") as fh:
         # A script, not a JSON file: the viewer has to work over file://, and
         # fetch() is blocked there while <script src> is not.
@@ -371,7 +442,7 @@ def main():
 
     here = os.path.dirname(os.path.abspath(__file__))
     viewer_src = os.path.join(here, "viewer.html")
-    viewer_dst = os.path.join(session, "viewer.html")
+    viewer_dst = os.path.join(out, "viewer.html")
     if os.path.exists(viewer_src):
         shutil.copyfile(viewer_src, viewer_dst)
         print("\nopen this in a browser (no server needed):\n  %s" % viewer_dst)

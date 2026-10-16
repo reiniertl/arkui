@@ -129,8 +129,13 @@
   });
   var sel = clusters.length ? clusters[0].id : null;
 
+  // Must match thumb_name() in cluster.py. A merged view sits beside the
+  // sessions, so a shot is "<session>/0007.png" and its thumbnail is
+  // flattened into one folder rather than mirroring the tree.
   function thumb(shot) {
-    return shot ? "thumbs/" + shot.replace(".png", ".jpg") : "";
+    return shot
+      ? "thumbs/" + shot.replace(/\.\.\//g, "").replace(/\//g, "__").replace(".png", ".jpg")
+      : "";
   }
   function full(shot) { return shot || ""; }
   function esc(s) {
