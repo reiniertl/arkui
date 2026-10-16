@@ -392,6 +392,7 @@ the rules it describes.
 | `-Capture <s>` | off | record dumps, screenshots and rows for `s` seconds, for clustering |
 | `-CaptureDir <d>` | `captures` | where capture sessions are written |
 | `-Every <s>` | 0 | wait this long between samples (0 = as fast as the device answers) |
+| `-MoveTol <n>` | 200 | permille of the structural rects that may differ between the two dumps and still keep the sample |
 | `-Rebuild <dir>` | none | re-extract every feature from a session's saved dumps. Offline; no phone |
 | `-Attrs` | off | every distinct attribute key in the dump, with its values. What the dump actually spells |
 | `-Calib <file>` | `scene_calib.csv` | calibration file to read and write |
@@ -418,9 +419,30 @@ scene_class.cmd -Capture 1800 -DumpOpt uitest
 
 Then use the phone normally for half an hour. Open things, scroll them, leave
 them alone. Each sample is **dump → screenshot → dump**, and the triple is kept
-only when the two dumps agree — otherwise you were scrolling, and the picture
-and the tree describe different screens. A run that drops more samples than it
-keeps is normal; that is what a phone does.
+only when the screen held still between the two — otherwise the picture and the
+tree describe different screens.
+
+**How still is still enough.** A phone screen is never identical twice: a caret
+blinks, a like count animates, a comment barrage rolls over a video that is
+otherwise sitting perfectly still. Demanding an exact match drops all of it, and
+a video with a chat over it is the scene this project most needs.
+
+So the question is narrowed to the one that matters. Rects covering at least 2%
+of the screen are **structure** — bars, panels, surfaces, list items, the things
+`shape` is read from. Coordinates are rounded to 16px, the structural rects are
+compared as a *set* (the dump reorders async content, and node order is not a
+question anyone asked), and the sample is kept when at least 800 of 1000 of them
+match. `-MoveTol` moves that floor.
+
+Everything smaller is allowed to churn, and the churn is **measured rather than
+discarded**: `jitter` is the permille of the whole tree that changed between the
+two dumps. A still list and an animating list are the same shape, so jitter stays
+out of the clustering vector — but it is on every row, in the console, and
+beside every cluster in the viewer, because animation is exactly what this
+project wants to correlate with power.
+
+A real scroll fails this test hard — a list scrolled by even eight pixels holds
+around 140 of 1000, nowhere near the floor — so nothing is smuggled through.
 
 It writes, per distinct screen, into `captures\<timestamp>\`:
 
@@ -429,7 +451,7 @@ It writes, per distinct screen, into `captures\<timestamp>\`:
 | `NNNN.json` | the raw uitest dump, exactly as classified |
 | `NNNN.png` | the matching screenshot |
 | `NNNN.meta` | panel size, window rect, IME top — everything the extractor reads that is not in the dump |
-| `rows.csv` | one row per **sample**, with `sig` and `shot`, so repeats measure dwell |
+| `rows.csv` | one row per **sample**, with `sig`, `shot` and `jitter`, so repeats measure dwell |
 
 **The raw dump is saved on purpose.** Every feature is a pure function of a
 dump, so a feature thought of later costs a re-run of the extractor over a

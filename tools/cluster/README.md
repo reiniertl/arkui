@@ -87,6 +87,25 @@ becomes its **dwell**. Without this, half an hour parked on one feed outvotes
 every other screen in the session, and the clusters describe how the phone was
 used rather than what screens exist.
 
+The signature is **structural**: the set of rects covering at least 2% of the
+screen, rounded to 16px. That matters here as much as it does at capture time.
+A video feed whose comment barrage is rolling produces a different byte-exact
+tree every second; on an exact signature it would arrive as two hundred
+distinct screens and drown everything else. On the structural one it is a
+single screen with a dwell of two hundred, which is what it is.
+
+## Jitter
+
+`jitter` is the permille of the whole tree that changed between the two dumps
+that bracketed the screenshot — the churn below the structural floor. It is
+**held out of the vector on purpose**: a still list and an animating list are
+the same shape, and a clusterer told otherwise would split every screen in two
+along a line that has nothing to do with composition.
+
+It is reported beside each cluster instead, as a median. That is where it
+belongs: shape says what has to be composited, jitter says how often, and the
+two are separate questions that the aggregator downstream will want to join.
+
 ## The purity alarm, and what it is not
 
 A cluster that is 90% one app gets looked at, but purity alone flags two very

@@ -68,7 +68,11 @@ FEATURES = [
 ]
 
 # Read, reported, never clustered on.
-HELD_OUT = ("shape", "split_main", "scene", "window", "pid", "described")
+# Read through to the viewer, never into the vector. jitter is how much of
+# the tree churned between the two dumps that bracketed the screenshot: a
+# measure of animation, which belongs beside a cluster rather than inside the
+# definition of one. A still list and an animating list are the same shape.
+HELD_OUT = ("shape", "split_main", "scene", "window", "pid", "described", "jitter")
 
 
 def transform(kind, raw):
@@ -239,6 +243,10 @@ def main():
         for name, kind, _ in FEATURES:
             med[name] = round(float(np.median([transform(kind, m.get(name)) for m in members])), 3)
 
+        jit = [int(float(m["jitter"])) for m in members
+               if str(m.get("jitter", "")).strip() not in ("", "None")]
+        jitter = int(np.median(jit)) if jit else None
+
         out_clusters.append({
             "id": int(cid),
             "n": len(members),
@@ -249,6 +257,7 @@ def main():
             "top_app": top_app,
             "shapes": shapes.most_common(),
             "medians": med,
+            "jitter": jitter,
             "members": [{
                 "shot": rows[i].get("shot", ""),
                 "shape": rows[i].get("shape", ""),
@@ -406,19 +415,23 @@ def blind_spots(rows, clusters):
 
 
 def report(clusters, rows, sil, flagged):
-    print("\n%-5s %-6s %-7s %-22s %-7s %s" % ("id", "n", "dwell", "dominant shape", "purity", "top app"))
+    print("\n%-5s %-6s %-7s %-22s %-7s %-7s %s"
+          % ("id", "n", "dwell", "dominant shape", "purity", "jitter", "top app"))
     for c in clusters:
         if c["id"] == -1:
             continue
         shp = ", ".join("%s %d" % (k, v) for k, v in c["shapes"][:3])
         flag = {"design-language": "  <-- SUSPECT, see below",
                 "sole-app": "  <-- only app showing this"}.get(c.get("verdict"), "")
-        print("%-5d %-6d %-7d %-22s %-7.2f %s%s"
-              % (c["id"], c["n"], c["dwell"], shp[:22], c["purity"], c["top_app"][:18], flag))
+        jit = "-" if c.get("jitter") is None else str(c["jitter"])
+        print("%-5d %-6d %-7d %-22s %-7.2f %-7s %s%s"
+              % (c["id"], c["n"], c["dwell"], shp[:22], c["purity"], jit,
+                 c["top_app"][:18], flag))
     out = [c for c in clusters if c["id"] == -1]
     if out:
-        print("%-5s %-6d %-7d %-22s %-7s %s"
-              % ("none", out[0]["n"], out[0]["dwell"], "(outliers)", "-", "worth looking at by eye"))
+        print("%-5s %-6d %-7d %-22s %-7s %-7s %s"
+              % ("none", out[0]["n"], out[0]["dwell"], "(outliers)", "-", "-",
+                 "worth looking at by eye"))
 
     if flagged:
         print("\nSUSPECT - these apps are being separated by house style, not shape.")

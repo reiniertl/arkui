@@ -177,7 +177,8 @@
           "' onerror=\"this.onerror=null;this.src='" + esc(full(c.medoid)) + "'\">"
           : "<img alt=''>") +
         "<div class='meta'><div class='cname'>" + esc(name(c)) + "</div>" +
-        "<div class='tiny'>" + c.n + " screens · " + c.dwell + " samples</div>" +
+        "<div class='tiny'>" + c.n + " screens · " + c.dwell + " samples" +
+        (c.jitter == null ? "" : " · jitter " + c.jitter) + "</div>" +
         "<div class='tiny" + (alarm ? " alarm" : "") + "'>" +
         (c.id === -1 ? "fit no cluster" :
           Math.round(c.purity * 100) + "% " + esc(c.top_app)) + "</div>" +
@@ -201,6 +202,12 @@
     var h = "";
     h += "<div class='panel'>";
     h += "<h2>" + esc(name(c)) + " — " + c.n + " screens</h2>";
+    if (c.jitter != null) {
+      h += "<p class='tiny'>Median jitter <b>" + c.jitter + "</b> of 1000 — the share of " +
+        "the tree that changed between the two dumps bracketing the screenshot. " +
+        "High means the screen was animating while standing still, which is a " +
+        "power question, not a shape question: it is held out of the vector.</p>";
+    }
 
     if (alarm) {
       h += "<p class='alarm'><b>Purity alarm.</b> " + Math.round(c.purity * 100) +

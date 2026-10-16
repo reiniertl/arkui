@@ -403,6 +403,25 @@ could not tell apart (261 vs 242 per-mille):
 | Video pushed up, comments below | `SPLIT` | `ROWS` | 8 | 564 |
 | Comments fill the window | `ROWS` | — | 14 | 997 |
 
+### What shape deliberately does not see — `jitter`
+
+A screen can sit perfectly still as a structure and still be repainting
+constantly: a video playing under a fixed chrome, a like count ticking, a
+comment barrage rolling up over an otherwise motionless player. Nothing about
+the composition changed, so nothing about `shape` should change either.
+
+That churn is measured separately. During `-Capture`, rects below 2% of the
+screen are excluded from the stillness test, and the share of the *whole* tree
+that changed between the two dumps bracketing a screenshot is recorded as
+`jitter`, in per-mille. It is on every captured row and beside every cluster,
+and it is held out of the clustering vector.
+
+The separation is the point. `shape` says what has to be composited; `jitter`
+says how often it is being redrawn. An aggregator joining the two gets
+something neither gives alone — and merging them into one number would have
+made every scene class exist twice, once still and once moving, along an axis
+that has nothing to do with structure.
+
 ## Render-cost multipliers — keyword scan
 
 The same node count costs very different amounts depending on what is applied

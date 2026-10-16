@@ -66,6 +66,7 @@ param(
     [int]    $Capture = 0,
     [string] $CaptureDir = "captures",
     [int]    $Every = 0,
+    [int]    $MoveTol = 200,
     [string] $Rebuild,
     [string] $Calib = "scene_calib.csv"
 )
@@ -4089,23 +4090,86 @@ function Find-ShotCommand {
     return $false
 }
 
-# A cheap, stable fingerprint of what is on screen: every node's bounds, in
-# document order. It changes the instant anything moves, which is exactly the
-# question - did the screen hold still while the screenshot was taken.
+# How still is still enough. A phone screen is never byte-identical twice: a
+# caret blinks, a clock ticks, a like count animates, a comment barrage rolls
+# over a video that is otherwise sitting perfectly still. Asking for an exact
+# match throws all of that away - and a video feed with a chat over it is
+# exactly the scene this project most needs to measure.
 #
-# Bounds and not the whole dump, deliberately: a blinking caret or a clock
-# changes text without the screen having moved, and discarding those samples
-# would throw away every chat and every status bar.
-function Get-DumpSignature {
+# So the question is narrowed to the one that matters: did the STRUCTURE hold
+# still while the screenshot was taken? Structure is the set of rects big
+# enough to change what Get-Shape reads - bars, panels, surfaces, list items.
+# Anything smaller cannot move the structural reading and is allowed to churn.
+$script:SigGrid    = 16    # px - coordinates are rounded to this before comparing
+$script:SigBigArea = 20    # permille of the screen a rect must cover to be structure
+
+# Reduce a raw dump to two sets of quantised rects: Big (structure) and All.
+# Sets, not lists: the dump reorders async content between reads, and node
+# order is not a question anyone asked. Hashing the sorted Big set gives a
+# name for "this screen", which is what dwell counts and dedup compares.
+function Get-DumpSig {
     param([string] $Json)
-    $ms = [regex]::Matches($Json, '"bounds"\s*:\s*"([^"]*)"')
-    if ($ms.Count -eq 0) { return "" }
-    $sb = New-Object System.Text.StringBuilder
-    foreach ($m in $ms) { [void]$sb.Append($m.Groups[1].Value); [void]$sb.Append(';') }
+
+    $all = New-Object 'System.Collections.Generic.HashSet[string]'
+    $big = New-Object 'System.Collections.Generic.HashSet[string]'
+    $ms  = [regex]::Matches($Json,
+        '(?i)"bounds"\s*:\s*"\[\s*(-?[\d.]+)\s*,\s*(-?[\d.]+)\s*\]\s*\[\s*(-?[\d.]+)\s*,\s*(-?[\d.]+)\s*\]')
+    if ($ms.Count -eq 0) {
+        return [PSCustomObject]@{ Hash = ""; Big = $big; All = $all }
+    }
+
+    $g = [double]$script:SigGrid
+    if ($g -lt 1) { $g = 1 }
+
+    # The screen area the permille is against. The root node's rect is the
+    # honest answer even when -ListWindows never ran, so take whichever of
+    # the two is larger rather than trusting either alone.
+    $scr = 0.0
+    if ($script:ScreenW -gt 0 -and $script:ScreenH -gt 0) {
+        $scr = [double]$script:ScreenW * [double]$script:ScreenH
+    }
+    $rects = New-Object System.Collections.ArrayList
+    foreach ($m in $ms) {
+        $l = [double]$m.Groups[1].Value; $t = [double]$m.Groups[2].Value
+        $r = [double]$m.Groups[3].Value; $b = [double]$m.Groups[4].Value
+        if ($r -le $l -or $b -le $t) { continue }
+        $a = ($r - $l) * ($b - $t)
+        if ($a -gt $scr) { $scr = $a }
+        [void]$rects.Add(@($l, $t, $r, $b, $a))
+    }
+
+    foreach ($q in $rects) {
+        $key = "{0},{1},{2},{3}" -f `
+            ([int][math]::Round($q[0] / $g, [System.MidpointRounding]::AwayFromZero)),
+            ([int][math]::Round($q[1] / $g, [System.MidpointRounding]::AwayFromZero)),
+            ([int][math]::Round($q[2] / $g, [System.MidpointRounding]::AwayFromZero)),
+            ([int][math]::Round($q[3] / $g, [System.MidpointRounding]::AwayFromZero))
+        [void]$all.Add($key)
+        if ($scr -gt 1 -and (1000.0 * $q[4] / $scr) -ge $script:SigBigArea) { [void]$big.Add($key) }
+    }
+
+    # A screen with no rect over the floor is a legitimate screen - a splash,
+    # a spinner - so fall back to All rather than returning no name at all.
+    $src = if ($big.Count -gt 0) { $big } else { $all }
+    $sb  = New-Object System.Text.StringBuilder
+    foreach ($k in ($src | Sort-Object)) { [void]$sb.Append($k); [void]$sb.Append(';') }
     $algo = [System.Security.Cryptography.MD5]::Create()
     $raw  = $algo.ComputeHash([System.Text.Encoding]::UTF8.GetBytes($sb.ToString()))
     $algo.Dispose()
-    return ("{0}-{1}" -f $ms.Count, (([System.BitConverter]::ToString($raw)) -replace '-','').Substring(0,16))
+    $hex = (([System.BitConverter]::ToString($raw)) -replace '-','').Substring(0, 16)
+    return [PSCustomObject]@{ Hash = ("{0}-{1}" -f $src.Count, $hex); Big = $big; All = $all }
+}
+
+# Jaccard, in permille. 1000 is "the same set", 0 is "nothing in common".
+function Get-SetHold {
+    param($A, $B)
+    if ($A.Count -eq 0 -and $B.Count -eq 0) { return 1000 }
+    if ($A.Count -eq 0 -or  $B.Count -eq 0) { return 0 }
+    $inter = 0
+    foreach ($k in $A) { if ($B.Contains($k)) { $inter++ } }
+    $union = $A.Count + $B.Count - $inter
+    if ($union -le 0) { return 1000 }
+    return [int][math]::Round(1000.0 * $inter / $union, [System.MidpointRounding]::AwayFromZero)
 }
 
 # Everything Get-Features reads from script scope that is NOT in the dump.
@@ -4141,7 +4205,7 @@ function Read-CaptureMeta {
 }
 
 function Invoke-Capture {
-    param([int] $Seconds, [string] $Dir, [int] $Every)
+    param([int] $Seconds, [string] $Dir, [int] $Every, [int] $Tol)
 
     if ($DumpOpt -ne "uitest") {
         Write-Host "capture needs -DumpOpt uitest: it is the only source that carries rects." -ForegroundColor Red
@@ -4158,27 +4222,39 @@ function Invoke-Capture {
     Write-Host ""
     Write-Host ("capturing to {0} for {1}s - Ctrl+C to stop early" -f $session, $Seconds) -ForegroundColor Cyan
     Write-Host  "use the phone normally. Open things, scroll them, leave them alone." -ForegroundColor DarkGray
-    Write-Host  "a sample is dump - screenshot - dump, and is dropped if the screen moved." -ForegroundColor DarkGray
+    Write-Host ("a sample is dump - screenshot - dump. It is kept when the structural" ) -ForegroundColor DarkGray
+    Write-Host ("rects still agree to {0} permille; small churn - a barrage, a counter," -f (1000 - $Tol)) -ForegroundColor DarkGray
+    Write-Host  "a caret - is recorded as jitter instead of discarded." -ForegroundColor DarkGray
     Write-Host ""
     Write-Host ("{0,5}  {1,-8} {2,-10} {3,-22} {4}" -f "n","result","shape","window","note")
 
     $t0 = Get-Date
     $idx = 0; $kept = 0; $moved = 0; $dups = 0; $failed = 0
     $lastSig = ""
+    $keepAt  = 1000 - $Tol
+    # Dump B of a dropped sample is a fresh dump of the same window, which is
+    # exactly what dump A of the next sample would be. Carrying it halves the
+    # cost of a retry, and a uitest dump is the slowest thing in this loop.
+    $carry = $null
 
     while (((Get-Date) - $t0).TotalSeconds -lt $Seconds) {
         $tick = Get-Date
         $table = Get-WindowTable
-        if ($table.Count -eq 0) { $failed++; Start-Sleep -Milliseconds 500; continue }
+        if ($table.Count -eq 0) { $failed++; $carry = $null; Start-Sleep -Milliseconds 500; continue }
         $fg = Resolve-Scene -Table $table -Quiet
         $fgId = if ($fg) { [int]$fg.WinId } else { 0 }
         $win  = $table | Where-Object { $_.WinId -eq $fgId } | Select-Object -First 1
         Set-WinRect -Row $win
 
-        $linesA = Get-Tree -Id $fgId
-        $jsonA  = $script:LastRawJson
-        $sigA   = Get-DumpSignature $jsonA
-        if (-not $linesA -or $linesA.Count -lt 2 -or $sigA -eq "") {
+        if ($carry -and $carry.Id -eq $fgId) {
+            $linesA = $carry.Lines; $jsonA = $carry.Json; $sigA = $carry.Sig
+        } else {
+            $linesA = Get-Tree -Id $fgId
+            $jsonA  = $script:LastRawJson
+            $sigA   = Get-DumpSig $jsonA
+        }
+        $carry = $null
+        if (-not $linesA -or $linesA.Count -lt 2 -or $sigA.Hash -eq "") {
             $failed++
             Write-Host ("{0,5}  {1,-8} {2,-10} {3,-22} {4}" -f $idx, "empty", "-", "-", "no usable dump") -ForegroundColor DarkGray
             Start-Sleep -Milliseconds 500
@@ -4189,14 +4265,25 @@ function Invoke-Capture {
         Invoke-HdcRaw $script:ShotCmd | Out-Null
 
         $linesB = Get-Tree -Id $fgId
-        $sigB   = Get-DumpSignature $script:LastRawJson
+        $jsonB  = $script:LastRawJson
+        $sigB   = Get-DumpSig $jsonB
+
+        # Two readings. holdBig is the verdict: did the structure stay put.
+        # holdAll is not a verdict at all - the small rects that came and went
+        # are animation, and animation is the thing this project exists to
+        # correlate with power, so it is recorded rather than judged.
+        $holdBig = Get-SetHold $sigA.Big $sigB.Big
+        $holdAll = Get-SetHold $sigA.All $sigB.All
+        $jitter  = 1000 - $holdAll
 
         $name = if ($win) { $win.Name } else { "?" }
-        if ($sigA -ne $sigB) {
+        if ($holdBig -lt $keepAt) {
             # Not a failure: the user was scrolling, which is most of what a
             # phone does. Dropping the pair is the whole guard.
             $moved++
-            Write-Host ("{0,5}  {1,-8} {2,-10} {3,-22} {4}" -f $idx, "moved", "-", $name, "screen changed mid-sample") -ForegroundColor DarkGray
+            $carry = [PSCustomObject]@{ Id = $fgId; Lines = $linesB; Json = $jsonB; Sig = $sigB }
+            Write-Host ("{0,5}  {1,-8} {2,-10} {3,-22} {4}" -f $idx, "moved", "-", $name,
+                        ("structure held only $holdBig of 1000")) -ForegroundColor DarkGray
             if ($Every -gt 0) { Start-Sleep -Seconds $Every }
             continue
         }
@@ -4207,7 +4294,7 @@ function Invoke-Capture {
         # The signature goes on the row so the clusterer can collapse repeats
         # exactly, and so the number of rows sharing one signature measures
         # how long that screen was actually on screen. Dwell is a weight.
-        $dup = ($sigA -eq $lastSig)
+        $dup = ($sigA.Hash -eq $lastSig)
         $shot = ""
         if (-not $dup) {
             $idx++
@@ -4223,17 +4310,20 @@ function Invoke-Capture {
             Write-CaptureMeta -Path (Join-Path $session "$stem.meta") -Win $win
             $kept++
         } else { $dups++ }
-        $lastSig = $sigA
+        $lastSig = $sigA.Hash
 
-        $row | Add-Member -NotePropertyName sig  -NotePropertyValue $sigA -Force
-        $row | Add-Member -NotePropertyName shot -NotePropertyValue $shot -Force
+        $row | Add-Member -NotePropertyName sig    -NotePropertyValue $sigA.Hash -Force
+        $row | Add-Member -NotePropertyName shot   -NotePropertyValue $shot -Force
+        $row | Add-Member -NotePropertyName jitter -NotePropertyValue $jitter -Force
         if (Test-Path $rowsCsv) { $row | Export-Csv -Path $rowsCsv -NoTypeInformation -Append }
         else                    { $row | Export-Csv -Path $rowsCsv -NoTypeInformation }
 
         if (-not $dup) {
-            Write-Host ("{0,5}  {1,-8} {2,-10} {3,-22} {4}" -f $idx, "kept", $row.shape, $name, $row.scene) -ForegroundColor Green
+            Write-Host ("{0,5}  {1,-8} {2,-10} {3,-22} {4}" -f $idx, "kept", $row.shape, $name,
+                        ("{0}  jitter {1}" -f $row.scene, $jitter)) -ForegroundColor Green
         } else {
-            Write-Host ("{0,5}  {1,-8} {2,-10} {3,-22} {4}" -f $idx, "same", $row.shape, $name, "dwell +1, no new shot") -ForegroundColor DarkGray
+            Write-Host ("{0,5}  {1,-8} {2,-10} {3,-22} {4}" -f $idx, "same", $row.shape, $name,
+                        ("dwell +1, jitter {0}" -f $jitter)) -ForegroundColor DarkGray
         }
         if ($Every -gt 0) { Start-Sleep -Seconds $Every }
     }
@@ -4244,8 +4334,9 @@ function Invoke-Capture {
                 $secs, $kept, $dups, $moved, $failed) -ForegroundColor Cyan
     Write-Host ("  -> {0}" -f $session)
     if ($moved -gt $kept) {
-        Write-Host "  more samples were dropped than kept. That is scrolling, not a bug," -ForegroundColor Yellow
-        Write-Host "  but if you want more yield, pause a beat on each screen." -ForegroundColor Yellow
+        Write-Host "  more samples were dropped than kept. If you were scrolling most of" -ForegroundColor Yellow
+        Write-Host "  the time that is correct. If you were not, the structural floor is" -ForegroundColor Yellow
+        Write-Host ("  too tight for this app: raise it with -MoveTol (now {0} of 1000)." -f $Tol) -ForegroundColor Yellow
     }
     if ($kept -ge 20) {
         Write-Host ""
@@ -4362,7 +4453,7 @@ if ($Attrs) {
     Set-WinRect -Row ($table | Where-Object { $_.WinId -eq $id } | Select-Object -First 1)
     Show-Attrs -Id $id; exit 0
 }
-if ($Capture -gt 0) { Invoke-Capture -Seconds $Capture -Dir $CaptureDir -Every $Every; exit 0 }
+if ($Capture -gt 0) { Invoke-Capture -Seconds $Capture -Dir $CaptureDir -Every $Every -Tol $MoveTol; exit 0 }
 if ($Services) { Show-Services; exit 0 }
 if ($RsProbe) { Show-RsProbe; exit 0 }
 if ($RsFps)   { Show-RsFps -Layer $RsFps; exit 0 }
