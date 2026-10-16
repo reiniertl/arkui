@@ -144,7 +144,23 @@ def build_matrix(rows):
     Z = (X - mean) / std
     Z[:, dead] = 0.0
     weights = np.array([w for _, _, w in FEATURES], dtype=float)
-    return Z * weights, dead
+    return Z * weights, dead, (mean, std, dead, weights)
+
+
+def apply_matrix(rows, fit):
+    """Project rows into a space that was standardised on OTHER rows.
+
+    The moving samples must not shift the mean they are measured against, or
+    the clusters would move depending on how much the user happened to scroll.
+    """
+    mean, std, dead, weights = fit
+    cols = []
+    for name, kind, _ in FEATURES:
+        cols.append([transform(kind, r.get(name)) for r in rows])
+    X = np.array(cols, dtype=float).T
+    Z = (X - mean) / std
+    Z[:, dead] = 0.0
+    return Z * weights
 
 
 def thumbs(session, rows, width=240):
@@ -183,6 +199,12 @@ def main():
     ap.add_argument("session", help="a capture directory written by -Capture")
     ap.add_argument("--min-cluster", type=int, default=0,
                     help="smallest group that counts as a cluster (default: 2%% of screens, min 5)")
+    ap.add_argument("--still", type=int, default=800,
+                    help="a sample below this structural hold was taken while the screen "
+                         "was moving: it has no screenshot and does not define a screen "
+                         "(default 800, matching -MoveTol 200)")
+    ap.add_argument("--include-moving", action="store_true",
+                    help="cluster the moving samples too, instead of attributing them")
     ap.add_argument("--no-thumbs", action="store_true")
     args = ap.parse_args()
 
@@ -190,12 +212,33 @@ def main():
     src, raw = load_rows(session)
     print("read %d samples from %s" % (len(raw), src))
 
-    rows = dedupe(raw)
+    # A sample taken mid-scroll has a real tree but no matching picture, and
+    # its layout signature is a one-off - the list happened to be at that
+    # offset once. Letting those define screens would bury the session in
+    # near-identical entries, so they are held aside and attributed to the
+    # clusters they resemble after the fact. That keeps the dwell honest
+    # without letting scrolling invent screens.
+    def hold(r):
+        v = str(r.get("still", "")).strip()
+        if not v:
+            return 1000
+        try:
+            return int(float(v))
+        except ValueError:
+            return 1000
+
+    moving = [] if args.include_moving else [r for r in raw if hold(r) < args.still]
+    settled = raw if args.include_moving else [r for r in raw if hold(r) >= args.still]
+    if moving:
+        print("  %d of %d samples were taken while the screen was moving (%.0f%%)"
+              % (len(moving), len(raw), 100.0 * len(moving) / len(raw)))
+
+    rows = dedupe(settled)
     print("  %d distinct screens (deduplicated by layout signature)" % len(rows))
     if len(rows) < 10:
         sys.exit("too few distinct screens to cluster. Capture more.")
 
-    Z, dead = build_matrix(rows)
+    Z, dead, fit = build_matrix(rows)
     if dead.any():
         names = [FEATURES[i][0] for i in np.flatnonzero(dead)]
         print("  constant in this session, carrying no information: %s" % ", ".join(names))
@@ -222,6 +265,18 @@ def main():
             print("  silhouette %.3f %s" % (sil, quality(sil)))
 
     coords = PCA(n_components=2).fit_transform(Z) if Z.shape[1] >= 2 else np.zeros((len(rows), 2))
+
+    # Nearest centroid, in the same standardised space. Not a claim that a
+    # half-scrolled list IS that cluster - a claim about which shape it most
+    # resembles, which is all that is needed to say how much of the session
+    # was spent moving through each one.
+    moved_to = Counter()
+    if moving and uniq:
+        cents = np.vstack([Z[[i for i, l in enumerate(labels) if l == c]].mean(axis=0)
+                           for c in uniq])
+        M = apply_matrix(moving, fit)
+        for i in np.argmin(((M[:, None, :] - cents[None, :, :]) ** 2).sum(axis=2), axis=1):
+            moved_to[uniq[int(i)]] += 1
 
     # ---- per cluster ------------------------------------------------------
     out_clusters = []
@@ -258,6 +313,7 @@ def main():
             "shapes": shapes.most_common(),
             "medians": med,
             "jitter": jitter,
+            "moving": int(moved_to.get(int(cid), 0)),
             "members": [{
                 "shot": rows[i].get("shot", ""),
                 "shape": rows[i].get("shape", ""),
@@ -415,8 +471,8 @@ def blind_spots(rows, clusters):
 
 
 def report(clusters, rows, sil, flagged):
-    print("\n%-5s %-6s %-7s %-22s %-7s %-7s %s"
-          % ("id", "n", "dwell", "dominant shape", "purity", "jitter", "top app"))
+    print("\n%-5s %-6s %-7s %-7s %-22s %-7s %-7s %s"
+          % ("id", "n", "dwell", "moving", "dominant shape", "purity", "jitter", "top app"))
     for c in clusters:
         if c["id"] == -1:
             continue
@@ -424,13 +480,13 @@ def report(clusters, rows, sil, flagged):
         flag = {"design-language": "  <-- SUSPECT, see below",
                 "sole-app": "  <-- only app showing this"}.get(c.get("verdict"), "")
         jit = "-" if c.get("jitter") is None else str(c["jitter"])
-        print("%-5d %-6d %-7d %-22s %-7.2f %-7s %s%s"
-              % (c["id"], c["n"], c["dwell"], shp[:22], c["purity"], jit,
-                 c["top_app"][:18], flag))
+        print("%-5d %-6d %-7d %-7d %-22s %-7.2f %-7s %s%s"
+              % (c["id"], c["n"], c["dwell"], c.get("moving", 0), shp[:22], c["purity"],
+                 jit, c["top_app"][:18], flag))
     out = [c for c in clusters if c["id"] == -1]
     if out:
-        print("%-5s %-6d %-7d %-22s %-7s %-7s %s"
-              % ("none", out[0]["n"], out[0]["dwell"], "(outliers)", "-", "-",
+        print("%-5s %-6d %-7d %-7s %-22s %-7s %-7s %s"
+              % ("none", out[0]["n"], out[0]["dwell"], "-", "(outliers)", "-", "-",
                  "worth looking at by eye"))
 
     if flagged:

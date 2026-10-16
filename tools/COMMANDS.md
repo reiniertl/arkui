@@ -444,6 +444,21 @@ project wants to correlate with power.
 A real scroll fails this test hard — a list scrolled by even eight pixels holds
 around 140 of 1000, nowhere near the floor — so nothing is smuggled through.
 
+**A sample that fails is not a sample that is thrown away.** The picture is
+untrustworthy; the tree is not. Dump A is a valid reading of a screen the phone
+really rendered, and a list halfway through a flick is a state that burns power.
+So the row is written anyway, with `shot` empty and `still` recording how far it
+missed. Only the screenshot, the raw dump and the screen identity are withheld.
+
+That matters for dwell. Scrolling is most of what a phone does; writing nothing
+for it would make the session a catalogue of screens nobody was touching, and
+would under-count every screen that moves — which is every screen that matters.
+`cluster.py` keeps those rows out of the screen set (a list at one particular
+offset is not a screen) and attributes them to the cluster they most resemble,
+reported as a `moving` count per cluster. `--include-moving` clusters them
+instead; on a test session that turned 160 screens into 996 near-identical ones,
+which is why it is not the default.
+
 It writes, per distinct screen, into `captures\<timestamp>\`:
 
 | File | What it is |
@@ -451,7 +466,7 @@ It writes, per distinct screen, into `captures\<timestamp>\`:
 | `NNNN.json` | the raw uitest dump, exactly as classified |
 | `NNNN.png` | the matching screenshot |
 | `NNNN.meta` | panel size, window rect, IME top — everything the extractor reads that is not in the dump |
-| `rows.csv` | one row per **sample**, with `sig`, `shot` and `jitter`, so repeats measure dwell |
+| `rows.csv` | one row per **sample**, with `sig`, `shot`, `jitter` and `still`, so repeats measure dwell |
 
 **The raw dump is saved on purpose.** Every feature is a pure function of a
 dump, so a feature thought of later costs a re-run of the extractor over a

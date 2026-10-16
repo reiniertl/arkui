@@ -4204,6 +4204,12 @@ function Read-CaptureMeta {
     return $kv
 }
 
+function Add-CaptureRow {
+    param($Row, [string] $Path)
+    if (Test-Path $Path) { $Row | Export-Csv -Path $Path -NoTypeInformation -Append }
+    else                 { $Row | Export-Csv -Path $Path -NoTypeInformation }
+}
+
 function Invoke-Capture {
     param([int] $Seconds, [string] $Dir, [int] $Every, [int] $Tol)
 
@@ -4278,12 +4284,29 @@ function Invoke-Capture {
 
         $name = if ($win) { $win.Name } else { "?" }
         if ($holdBig -lt $keepAt) {
-            # Not a failure: the user was scrolling, which is most of what a
-            # phone does. Dropping the pair is the whole guard.
+            # The picture is untrustworthy. The tree is not: dump A is a valid
+            # reading of a screen the phone really rendered, and a list halfway
+            # through a flick is a state that burns power. So the row is kept
+            # without a screenshot, and carries how still it was.
+            #
+            # Scrolling is most of what a phone does. Writing nothing here
+            # would make the session a catalogue of screens nobody was
+            # touching, and would quietly under-count the dwell of every
+            # screen that moves - which is every screen that matters.
             $moved++
             $carry = [PSCustomObject]@{ Id = $fgId; Lines = $linesB; Json = $jsonB; Sig = $sigB }
-            Write-Host ("{0,5}  {1,-8} {2,-10} {3,-22} {4}" -f $idx, "moved", "-", $name,
-                        ("structure held only $holdBig of 1000")) -ForegroundColor DarkGray
+            $mrow = Invoke-Classify -Id $fgId -Table $table -Terse:$false -PreLines $linesA -Quiet
+            $mshape = "-"
+            if ($mrow) {
+                $mshape = $mrow.shape
+                $mrow | Add-Member -NotePropertyName sig    -NotePropertyValue $sigA.Hash -Force
+                $mrow | Add-Member -NotePropertyName shot   -NotePropertyValue "" -Force
+                $mrow | Add-Member -NotePropertyName jitter -NotePropertyValue $jitter -Force
+                $mrow | Add-Member -NotePropertyName still  -NotePropertyValue $holdBig -Force
+                Add-CaptureRow -Row $mrow -Path $rowsCsv
+            }
+            Write-Host ("{0,5}  {1,-8} {2,-10} {3,-22} {4}" -f $idx, "moving", $mshape, $name,
+                        ("row kept, no shot - structure held $holdBig of 1000")) -ForegroundColor DarkGray
             if ($Every -gt 0) { Start-Sleep -Seconds $Every }
             continue
         }
@@ -4315,8 +4338,8 @@ function Invoke-Capture {
         $row | Add-Member -NotePropertyName sig    -NotePropertyValue $sigA.Hash -Force
         $row | Add-Member -NotePropertyName shot   -NotePropertyValue $shot -Force
         $row | Add-Member -NotePropertyName jitter -NotePropertyValue $jitter -Force
-        if (Test-Path $rowsCsv) { $row | Export-Csv -Path $rowsCsv -NoTypeInformation -Append }
-        else                    { $row | Export-Csv -Path $rowsCsv -NoTypeInformation }
+        $row | Add-Member -NotePropertyName still  -NotePropertyValue $holdBig -Force
+        Add-CaptureRow -Row $row -Path $rowsCsv
 
         if (-not $dup) {
             Write-Host ("{0,5}  {1,-8} {2,-10} {3,-22} {4}" -f $idx, "kept", $row.shape, $name,
@@ -4330,13 +4353,16 @@ function Invoke-Capture {
 
     $secs = [int]((Get-Date) - $t0).TotalSeconds
     Write-Host ""
-    Write-Host ("captured {0}s: {1} distinct screens, {2} repeat samples, {3} dropped mid-move, {4} failed" -f `
-                $secs, $kept, $dups, $moved, $failed) -ForegroundColor Cyan
+    $rows = $kept + $dups + $moved
+    $pct  = if ($rows -gt 0) { [int](100.0 * $moved / $rows) } else { 0 }
+    Write-Host ("captured {0}s: {1} distinct screens, {2} repeat samples, {3} rows while moving ({4}%), {5} failed" -f `
+                $secs, $kept, $dups, $moved, $pct, $failed) -ForegroundColor Cyan
     Write-Host ("  -> {0}" -f $session)
     if ($moved -gt $kept) {
-        Write-Host "  more samples were dropped than kept. If you were scrolling most of" -ForegroundColor Yellow
-        Write-Host "  the time that is correct. If you were not, the structural floor is" -ForegroundColor Yellow
-        Write-Host ("  too tight for this app: raise it with -MoveTol (now {0} of 1000)." -f $Tol) -ForegroundColor Yellow
+        Write-Host "  most samples were taken while the screen was moving. If you were" -ForegroundColor Yellow
+        Write-Host "  scrolling most of the time that is correct, and those rows are in" -ForegroundColor Yellow
+        Write-Host "  rows.csv with a low 'still' - they just have no screenshot. If you" -ForegroundColor Yellow
+        Write-Host ("  were NOT, the floor is too tight here: raise -MoveTol (now {0})." -f $Tol) -ForegroundColor Yellow
     }
     if ($kept -ge 20) {
         Write-Host ""

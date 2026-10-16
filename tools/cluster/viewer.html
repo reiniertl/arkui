@@ -178,7 +178,8 @@
           : "<img alt=''>") +
         "<div class='meta'><div class='cname'>" + esc(name(c)) + "</div>" +
         "<div class='tiny'>" + c.n + " screens · " + c.dwell + " samples" +
-        (c.jitter == null ? "" : " · jitter " + c.jitter) + "</div>" +
+        (c.jitter == null ? "" : " · jitter " + c.jitter) +
+        (c.moving ? " · " + c.moving + " moving" : "") + "</div>" +
         "<div class='tiny" + (alarm ? " alarm" : "") + "'>" +
         (c.id === -1 ? "fit no cluster" :
           Math.round(c.purity * 100) + "% " + esc(c.top_app)) + "</div>" +
@@ -207,6 +208,13 @@
         "the tree that changed between the two dumps bracketing the screenshot. " +
         "High means the screen was animating while standing still, which is a " +
         "power question, not a shape question: it is held out of the vector.</p>";
+    }
+    if (c.moving) {
+      h += "<p class='tiny'><b>" + c.moving + "</b> further samples were taken while the " +
+        "screen was moving and resemble this cluster most closely. They have no " +
+        "screenshot — the picture and the tree would describe different screens — " +
+        "but their trees are real, and they are how much of the session was spent " +
+        "scrolling through this shape rather than sitting on it.</p>";
     }
 
     if (alarm) {

@@ -94,6 +94,24 @@ tree every second; on an exact signature it would arrive as two hundred
 distinct screens and drown everything else. On the structural one it is a
 single screen with a dwell of two hundred, which is what it is.
 
+## Samples taken while the screen was moving
+
+A row whose `still` is below `--still` (default 800) was captured mid-scroll.
+It has a real tree and no screenshot. It is **not** allowed to define a screen:
+a list at one particular scroll offset happened once, and letting those in
+turned a 160-screen test session into 996 near-identical ones.
+
+It is not discarded either. After clustering, each is assigned to the nearest
+cluster centroid in the same standardised space — not a claim that a
+half-scrolled list *is* that cluster, a claim about which shape it most
+resembles — and counted as that cluster's `moving` total. That is how much of
+the session was spent scrolling through a shape rather than sitting on it,
+which is the difference between a list that costs nothing and a list that is
+relaying out sixty times a second.
+
+The moving samples never enter the standardisation. If they did, the clusters
+would shift depending on how much the user happened to scroll.
+
 ## Jitter
 
 `jitter` is the permille of the whole tree that changed between the two dumps
