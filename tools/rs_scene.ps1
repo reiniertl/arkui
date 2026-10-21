@@ -71,34 +71,55 @@ function Get-RsRectField {
     }
 }
 
-# Area of a set of rects, overlaps counted once. Coordinate compression, the
-# same method Set-Occlusion uses on windows - a region here is usually one or
-# two rects, so the grid stays tiny.
+# Area of a set of rects, overlaps counted once.
+#
+# Was a grid scan: every cell of the compressed grid tested against every
+# rect. That is fine for the handful of rects a window region holds and
+# ruinous for the leaves of a dense screen - measured on device at 60ms for
+# 35 rects, 5.5s for 200 and 24s for 300, per contributor, per sample.
+#
+# This sweeps instead. For each vertical slab between two x edges, collect the
+# y intervals of the rects crossing it, merge them, and add width times merged
+# height. Same answer, and the cost stops being the product of the two edge
+# counts.
 function Get-RegionArea {
     param([object[]] $Rects)
     if (-not $Rects -or $Rects.Count -eq 0) { return 0.0 }
-    $xs = @(); $ys = @()
+
+    $rs = @()
     foreach ($r in $Rects) {
         if ($r.W -le 0 -or $r.H -le 0) { continue }
-        $xs += $r.X; $xs += ($r.X + $r.W)
-        $ys += $r.Y; $ys += ($r.Y + $r.H)
+        $rs += [PSCustomObject]@{ X1=[double]$r.X; X2=([double]$r.X + $r.W)
+                                  Y1=[double]$r.Y; Y2=([double]$r.Y + $r.H) }
     }
-    $xs = @($xs | Sort-Object -Unique); $ys = @($ys | Sort-Object -Unique)
-    if ($xs.Count -lt 2 -or $ys.Count -lt 2) { return 0.0 }
-    $a = 0.0
+    if ($rs.Count -eq 0) { return 0.0 }
+
+    $xs = @(@($rs | ForEach-Object { $_.X1; $_.X2 }) | Sort-Object -Unique)
+    if ($xs.Count -lt 2) { return 0.0 }
+
+    $total = 0.0
     for ($i = 0; $i -lt $xs.Count - 1; $i++) {
-        $cx = ([double]$xs[$i] + [double]$xs[$i+1]) / 2.0
-        for ($j = 0; $j -lt $ys.Count - 1; $j++) {
-            $cy = ([double]$ys[$j] + [double]$ys[$j+1]) / 2.0
-            foreach ($r in $Rects) {
-                if ($cx -ge $r.X -and $cx -lt ($r.X + $r.W) -and $cy -ge $r.Y -and $cy -lt ($r.Y + $r.H)) {
-                    $a += ([double]$xs[$i+1] - [double]$xs[$i]) * ([double]$ys[$j+1] - [double]$ys[$j])
-                    break
-                }
-            }
+        $x1 = [double]$xs[$i]; $x2 = [double]$xs[$i+1]
+        $w = $x2 - $x1
+        if ($w -le 0) { continue }
+        $mid = ($x1 + $x2) / 2.0
+
+        $iv = @()
+        foreach ($r in $rs) { if ($mid -ge $r.X1 -and $mid -lt $r.X2) { $iv += $r } }
+        if ($iv.Count -eq 0) { continue }
+
+        $iv = @($iv | Sort-Object Y1)
+        $h = 0.0
+        $cs = [double]$iv[0].Y1; $ce = [double]$iv[0].Y2
+        for ($j = 1; $j -lt $iv.Count; $j++) {
+            $a = [double]$iv[$j].Y1; $b = [double]$iv[$j].Y2
+            if ($a -gt $ce) { $h += ($ce - $cs); $cs = $a; $ce = $b }
+            elseif ($b -gt $ce) { $ce = $b }
         }
+        $h += ($ce - $cs)
+        $total += ($w * $h)
     }
-    return $a
+    return $total
 }
 
 function Get-RectOverlap {
