@@ -577,8 +577,16 @@ function Get-RsScene {
     # spans the whole panel and occludes nothing - its opaque region is empty -
     # and reading its rect as coverage is what made every content window report
     # zero unoccluded area.
+    # Opaque regions come from every surface in a window's chain, not just the
+    # one at the top of it. aweme0 carries the app's opaque region and is
+    # nested inside WindowScene_aweme215, which carries none - collecting only
+    # from contributors reported the display as entirely uncovered.
+    $liveIds = @{}
+    foreach ($c in $live) { $liveIds[$c.Id] = $true }
     $opq = @()
-    foreach ($s in $live) { $opq += $s.Opq }
+    foreach ($s in $Tree.Surfaces) {
+        if ($liveIds.ContainsKey($s.Node.SurfId) -or $liveIds.ContainsKey($s.Id)) { $opq += $s.Opq }
+    }
     $covered = Get-RegionArea -Rects $opq
 
     $sc = [ordered]@{
