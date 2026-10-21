@@ -4465,17 +4465,12 @@ function Invoke-Capture {
         # instant the layout does. It costs ~0.4s against uitest's ~1.4s, so
         # it does not meaningfully widen the window the stillness guard has
         # to hold across.
-        Invoke-HdcRaw "shell `"rm -f $dev`"" | Out-Null
-        Invoke-HdcRaw $script:ShotCmd | Out-Null
-
-        # The guard brackets the screenshot with the SCENE, not with one
-        # window's layout. Two render-tree reads cost ~400ms where two uitest
-        # reads cost 2.8s, so the window the picture has to stay still across
-        # is seven times narrower - and what it compares is display-scoped, so
-        # a dialog appearing mid-shot is correctly a change.
+        # The screenshot is taken only for a scene we have not seen, below,
+        # after the signature has settled that question. Capturing one on
+        # every sample cost 870ms a tick to produce a picture of a scene
+        # already photographed - and most samples on a phone in normal use
+        # are repeats of the scene before them.
         $linesB = $null; $jsonB = ""; $sigB = $null
-        $afterText = $null
-        if ($script:CaptureRs) { $afterText = Get-RsTreeText }
         if ($uitestDue -and -not $script:CaptureRs) {
             $linesB = Get-Tree -Id $fgId
             $jsonB  = $script:LastRawJson
@@ -4486,20 +4481,28 @@ function Invoke-Capture {
         # holdAll is not a verdict at all - the small rects that came and went
         # are animation, and animation is the thing this project exists to
         # correlate with power, so it is recorded rather than judged.
-        # The scene is read once and processed once. The second reading is a
-        # rect comparison, so it is taken off the raw text without building
-        # anything - and the first one's signature is taken the same way, from
-        # the text already in hand, so the two are compared like with like.
+        # ONE read per sample. The scene is this read, processed once - the
+        # deck has said so since the model section, and the loop was not doing
+        # it: a second full RSTree was taken after the screenshot purely to
+        # ask whether anything had moved.
+        #
+        # It does not need asking. oldDirty is a rect on almost every node of
+        # the read we already have, so how much of the display is repainting
+        # comes out of the same sample. That is a better signal than bracketing
+        # the picture: it reports change within the frame rather than change
+        # across two readings taken a second apart.
         $sceneSigA = Get-RsQuickSig -Lines $(if ($pair) { $pair.Raw } else { $null })
-        $sceneSigB = Get-RsQuickSig -Lines $afterText
-        if ($sceneSigA.Hash -ne "" -and $sceneSigB.Hash -ne "") {
-            $holdBig = Get-SetHold $sceneSigA.Big $sceneSigB.Big
-            $holdAll = Get-SetHold $sceneSigA.All $sceneSigB.All
+        if ($sceneSigA.Hash -ne "") {
+            $dirty   = 0.0
+            if ($rsNow) { $dirty = [double]$rsNow.Scene.dirty_frac }
+            $jitter  = [int]([math]::Min(1000.0, $dirty * 1000.0))
+            $holdBig = 1000 - $jitter
+            $holdAll = $holdBig
         } else {
             $holdBig = Get-SetHold $sigA.Big $sigB.Big
             $holdAll = Get-SetHold $sigA.All $sigB.All
+            $jitter  = 1000 - $holdAll
         }
-        $jitter  = 1000 - $holdAll
         # The dedup key. Display-scoped when the render tree answered; the old
         # window-scoped hash only when it did not.
         $keySig = if ($sceneSigA.Hash -ne "") { $sceneSigA.Hash } elseif ($sigA) { $sigA.Hash } else { "" }
@@ -4597,6 +4600,8 @@ function Invoke-Capture {
             $stem = "{0:D4}" -f $idx
             $shot = "$stem.png"
             $local = Join-Path $session $shot
+            Invoke-HdcRaw "shell `"rm -f $dev`"" | Out-Null
+            Invoke-HdcRaw $script:ShotCmd | Out-Null
             Invoke-HdcRaw ("file recv {0} `"{1}`"" -f $dev, $local) | Out-Null
             if (-not (Test-Path $local) -or (Get-Item $local).Length -lt 10000) {
                 # The dump and the meta are still written. The stem on the row
