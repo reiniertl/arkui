@@ -170,6 +170,7 @@ function ConvertFrom-RsTree {
     $p = Split-RsPasses -Lines $Lines
     $nodes = @(); $surfaces = @()
     $vsync = 0; $animating = @()
+    $hwcIds = @{}
 
     foreach ($raw in $p.Main) {
         if (-not $raw) { continue }
@@ -216,7 +217,7 @@ function ConvertFrom-RsTree {
             Redrawn  = ($raw -match 'hasDrawContent: 1')
             Paints   = $false
             Slots    = @()
-            Hwc      = 0
+            Hwc      = $false
             Headroom = 1.0
             OldDirty = (Get-RsRectField -Line $raw -Key 'oldDirty')
             Anim     = $null
@@ -232,9 +233,17 @@ function ConvertFrom-RsTree {
         }
         if ($raw -match 'nodeName:\s*\[([^\]]*)\]') { $n.Name = $matches[1] }
         if ($raw -match 'headroom:\s*([\d.]+)')     { $n.Headroom = [double]$matches[1] }
+        # allHwcAndFilterNode is not a property of the node that prints it:
+        # it is a list of OTHER nodes - the ones the system composes in
+        # hardware or puts a filter on - and every ancestor repeats the list.
+        # On this capture 74 nodes printed a list and the lists named 5
+        # distinct ids between them, so counting the list per node counted
+        # ancestors and called them composed layers.
         $hw = [regex]::Match($raw, 'allHwcAndFilterNode:\s*\{([^}]*)\}')
         if ($hw.Success -and $hw.Groups[1].Value.Trim()) {
-            $n.Hwc = @([regex]::Matches($hw.Groups[1].Value, '<\d+>')).Count
+            foreach ($h in [regex]::Matches($hw.Groups[1].Value, '<(\d+)>')) {
+                $hwcIds[[long]$h.Groups[1].Value] = $true
+            }
         }
         $sc = [regex]::Match($raw, 'sortedChildren:\s*\d+\(([^)]*)\)')
         if ($sc.Success) {
@@ -293,6 +302,7 @@ function ConvertFrom-RsTree {
     # work is this node" without looking at pixels.
     $byId = @{}
     foreach ($n in $nodes) { $byId[$n.Id] = $n }
+    foreach ($id in $hwcIds.Keys) { if ($byId.ContainsKey($id)) { $byId[$id].Hwc = $true } }
     foreach ($raw in $p.Uni) {
         $m = [regex]::Match($raw, '^\s*([A-Z_]+NODE)\[(\d+)\].*?DrawableVec:\[([^\]]*)\]')
         if (-not $m.Success) { continue }
@@ -311,7 +321,7 @@ function ConvertFrom-RsTree {
 
     return [PSCustomObject]@{
         Nodes = $nodes; Surfaces = $surfaces; ById = $byId
-        VsyncId = $vsync; Animating = $animating; Split = $p.Split
+        VsyncId = $vsync; Animating = $animating; Split = $p.Split; HwcIds = $hwcIds
     }
 }
 
@@ -521,7 +531,13 @@ function Measure-RsShape {
     $pa = 0.0
     foreach ($n in $adm) { if ($n.Paints) { $pa += $n.VisArea } }
     $sh.paint_frac = [math]::Round([math]::Min(1.0, $pa / $own), 3)
-    $sh.hwc       = @($adm | Where-Object { $_.Hwc -gt 0 }).Count
+    # Hardware-composed or filtered: the biggest single lever in composition,
+    # and worth an area rather than a count - one full-screen composed layer
+    # and five small ones are not the same thing.
+    $sh.hwc = @($adm | Where-Object { $_.Hwc }).Count
+    $ha = 0.0
+    foreach ($n in $adm) { if ($n.Hwc) { $ha += $n.VisArea } }
+    $sh.hwc_frac = [math]::Round([math]::Min(1.0, $ha / $own), 3)
     $sh.hdr       = @($adm | Where-Object { $_.Headroom -gt 1.0 }).Count
     $dv = @($adm | Where-Object { $_.Drawables -gt 0 } | ForEach-Object { $_.Drawables })
     $sh.draw_slots = 0.0
@@ -735,7 +751,7 @@ function Get-RsScene {
     if ($wsum -le 0) { $wsum = 1.0 }
     foreach ($f in @('node_den','depth_mean','leaf_frac','fanout','repeat_frac',
                      'text_frac','image_frac','sym_frac','blur_frac','shadow_frac',
-                     'corner_frac','blend_frac','dirty_frac','draw_slots','paint_frac')) {
+                     'corner_frac','blend_frac','dirty_frac','draw_slots','paint_frac','hwc_frac')) {
         $v = 0.0
         foreach ($c in $contrib) {
             $x = $c.PSObject.Properties[$f]
@@ -819,8 +835,8 @@ function Show-RsScene {
         $s.text_frac, $s.image_frac, $s.repeat_frac, $s.scroller, $s.surface_tag)
     Write-Host ("  content      paints {0} nodes over {1} of the display   ({2} re-recorded)" -f `
         $s.paints, $s.paint_frac, $s.redrawn)
-    Write-Host ("  cost         blur {0}   shadow {1}   corner {2}   hwc {3}   hdr {4}   slots {5}" -f `
-        $s.blur_frac, $s.shadow_frac, $s.corner_frac, $s.hwc, $s.hdr, $s.draw_slots)
+    Write-Host ("  cost         blur {0}   shadow {1}   corner {2}   hwc area {3}   hdr {4}   slots {5}" -f `
+        $s.blur_frac, $s.shadow_frac, $s.corner_frac, $s.hwc_frac, $s.hdr, $s.draw_slots)
     Write-Host ("  motion       dirty {0}   anims {1} ({2} endless)   prefers {3}fps   skipped {4}" -f `
         $s.dirty_frac, $s.anim_n, $s.anim_forever, $s.fps_pref, $s.skipped)
     if ($s.protected -gt 0) {
@@ -848,7 +864,8 @@ function Get-RsRowFields {
                      'corner_frac','blend_frac','dirty_frac','draw_slots','nodes',
                      'scroller','surface_tag','hwc','hdr','anim_n','anim_forever',
                      'fps_pref','skipped','rotation','refresh','refresh_max','power','top_weight',
-                     'dropped','admit_frac','drop_skip','drop_odd','paints','redrawn','paint_frac')) {
+                     'dropped','admit_frac','drop_skip','drop_odd','paints','redrawn','paint_frac',
+                     'hwc_frac')) {
         $p = $s.PSObject.Properties[$f]
         $o["rs_$f"] = if ($p -and $null -ne $p.Value) { $p.Value } else { 0 }
     }
