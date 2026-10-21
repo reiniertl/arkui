@@ -173,6 +173,50 @@ Read the `-Window` composition this way:
 | counts are a tenth of the screen, or the tags look like attribute names | the **parse** is wrong; tuning rules will not help |
 | `geometry UNAVAILABLE` | the dump carries no rects; position rules stood down and `-Screen` cannot differ from `-Window` |
 
+### The scene from the render tree
+
+```
+scene_class.cmd -RsScene                        REM the scene as RenderService sees it
+scene_class.cmd -RsScene -RsSave dumps\now      REM and keep the raw dumps
+scene_class.cmd -RsFrom dumps\now               REM rebuild it from those, no device
+scene_class.cmd -Capture 600 -Every 5 -DumpOpt uitest -CaptureRs
+```
+
+A second, independent route to the scene. It reads `RSTree` and `client`
+from RenderService instead of `uitest dumpLayout`, which buys three things
+and costs one.
+
+It answers in about 200ms per dump against uitest's 1.4s. It covers every
+window in a single read rather than whichever one was in front. And it
+cannot be reshaped by the app: `accessibilityGroup(true)` collapses a
+subtree out of uitest's view and does not touch this one.
+
+What it does not carry is text. Nothing on this path will tell you a button
+says "Send".
+
+Occlusion here comes from each surface's `OpaqueRegion`, never from the
+window rect. `SCBGestureBack20` spans the whole panel with an empty opaque
+region, which is why window-rect occlusion reports every content window as
+fully covered. A surface whose `VisibleRegion` is empty leaves the scene
+whole, with no geometry computed for it at all.
+
+Features are normalised inside each contributor and weighted by the share
+of the display that contributor actually paints — not the region it spans,
+or a transparent overlay and the shell window hosting an app would each
+carry as much weight as the app. A split-screen chat and a full-screen one
+therefore read as the same shape at different weight.
+
+`-CaptureRs` puts the result on every capture row as `rs_*` columns and
+saves both raw dumps beside the sample, so any number can be re-derived and
+argued with later. Fifteen structural columns join the clustering; the
+style, timing and cost columns are read and held out, for the reasons in
+the comment above `HELD_OUT` in `cluster.py`.
+
+The older `-Window` path still computes occlusion from window rects. It is
+left that way on purpose: it is the baseline the render-tree features are
+being measured against, and changing it mid-measurement would make the
+sessions already captured incomparable.
+
 ### The far side of the surface
 
 ```bat
