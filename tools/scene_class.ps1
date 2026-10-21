@@ -4357,7 +4357,7 @@ function Invoke-Capture {
     Write-Host ("{0,5}  {1,-8} {2,-10} {3,-22} {4}" -f "n","result","shape","window","note")
 
     $t0 = Get-Date
-    $idx = 0; $kept = 0; $moved = 0; $dups = 0; $failed = 0
+    $idx = 0; $kept = 0; $moved = 0; $dups = 0; $failed = 0; $ticks = 0
     $lastSig = ""
     $keepAt  = 1000 - $Tol
     $mseq    = 0       # moving samples get their own stem series
@@ -4394,7 +4394,11 @@ function Invoke-Capture {
         # baseline feature set and nothing the scene is built from, and it
         # costs 1.4s against the render tree's 200ms - so it runs on a cadence
         # rather than on every sample.
-        $uitestDue = ($script:UitestEvery -le 1) -or ($idx % $script:UitestEvery -eq 0) -or ($null -eq $script:RowTemplate)
+        # Counted in samples, not in distinct scenes: keying it on $idx meant
+        # a screen nobody touched never got a second uitest read, and a screen
+        # that changed constantly got one every time.
+        $ticks++
+        $uitestDue = ($script:UitestEvery -le 1) -or (($ticks - 1) % $script:UitestEvery -eq 0) -or ($null -eq $script:RowTemplate)
         $linesA = $null; $jsonA = ""; $sigA = $null
         if ($uitestDue) {
             if ($carry -and $carry.Id -eq $fgId) {

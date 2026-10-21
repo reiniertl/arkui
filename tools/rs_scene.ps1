@@ -1053,12 +1053,23 @@ function Get-RsSceneSig {
         [void]$all.Add($tok); [void]$big.Add($tok)
     }
 
+    # Identity wants to be precise; stillness wants to be robust. They are
+    # not the same set.
+    #
+    # The big set alone came to four rects on a video player - a signature
+    # that coarse collides between scenes that share a full-bleed surface and
+    # differ in everything else. The all set alone splits on a clock digit.
+    # So: the big rects, plus how many rects there were in total, bucketed, so
+    # that two scenes of visibly different density cannot share a name while a
+    # counter ticking over does not invent a new one.
     $src = if ($big.Count -gt 0) { $big } else { $all }
+    $bucket = [int][math]::Floor($all.Count / 4.0)
     $sb  = New-Object System.Text.StringBuilder
     foreach ($k in ($src | Sort-Object)) { [void]$sb.Append($k); [void]$sb.Append(';') }
+    [void]$sb.Append("N:"); [void]$sb.Append($bucket)
     $algo = [System.Security.Cryptography.MD5]::Create()
     $raw  = $algo.ComputeHash([System.Text.Encoding]::UTF8.GetBytes($sb.ToString()))
     $algo.Dispose()
     $hex = (([System.BitConverter]::ToString($raw)) -replace '-','').Substring(0, 16)
-    return [PSCustomObject]@{ Hash = ("{0}-{1}" -f $src.Count, $hex); Big = $big; All = $all }
+    return [PSCustomObject]@{ Hash = ("{0}/{1}-{2}" -f $src.Count, $all.Count, $hex); Big = $big; All = $all }
 }
