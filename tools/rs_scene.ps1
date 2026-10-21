@@ -542,58 +542,77 @@ function Measure-RsShape {
         }
     }
 
-    # Area by component kind. Area, not count, because one full-bleed Image is
-    # a gallery and forty tiny ones are a grid, and counting cannot tell them
-    # apart.
-    foreach ($pair in @(@('text','Text'), @('image','Image'), @('sym','SymbolGlyph'))) {
-        $a = 0.0
-        foreach ($n in $adm) { if ($n.Tag -eq $pair[1]) { $a += $n.VisArea } }
-        # Clamped. A node's visible area is clipped to its contributor's
-        # region, but several tagged nodes can overlap the same pixels - a
-        # Text over an Image over a background - so the sum can exceed the
-        # area they sit in. A clock screen reported image_frac 1.28.
-        $sh[($pair[0] + "_frac")] = [math]::Round([math]::Min(1.0, $a / $own), 3)
-    }
-    $sh.tagged = @($adm | Where-Object { $_.Tag }).Count
-    $container = @('List','Grid','Swiper','Scroll','Tabs','WaterFlow','Navigation')
-    $sh.scroller = @($adm | Where-Object { $container -contains $_.Tag }).Count
-    $sh.surface_tag = @($adm | Where-Object { $_.Tag -match 'XComponent|Web|UIExtension|Embedded|Plugin' }).Count
+    # One pass. This used to be about twenty separate Where-Object pipelines
+    # over the same list - area by tag, area by effect, counts, averages -
+    # and a PowerShell pipeline costs per element, so the node list was being
+    # walked twenty times for numbers that can all be accumulated at once.
+    #
+    # Area, not count, wherever a share is meant: one full-bleed Image is a
+    # gallery and forty small ones are a grid, and counting cannot tell them
+    # apart. Clamped, because several tagged nodes can cover the same pixels -
+    # a Text over an Image over a background - and their areas summed can
+    # exceed the region they sit in.
+    $container = @{ 'List'=1; 'Grid'=1; 'Swiper'=1; 'Scroll'=1; 'Tabs'=1; 'WaterFlow'=1; 'Navigation'=1 }
+    $aText=0.0; $aImage=0.0; $aSym=0.0
+    $aBlur=0.0; $aShadow=0.0; $aCorner=0.0; $aBlend=0.0
+    $aPaint=0.0; $aHwc=0.0
+    $nTagged=0; $nScroll=0; $nSurf=0; $nPaints=0; $nRedrawn=0; $nHwc=0; $nHdr=0; $nSkip=0
+    $dvSum=0.0; $dvN=0
+    $dirty = New-Object System.Collections.ArrayList
+    $anims = New-Object System.Collections.ArrayList
 
-    # Effect load. Sparse per node - blur sat on 5 of 506 nodes on the capture
-    # this was written against - so these are only ever read as a fraction of
-    # the visible area, never as a per-node feature.
-    foreach ($pair in @(@('blur','Blur'), @('shadow','Shadow'), @('corner','Corner'), @('blend','Blend'))) {
-        $a = 0.0
-        foreach ($n in $adm) { if ($n.($pair[1])) { $a += $n.VisArea } }
-        $sh[($pair[0] + "_frac")] = [math]::Round([math]::Min(1.0, $a / $own), 3)
+    foreach ($n in $adm) {
+        $va = $n.VisArea
+        $t  = $n.Tag
+        if ($t) {
+            $nTagged++
+            if     ($t -eq 'Text')        { $aText  += $va }
+            elseif ($t -eq 'Image')       { $aImage += $va }
+            elseif ($t -eq 'SymbolGlyph') { $aSym   += $va }
+            if ($container.ContainsKey($t)) { $nScroll++ }
+            if ($t -match 'XComponent|Web|UIExtension|Embedded|Plugin') { $nSurf++ }
+        }
+        if ($n.Blur)   { $aBlur   += $va }
+        if ($n.Shadow) { $aShadow += $va }
+        if ($n.Corner) { $aCorner += $va }
+        if ($n.Blend)  { $aBlend  += $va }
+        if ($n.Paints) { $nPaints++; $aPaint += $va }
+        if ($n.Redrawn) { $nRedrawn++ }
+        if ($n.Hwc)    { $nHwc++; $aHwc += $va }
+        if ($n.Headroom -gt 1.0) { $nHdr++ }
+        if ($n.Skipped) { $nSkip++ }
+        if ($n.Drawables -gt 0) { $dvSum += $n.Drawables; $dvN++ }
+        if ($n.OldDirty -and $n.OldDirty.W -gt 0) { [void]$dirty.Add($n.OldDirty) }
+        if ($n.Anim) { [void]$anims.Add($n) }
     }
-    $sh.paints  = @($adm | Where-Object { $_.Paints }).Count
-    $sh.redrawn = @($adm | Where-Object { $_.Redrawn }).Count
-    $pa = 0.0
-    foreach ($n in $adm) { if ($n.Paints) { $pa += $n.VisArea } }
-    $sh.paint_frac = [math]::Round([math]::Min(1.0, $pa / $own), 3)
-    # Hardware-composed or filtered: the biggest single lever in composition,
-    # and worth an area rather than a count - one full-screen composed layer
-    # and five small ones are not the same thing.
-    $sh.hwc = @($adm | Where-Object { $_.Hwc }).Count
-    $ha = 0.0
-    foreach ($n in $adm) { if ($n.Hwc) { $ha += $n.VisArea } }
-    $sh.hwc_frac = [math]::Round([math]::Min(1.0, $ha / $own), 3)
-    $sh.hdr       = @($adm | Where-Object { $_.Headroom -gt 1.0 }).Count
-    $dv = @($adm | Where-Object { $_.Drawables -gt 0 } | ForEach-Object { $_.Drawables })
-    $sh.draw_slots = 0.0
-    if ($dv.Count -gt 0) { $sh.draw_slots = [math]::Round((($dv | Measure-Object -Average).Average), 2) }
+
+    $f = { param($x) [math]::Round([math]::Min(1.0, $x / $own), 3) }
+    $sh.text_frac   = (& $f $aText)
+    $sh.image_frac  = (& $f $aImage)
+    $sh.sym_frac    = (& $f $aSym)
+    $sh.blur_frac   = (& $f $aBlur)
+    $sh.shadow_frac = (& $f $aShadow)
+    $sh.corner_frac = (& $f $aCorner)
+    $sh.blend_frac  = (& $f $aBlend)
+    $sh.paint_frac  = (& $f $aPaint)
+    $sh.hwc_frac    = (& $f $aHwc)
+    $sh.tagged      = $nTagged
+    $sh.scroller    = $nScroll
+    $sh.surface_tag = $nSurf
+    $sh.paints      = $nPaints
+    $sh.redrawn     = $nRedrawn
+    $sh.hwc         = $nHwc
+    $sh.hdr         = $nHdr
+    $sh.skipped     = $nSkip
+    $sh.draw_slots  = 0.0
+    if ($dvN -gt 0) { $sh.draw_slots = [math]::Round($dvSum / $dvN, 2) }
 
     # Change, from one read. oldDirty is a rect per node, so how much of this
-    # contributor is repainting is answerable without a previous sample. The
-    # delta against the previous sample is a different and still useful thing;
-    # this is not a replacement for it.
-    $dirty = @($adm | Where-Object { $_.OldDirty -and $_.OldDirty.W -gt 0 } | ForEach-Object { $_.OldDirty })
+    # contributor is repainting is answerable without a previous sample.
     $sh.dirty_frac = 0.0
     if ($dirty.Count -gt 0) {
         $sh.dirty_frac = [math]::Round([math]::Min(1.0, (Get-RegionArea -Rects $dirty) / $own), 3)
     }
-    $sh.skipped = @($adm | Where-Object { $_.Skipped }).Count
 
     # Painted area, and the one number that decides how much this contributor
     # counts in the scene. Not the region it spans: SCBGestureBack20 spans the
@@ -638,7 +657,7 @@ function Measure-RsShape {
 
     # Animation, and what frame rate it asks for. This is the only place in any
     # dump we have found that states an expected frame rate.
-    $an = @($adm | Where-Object { $_.Anim })
+    $an = $anims
     $sh.anim_n = $an.Count
     $sh.anim_forever = @($an | Where-Object { $_.Anim.Repeat -lt 0 }).Count
     $sh.fps_pref = 0
@@ -1109,4 +1128,70 @@ function Get-RsSceneSig {
     $algo.Dispose()
     $hex = (([System.BitConverter]::ToString($raw)) -replace '-','').Substring(0, 16)
     return [PSCustomObject]@{ Hash = ("{0}/{1}-{2}" -f $src.Count, $all.Count, $hex); Big = $big; All = $all }
+}
+
+# A signature straight off the dump text, with no tree and no scene built.
+#
+# The capture loop needs two readings per sample: one to describe the scene
+# and one, after the screenshot, to say whether anything moved while the
+# picture was taken. Only the first is a scene. The second was being produced
+# by running the entire construction again - parse, ownership walk,
+# per-contributor shape, region sweeps - about 1.3s to answer a yes/no
+# question about rects.
+#
+# A scene is one read, processed once. This is the other thing: one regex
+# pass over the raw lines for the absolute rects and the surface names, which
+# is all the comparison ever looks at.
+function Get-RsQuickSig {
+    param([string[]] $Lines)
+
+    $all = New-Object 'System.Collections.Generic.HashSet[string]'
+    $big = New-Object 'System.Collections.Generic.HashSet[string]'
+    if (-not $Lines) { return [PSCustomObject]@{ Hash = ""; Big = $big; All = $all } }
+
+    $g = [double]$script:SigGrid
+    if ($g -lt 1) { $g = 16.0 }
+    $floor = [double]$script:SigBigArea
+    if ($floor -le 0) { $floor = 20.0 }
+    $dispArea = 0.0
+    if ($script:ScreenW -gt 0) { $dispArea = [double]$script:ScreenW * [double]$script:ScreenH }
+
+    $rx   = [regex]'innerAbsDrawRect: \[\s*(-?\d+),\s*(-?\d+),\s*(-?\d+),\s*(-?\d+)\s*\]'
+    $rxNm = [regex]'Name \[([^\]]+)\]'
+    foreach ($l in $Lines) {
+        if ($l -notlike '*NODE[*') { continue }
+        $m = $rx.Match($l)
+        if ($m.Success) {
+            $x = [double]$m.Groups[1].Value; $y = [double]$m.Groups[2].Value
+            $w = [double]$m.Groups[3].Value; $h = [double]$m.Groups[4].Value
+            if ($w -gt 0 -and $h -gt 0) {
+                $k = "{0},{1},{2},{3}" -f `
+                    ([int][math]::Round($x / $g, [System.MidpointRounding]::AwayFromZero)),
+                    ([int][math]::Round($y / $g, [System.MidpointRounding]::AwayFromZero)),
+                    ([int][math]::Round(($x + $w) / $g, [System.MidpointRounding]::AwayFromZero)),
+                    ([int][math]::Round(($y + $h) / $g, [System.MidpointRounding]::AwayFromZero))
+                [void]$all.Add($k)
+                if ($dispArea -gt 1 -and (1000.0 * $w * $h / $dispArea) -ge $floor) { [void]$big.Add($k) }
+            }
+        }
+        if ($l -like '*SURFACE_NODE[*') {
+            $n = $rxNm.Match($l)
+            if ($n.Success) { $tok = "W:" + $n.Groups[1].Value; [void]$all.Add($tok); [void]$big.Add($tok) }
+        }
+    }
+
+    $src = if ($big.Count -gt 0) { $big } else { $all }
+    $sb  = New-Object System.Text.StringBuilder
+    foreach ($k in ($src | Sort-Object)) { [void]$sb.Append($k); [void]$sb.Append(';') }
+    [void]$sb.Append("N:"); [void]$sb.Append([int][math]::Floor($all.Count / 4.0))
+    $algo = [System.Security.Cryptography.MD5]::Create()
+    $raw  = $algo.ComputeHash([System.Text.Encoding]::UTF8.GetBytes($sb.ToString()))
+    $algo.Dispose()
+    $hex = (([System.BitConverter]::ToString($raw)) -replace '-','').Substring(0, 16)
+    return [PSCustomObject]@{ Hash = ("{0}/{1}-{2}" -f $src.Count, $all.Count, $hex); Big = $big; All = $all }
+}
+
+# Just the dump text. The guard does not need a parsed tree.
+function Get-RsTreeText {
+    return @(Invoke-RsDump -Arg 'RSTree')
 }

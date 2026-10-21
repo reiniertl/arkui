@@ -4474,11 +4474,8 @@ function Invoke-Capture {
         # is seven times narrower - and what it compares is display-scoped, so
         # a dialog appearing mid-shot is correctly a change.
         $linesB = $null; $jsonB = ""; $sigB = $null
-        $rsAfter = $null
-        if ($script:CaptureRs) {
-            $pairB = Save-RsSample -Dir $null -Stem $null -TreeOnly
-            if ($pairB) { $rsAfter = Get-RsScene -Tree $pairB.Tree -ClientMap $pairB.Map -Display $script:RsDisplay }
-        }
+        $afterText = $null
+        if ($script:CaptureRs) { $afterText = Get-RsTreeText }
         if ($uitestDue -and -not $script:CaptureRs) {
             $linesB = Get-Tree -Id $fgId
             $jsonB  = $script:LastRawJson
@@ -4489,8 +4486,12 @@ function Invoke-Capture {
         # holdAll is not a verdict at all - the small rects that came and went
         # are animation, and animation is the thing this project exists to
         # correlate with power, so it is recorded rather than judged.
-        $sceneSigA = Get-RsSceneSig -R $rsNow
-        $sceneSigB = Get-RsSceneSig -R $rsAfter
+        # The scene is read once and processed once. The second reading is a
+        # rect comparison, so it is taken off the raw text without building
+        # anything - and the first one's signature is taken the same way, from
+        # the text already in hand, so the two are compared like with like.
+        $sceneSigA = Get-RsQuickSig -Lines $(if ($pair) { $pair.Raw } else { $null })
+        $sceneSigB = Get-RsQuickSig -Lines $afterText
         if ($sceneSigA.Hash -ne "" -and $sceneSigB.Hash -ne "") {
             $holdBig = Get-SetHold $sceneSigA.Big $sceneSigB.Big
             $holdAll = Get-SetHold $sceneSigA.All $sceneSigB.All
