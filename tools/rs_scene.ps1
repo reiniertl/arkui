@@ -438,8 +438,8 @@ function Measure-RsShape {
     if ($own -le 0 -or $mine.Count -eq 0) {
         $sh.nodes = $mine.Count
         $sh.paint_px = 0; $sh.drop_skip = 0; $sh.drop_odd = 0
-        Add-Member -InputObject $sh -NotePropertyName SigAll -NotePropertyValue (New-Object 'System.Collections.Generic.HashSet[string]') -Force
-        Add-Member -InputObject $sh -NotePropertyName SigBig -NotePropertyValue (New-Object 'System.Collections.Generic.HashSet[string]') -Force
+        $sh.SigAll = New-Object 'System.Collections.Generic.HashSet[string]'
+        $sh.SigBig = New-Object 'System.Collections.Generic.HashSet[string]'
         return [PSCustomObject]$sh
     }
 
@@ -623,8 +623,14 @@ function Measure-RsShape {
             [void]$kb.Add($k)
         }
     }
-    Add-Member -InputObject $sh -NotePropertyName SigAll -NotePropertyValue $ka -Force
-    Add-Member -InputObject $sh -NotePropertyName SigBig -NotePropertyValue $kb -Force
+    # Set on the dictionary, not with Add-Member: $sh is still an ordered
+    # dictionary here and becomes a PSCustomObject only at the return, so an
+    # Add-Member property is dropped by that cast. The signature sets came
+    # back empty and the scene hash was built from the contributor names
+    # alone - four tokens for a whole display.
+    # Not a CSV risk: every emitter names its columns explicitly.
+    $sh.SigAll = $ka
+    $sh.SigBig = $kb
 
     # Animation, and what frame rate it asks for. This is the only place in any
     # dump we have found that states an expected frame rate.
