@@ -991,15 +991,32 @@ function Get-RsRowFields {
 # is only exact because nothing moves in between, so they are taken back to
 # back and stored together or not at all.
 function Save-RsSample {
-    param([string] $Dir, [string] $Stem)
+    param([string] $Dir, [string] $Stem, [switch] $TreeOnly)
     $rs = @(Invoke-RsDump -Arg 'RSTree')
-    $cl = @(Invoke-RsDump -Arg 'client')
+    # The read that closes the stillness guard is compared on rects alone, so
+    # it does not need the tag dump: 190ms and a parse saved on every sample.
+    $cl = @()
+    if (-not $TreeOnly) { $cl = @(Invoke-RsDump -Arg 'client') }
     if ($rs.Count -lt 5) { return $null }
     if ($Dir -and $Stem) {
         $rs | Set-Content (Join-Path $Dir "$Stem.rstree.txt")
         $cl | Set-Content (Join-Path $Dir "$Stem.client.txt")
     }
-    return [PSCustomObject]@{ Tree = (ConvertFrom-RsTree -Lines $rs); Map = (ConvertFrom-RsClient -Lines $cl) }
+    # The raw text rides along so a sample can be written to disk later
+    # without dumping the device again. Saving the dumps used to cost a second
+    # full RSTree and client read per kept sample.
+    return [PSCustomObject]@{
+        Tree = (ConvertFrom-RsTree -Lines $rs)
+        Map  = (ConvertFrom-RsClient -Lines $cl)
+        Raw  = $rs; RawClient = $cl
+    }
+}
+
+function Write-RsSample {
+    param($Pair, [string] $Dir, [string] $Stem)
+    if (-not $Pair -or -not $Dir -or -not $Stem) { return }
+    if ($Pair.Raw)       { $Pair.Raw       | Set-Content (Join-Path $Dir "$Stem.rstree.txt") }
+    if ($Pair.RawClient) { $Pair.RawClient | Set-Content (Join-Path $Dir "$Stem.client.txt") }
 }
 
 # Opaque regions keyed by surface NAME, for the window-rect occlusion on the
@@ -1012,10 +1029,18 @@ function Save-RsSample {
 # id look like a join key until the two tables were put side by side. The
 # names are identical in both services, so the name is the join.
 function Get-RsOpaqueByWindow {
-    $rs = @(Invoke-RsDump -Arg 'RSTree')
-    if ($rs.Count -lt 5) { return $null }
-    $tree = ConvertFrom-RsTree -Lines $rs
-    Set-RsOwnership -Tree $tree
+    param($Tree)
+    # The caller usually has a parsed tree already. Dumping and parsing a
+    # second one cost 830ms a sample for a map that the first one can answer -
+    # the capture loop was taking three full RSTree reads per sample where one
+    # will do.
+    $tree = $Tree
+    if (-not $tree) {
+        $rs = @(Invoke-RsDump -Arg 'RSTree')
+        if ($rs.Count -lt 5) { return $null }
+        $tree = ConvertFrom-RsTree -Lines $rs
+        Set-RsOwnership -Tree $tree
+    }
     $byName = @{}
     foreach ($s in $tree.Surfaces) {
         if (-not $s.Name) { continue }

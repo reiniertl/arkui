@@ -4406,9 +4406,18 @@ function Invoke-Capture {
 
     while (((Get-Date) - $t0).TotalSeconds -lt $Seconds) {
         $tick = Get-Date
-        # Read before the window table is resolved, because Set-Occlusion
-        # needs it and runs inside Resolve-Scene.
-        if ($script:CaptureRs) { $script:RsOpaque = Get-RsOpaqueByWindow }
+        # One render-tree read per tick, used twice: Set-Occlusion needs the
+        # opaque regions and runs inside Resolve-Scene, and the scene itself
+        # is built from the same parse. Three separate dumps per sample were
+        # costing 2.5s for one tree.
+        $rsNow = $null; $pair = $null
+        if ($script:CaptureRs) {
+            $pair = Save-RsSample -Dir $null -Stem $null
+            if ($pair) {
+                $rsNow = Get-RsScene -Tree $pair.Tree -ClientMap $pair.Map -Display $script:RsDisplay
+                $script:RsOpaque = Get-RsOpaqueByWindow -Tree $pair.Tree
+            }
+        }
         $table = Get-WindowTable
         if ($table.Count -eq 0) { $failed++; $carry = $null; Start-Sleep -Milliseconds 500; continue }
         $fg = Resolve-Scene -Table $table -Quiet
@@ -4453,12 +4462,6 @@ function Invoke-Capture {
         # instant the layout does. It costs ~0.4s against uitest's ~1.4s, so
         # it does not meaningfully widen the window the stillness guard has
         # to hold across.
-        $rsNow = $null
-        if ($script:CaptureRs) {
-            $pair = Save-RsSample -Dir $null -Stem $null
-            if ($pair) { $rsNow = Get-RsScene -Tree $pair.Tree -ClientMap $pair.Map -Display $script:RsDisplay }
-        }
-
         Invoke-HdcRaw "shell `"rm -f $dev`"" | Out-Null
         Invoke-HdcRaw $script:ShotCmd | Out-Null
 
@@ -4470,7 +4473,7 @@ function Invoke-Capture {
         $linesB = $null; $jsonB = ""; $sigB = $null
         $rsAfter = $null
         if ($script:CaptureRs) {
-            $pairB = Save-RsSample -Dir $null -Stem $null
+            $pairB = Save-RsSample -Dir $null -Stem $null -TreeOnly
             if ($pairB) { $rsAfter = Get-RsScene -Tree $pairB.Tree -ClientMap $pairB.Map -Display $script:RsDisplay }
         }
         if ($uitestDue -and -not $script:CaptureRs) {
@@ -4542,7 +4545,7 @@ function Invoke-Capture {
                     if ([int]$rsNow.Scene.top_win -eq [int]$fgId) { $magree = 2 }
                     elseif ($win -and [int]$rsNow.Scene.top_pid -eq [int]$win.Pid) { $magree = 1 }
                     $mrow | Add-Member -NotePropertyName rs_same_win -NotePropertyValue $magree -Force
-                    [void](Save-RsSample -Dir $session -Stem $mstem)
+                    Write-RsSample -Pair $pair -Dir $session -Stem $mstem
                 }
                 Add-CaptureRow -Row $mrow -Path $rowsCsv
             }
@@ -4634,7 +4637,7 @@ function Invoke-Capture {
             if ([int]$rsNow.Scene.top_win -eq [int]$fgId) { $agree = 2 }
             elseif ($win -and [int]$rsNow.Scene.top_pid -eq [int]$win.Pid) { $agree = 1 }
             $row | Add-Member -NotePropertyName rs_same_win -NotePropertyValue $agree -Force
-            if ($stem) { [void](Save-RsSample -Dir $session -Stem $stem) }
+            if ($stem) { Write-RsSample -Pair $pair -Dir $session -Stem $stem }
         }
         Add-CaptureRow -Row $row -Path $rowsCsv
 
