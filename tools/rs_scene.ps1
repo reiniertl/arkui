@@ -208,7 +208,14 @@ function ConvertFrom-RsTree {
             Dirty    = ($raw -match 'isNodeDirty: 1|isSubTreeDirty: true')
             Skipped  = ($raw -match 'IsSubTreeSkipped: 1')
             Pure     = ($raw -match 'IsPureContainer: true')
-            DrawsOwn = ($raw -match 'hasDrawContent: 1')
+            # Named for what it is, not for what it sounds like. hasDrawContent
+            # is 1 on 15 of 501 nodes, nearly all Text, SymbolGlyph and
+            # TextClock, while every Image reads 0 - so it is not a statement
+            # that the node has content. Best reading: it was re-recorded this
+            # frame. Kept, reported, clustered on by nothing.
+            Redrawn  = ($raw -match 'hasDrawContent: 1')
+            Paints   = $false
+            Slots    = @()
             Hwc      = 0
             Headroom = 1.0
             OldDirty = (Get-RsRectField -Line $raw -Key 'oldDirty')
@@ -291,7 +298,15 @@ function ConvertFrom-RsTree {
         if (-not $m.Success) { continue }
         $id = [long]$m.Groups[2].Value
         if (-not $byId.ContainsKey($id)) { continue }
-        $byId[$id].Drawables = @($m.Groups[3].Value -split ',' | Where-Object { $_.Trim() }).Count
+        $slots = @($m.Groups[3].Value -split ',' | Where-Object { $_.Trim() } | ForEach-Object { [int]$_.Trim() })
+        $byId[$id].Drawables = $slots.Count
+        $byId[$id].Slots     = $slots
+        # Slot 28 is the content pass and slot 29 the children-only pass. Read
+        # off this build: of 244 nodes carrying (24,29,31) every one is a
+        # container - Stack, Row, __Common__ - and of the 40 carrying
+        # (24,28,31) the tags are Image, SymbolGlyph, Canvas and Divider.
+        # Every Image node has 28; not one has hasDrawContent.
+        $byId[$id].Paints    = ($slots -contains 28)
     }
 
     return [PSCustomObject]@{
@@ -501,7 +516,11 @@ function Measure-RsShape {
         foreach ($n in $adm) { if ($n.($pair[1])) { $a += $n.VisArea } }
         $sh[($pair[0] + "_frac")] = [math]::Round([math]::Min(1.0, $a / $own), 3)
     }
-    $sh.draws_own = @($adm | Where-Object { $_.DrawsOwn }).Count
+    $sh.paints  = @($adm | Where-Object { $_.Paints }).Count
+    $sh.redrawn = @($adm | Where-Object { $_.Redrawn }).Count
+    $pa = 0.0
+    foreach ($n in $adm) { if ($n.Paints) { $pa += $n.VisArea } }
+    $sh.paint_frac = [math]::Round([math]::Min(1.0, $pa / $own), 3)
     $sh.hwc       = @($adm | Where-Object { $_.Hwc -gt 0 }).Count
     $sh.hdr       = @($adm | Where-Object { $_.Headroom -gt 1.0 }).Count
     $dv = @($adm | Where-Object { $_.Drawables -gt 0 } | ForEach-Object { $_.Drawables })
@@ -716,7 +735,7 @@ function Get-RsScene {
     if ($wsum -le 0) { $wsum = 1.0 }
     foreach ($f in @('node_den','depth_mean','leaf_frac','fanout','repeat_frac',
                      'text_frac','image_frac','sym_frac','blur_frac','shadow_frac',
-                     'corner_frac','blend_frac','dirty_frac','draw_slots')) {
+                     'corner_frac','blend_frac','dirty_frac','draw_slots','paint_frac')) {
         $v = 0.0
         foreach ($c in $contrib) {
             $x = $c.PSObject.Properties[$f]
@@ -724,7 +743,7 @@ function Get-RsScene {
         }
         $sc[$f] = [math]::Round($v / $wsum, 3)
     }
-    foreach ($f in @('nodes','dropped','drop_skip','drop_odd','repeat_n','scroller','surface_tag','hwc','hdr','anim_n','anim_forever','skipped')) {
+    foreach ($f in @('nodes','dropped','drop_skip','drop_odd','paints','redrawn','repeat_n','scroller','surface_tag','hwc','hdr','anim_n','anim_forever','skipped')) {
         $v = 0
         foreach ($c in $contrib) {
             $x = $c.PSObject.Properties[$f]
@@ -798,6 +817,8 @@ function Show-RsScene {
         $s.node_den, $s.depth_mean, $s.leaf_frac, $s.fanout)
     Write-Host ("  content      text {0}   image {1}   repeat {2}   scrollers {3}   surfaces {4}" -f `
         $s.text_frac, $s.image_frac, $s.repeat_frac, $s.scroller, $s.surface_tag)
+    Write-Host ("  content      paints {0} nodes over {1} of the display   ({2} re-recorded)" -f `
+        $s.paints, $s.paint_frac, $s.redrawn)
     Write-Host ("  cost         blur {0}   shadow {1}   corner {2}   hwc {3}   hdr {4}   slots {5}" -f `
         $s.blur_frac, $s.shadow_frac, $s.corner_frac, $s.hwc, $s.hdr, $s.draw_slots)
     Write-Host ("  motion       dirty {0}   anims {1} ({2} endless)   prefers {3}fps   skipped {4}" -f `
@@ -827,7 +848,7 @@ function Get-RsRowFields {
                      'corner_frac','blend_frac','dirty_frac','draw_slots','nodes',
                      'scroller','surface_tag','hwc','hdr','anim_n','anim_forever',
                      'fps_pref','skipped','rotation','refresh','refresh_max','power','top_weight',
-                     'dropped','admit_frac','drop_skip','drop_odd')) {
+                     'dropped','admit_frac','drop_skip','drop_odd','paints','redrawn','paint_frac')) {
         $p = $s.PSObject.Properties[$f]
         $o["rs_$f"] = if ($p -and $null -ne $p.Value) { $p.Value } else { 0 }
     }

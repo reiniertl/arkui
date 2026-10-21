@@ -86,6 +86,7 @@ FEATURES = [
     ("rs_top_weight",  "unit",    0.7),   # does one of them own the scene
     ("rs_cover_opaque","unit",    0.5),
     ("rs_uncovered",   "unit",    0.5),
+    ("rs_paint_frac",  "unit",    1.0),   # how much of it carries content, not boxes
 ]
 
 # Read, reported, never clustered on.
@@ -120,7 +121,8 @@ HELD_OUT = ("shape", "split_main", "scene", "name", "window", "pid", "described"
             "rs_dirty_frac", "rs_anim_n", "rs_anim_forever", "rs_fps_pref",
             "rs_hwc", "rs_hdr", "rs_draw_slots", "rs_power", "rs_rotation",
             "rs_refresh", "rs_refresh_max", "rs_protected", "rs_skipped", "rs_nodes", "rs_z_span",
-            "rs_dropped", "rs_admit_frac", "rs_drop_skip", "rs_drop_odd")
+            "rs_dropped", "rs_admit_frac", "rs_drop_skip", "rs_drop_odd",
+            "rs_paints", "rs_redrawn")
 
 
 def transform(kind, raw):
