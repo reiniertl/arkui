@@ -4486,18 +4486,26 @@ function Invoke-Capture {
         # it: a second full RSTree was taken after the screenshot purely to
         # ask whether anything had moved.
         #
-        # It does not need asking. oldDirty is a rect on almost every node of
-        # the read we already have, so how much of the display is repainting
-        # comes out of the same sample. That is a better signal than bracketing
-        # the picture: it reports change within the frame rather than change
-        # across two readings taken a second apart.
+        # There is no guard on the render-tree path, and no second read to
+        # run one with.
+        #
+        # oldDirty looked like the answer - a rect on 444 of 506 nodes, free
+        # with the sample - but it is populated whether or not anything moved:
+        # dirty_frac reads 0.99 on a launcher nobody is touching. It is a
+        # renderer flag, not a measure of motion, and using it as one marked
+        # every sample of a still screen as moving.
+        #
+        # So every sample is kept. The guard existed to protect the
+        # SCREENSHOT, which is evidence for the human naming step, not data -
+        # and a picture occasionally caught mid-transition is a smaller cost
+        # than a second full dump on every sample, or than discarding scenes.
+        # jitter carries the dirty share, reported and never judged.
         $sceneSigA = Get-RsQuickSig -Lines $(if ($pair) { $pair.Raw } else { $null })
         if ($sceneSigA.Hash -ne "") {
-            $dirty   = 0.0
-            if ($rsNow) { $dirty = [double]$rsNow.Scene.dirty_frac }
-            $jitter  = [int]([math]::Min(1000.0, $dirty * 1000.0))
-            $holdBig = 1000 - $jitter
-            $holdAll = $holdBig
+            $jitter  = 0
+            if ($rsNow) { $jitter = [int]([math]::Min(1000.0, [double]$rsNow.Scene.dirty_frac * 1000.0)) }
+            $holdBig = 1000
+            $holdAll = 1000
         } else {
             $holdBig = Get-SetHold $sigA.Big $sigB.Big
             $holdAll = Get-SetHold $sigA.All $sigB.All
