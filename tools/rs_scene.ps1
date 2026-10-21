@@ -26,16 +26,33 @@
 # properties, and then RenderServiceUniThread's, which carries shouldPaint_ and
 # DrawableVec. Splitting on that marker is what keeps node counts honest -
 # otherwise every node is counted twice.
+#
+# The marker is a string this build happens to print, so it is a fast path and
+# not the mechanism. The mechanism is that a node id cannot legitimately appear
+# twice in one tree: the first repeat IS where the second pass begins, whatever
+# the header above it says. If a build renames or drops the marker, the split
+# still lands in the right place.
 function Split-RsPasses {
     param([string[]] $Lines)
+
     $cut = -1
+    $seen = @{}
     for ($i = 0; $i -lt $Lines.Count; $i++) {
-        if ($Lines[$i] -match 'RenderServiceUniThread') { $cut = $i; break }
+        $l = $Lines[$i]
+        if ($cut -lt 0 -and $l -match 'RenderServiceUniThread') { $cut = $i; break }
+        $m = [regex]::Match($l, '^\s*\|?\s*[A-Z_]+NODE\[(\d+)\]')
+        if (-not $m.Success) { continue }
+        $id = $m.Groups[1].Value
+        if ($seen.ContainsKey($id)) { $cut = $i; break }
+        $seen[$id] = $true
     }
-    if ($cut -lt 0) { return [PSCustomObject]@{ Main = $Lines; Uni = @() } }
+    if ($cut -lt 0) { return [PSCustomObject]@{ Main = $Lines; Uni = @(); Split = "none" } }
+    $how = "marker"
+    if ($Lines[$cut] -notmatch 'RenderServiceUniThread') { $how = "repeated id" }
     return [PSCustomObject]@{
-        Main = $Lines[0..($cut-1)]
-        Uni  = $Lines[$cut..($Lines.Count-1)]
+        Main  = $Lines[0..($cut-1)]
+        Uni   = $Lines[$cut..($Lines.Count-1)]
+        Split = $how
     }
 }
 
@@ -279,7 +296,7 @@ function ConvertFrom-RsTree {
 
     return [PSCustomObject]@{
         Nodes = $nodes; Surfaces = $surfaces; ById = $byId
-        VsyncId = $vsync; Animating = $animating
+        VsyncId = $vsync; Animating = $animating; Split = $p.Split
     }
 }
 
@@ -626,6 +643,7 @@ function Get-RsScene {
 
     $sc = [ordered]@{
         vsync       = $Tree.VsyncId
+        split       = $Tree.Split
         disp_w      = $dw
         disp_h      = $dh
         density     = $Display.Density
@@ -717,6 +735,9 @@ function Show-RsScene {
     Write-Host "SCENE FROM THE RENDER TREE  [RS]" -ForegroundColor Cyan
     Write-Host ("  display    {0}x{1} @{2}  rot {3}  {4}Hz  power {5}  vsync {6}" -f `
         $s.disp_w, $s.disp_h, $s.density, $s.rotation, $s.refresh, $s.power, $s.vsync) -ForegroundColor DarkGray
+    if ($s.split -ne "marker") {
+        Write-Host ("  NOTE       pass split found by {0}, not by the usual marker" -f $s.split) -ForegroundColor Yellow
+    }
     Write-Host ""
     Write-Host ("  {0,-26} {1,7} {2,7} {3,6} {4,7} {5,7} {6,7}" -f "contributor","weight","nodes","rep","text","image","dirty")
     foreach ($c in ($R.Contributors | Sort-Object { -$_.weight })) {
