@@ -66,7 +66,7 @@ param(
     [switch] $CaptureRs,
     [switch] $NoRsOcclusion,
     [int]    $UitestEvery = 1,
-    [int]    $SceneTol = 900,
+    [int]    $SceneTol = 800,
     [string] $RsFrom,
     [string] $RsSave,
     [string] $RsFps,
