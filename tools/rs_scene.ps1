@@ -834,11 +834,25 @@ function Get-RsScene {
     }
     # The dominant contributor, kept because the roll-up alone cannot say
     # whether one window owns the scene or five share it.
-    $top = $contrib | Sort-Object { -$_.weight } | Select-Object -First 1
+    #
+    # Not simply the biggest painter. On a home screen the wallpaper paints
+    # the whole display and wins that contest every time, so the scene was
+    # reported as SCBWallpaper6 while uitest called the same screen
+    # SCBScenePanel12 - caught by rs_same_win on the first row it ran on.
+    #
+    # The one that owns the scene is the frontmost contributor with real
+    # presence. Low zOrder is nearer the viewer here, and the weight floor
+    # keeps transparent overlays and system bars from taking the title: the
+    # gesture-back layer spans the panel at weight 0.08, and the status bar
+    # is 203 of 2832 rows.
+    $real = @($contrib | Where-Object { $_.weight -ge 0.2 })
+    if ($real.Count -gt 0) { $top = $real | Sort-Object { $_.z } | Select-Object -First 1 }
+    else                   { $top = $contrib | Sort-Object { -$_.weight } | Select-Object -First 1 }
     if ($top) {
         $sc.top_win    = $top.win
         $sc.top_name   = $top.name
         $sc.top_weight = $top.weight
+        $sc.top_z      = $top.z
     }
 
     return [PSCustomObject]@{ Scene = [PSCustomObject]$sc; Contributors = $contrib; Display = $Display }
@@ -876,6 +890,8 @@ function Show-RsScene {
     Write-Host ""
     $admCol = "DarkGray"
     if ($s.drop_odd -gt 0) { $admCol = "Yellow" }
+    Write-Host ("  owner        {0}  (window {1}, weight {2}, z {3})" -f `
+        $s.top_name, $s.top_win, $s.top_weight, $s.top_z) -ForegroundColor Cyan
     Write-Host ("  contributors {0}   z span {1}   opaque cover {2}   uncovered {3}" -f `
         $s.contributors, $s.z_span, $s.cover_opaque, $s.uncovered)
     Write-Host ("  admitted     {0} of {1} ({2})   {3} skipped by the renderer, {4} unexplained" -f `
@@ -922,7 +938,7 @@ function Get-RsRowFields {
                      'scroller','surface_tag','hwc','hdr','anim_n','anim_forever',
                      'fps_pref','skipped','rotation','refresh','refresh_max','power','top_weight',
                      'dropped','admit_frac','drop_skip','drop_odd','paints','redrawn','paint_frac',
-                     'hwc_frac','top_win')) {
+                     'hwc_frac','top_win','top_z')) {
         $p = $s.PSObject.Properties[$f]
         $o["rs_$f"] = if ($p -and $null -ne $p.Value) { $p.Value } else { 0 }
     }
