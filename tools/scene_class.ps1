@@ -4326,10 +4326,41 @@ function Read-CaptureMeta {
     return $kv
 }
 
+# Export-Csv -Append refuses a row that is missing any column the header has,
+# and it refuses the whole row, which ends the capture. That is a hard failure
+# for a soft problem: a row written without a uitest read legitimately has
+# fewer fields than one written with it, and the honest value for the rest is
+# empty.
+#
+# So the header is the contract. It is read once from the file the first row
+# created, and every later row is reconciled against it - missing columns
+# added empty, extra columns left for the next session to pick up. Relying on
+# the first row to have named every column that would ever appear is what
+# ended a 280-second capture six samples in, on win_sig.
 function Add-CaptureRow {
     param($Row, [string] $Path)
-    if (Test-Path $Path) { $Row | Export-Csv -Path $Path -NoTypeInformation -Append }
-    else                 { $Row | Export-Csv -Path $Path -NoTypeInformation }
+    if (-not (Test-Path $Path)) {
+        $Row | Export-Csv -Path $Path -NoTypeInformation
+        $script:CsvHeader = @($Row.PSObject.Properties.Name)
+        return
+    }
+    if (-not $script:CsvHeader) {
+        $first = Get-Content -Path $Path -TotalCount 1
+        if ($first) {
+            $script:CsvHeader = @(($first -split '","') | ForEach-Object { $_.Trim('"') })
+        }
+    }
+    if ($script:CsvHeader) {
+        $have = @{}
+        foreach ($n in $Row.PSObject.Properties.Name) { $have[$n] = $true }
+        foreach ($c in $script:CsvHeader) {
+            if (-not $have.ContainsKey($c)) {
+                Add-Member -InputObject $Row -NotePropertyName $c -NotePropertyValue "" -Force
+            }
+        }
+        $Row = $Row | Select-Object -Property $script:CsvHeader
+    }
+    $Row | Export-Csv -Path $Path -NoTypeInformation -Append
 }
 
 function Invoke-Capture {
@@ -4358,6 +4389,7 @@ function Invoke-Capture {
 
     $t0 = Get-Date
     $idx = 0; $kept = 0; $moved = 0; $dups = 0; $failed = 0; $ticks = 0
+    $script:CsvHeader = $null
     $lastSig = ""
     $keepAt  = 1000 - $Tol
     $mseq    = 0       # moving samples get their own stem series
