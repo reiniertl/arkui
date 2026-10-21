@@ -66,6 +66,7 @@ param(
     [switch] $CaptureRs,
     [switch] $NoRsOcclusion,
     [int]    $UitestEvery = 1,
+    [int]    $SceneTol = 900,
     [string] $RsFrom,
     [string] $RsSave,
     [string] $RsFps,
@@ -101,6 +102,7 @@ $script:LastRawJson = ""
 $script:CaptureRs = $CaptureRs
 $script:RsOpaqueTried = [bool]$NoRsOcclusion
 $script:UitestEvery = $UitestEvery
+$script:SceneTol = $SceneTol
 $script:RsModule = Join-Path $PSScriptRoot "rs_scene.ps1"
 if (Test-Path $script:RsModule) { . $script:RsModule }
 
@@ -4393,6 +4395,7 @@ function Invoke-Capture {
     $t0 = Get-Date
     $idx = 0; $kept = 0; $moved = 0; $dups = 0; $failed = 0; $ticks = 0
     $script:CsvHeader = $null
+    $script:SceneIndex = @()
     $lastSig = ""
     $keepAt  = 1000 - $Tol
     $mseq    = 0       # moving samples get their own stem series
@@ -4600,7 +4603,28 @@ function Invoke-Capture {
         # The signature goes on the row so the clusterer can collapse repeats
         # exactly, and so the number of rows sharing one signature measures
         # how long that screen was actually on screen. Dwell is a weight.
-        $dup = ($keySig -ne "" -and $keySig -eq $lastSig)
+        # Two scenes are the same scene when their big-rect sets agree, not
+        # when their hashes match. A hash is all-or-nothing, and a playing
+        # video moved enough rects between samples that one static screen
+        # produced eleven distinct scenes - while a launcher with a ticking
+        # clock produced six. Neither is a different scene.
+        #
+        # So the comparison is the Jaccard the stillness guard already used,
+        # against every scene seen this session, and a match adopts that
+        # scene's signature so the clusterer collapses them as one.
+        $dup = $false
+        if ($keySig -ne "" -and $sceneSigA.Hash -ne "") {
+            foreach ($prev in $script:SceneIndex) {
+                if ((Get-SetHold $sceneSigA.Big $prev.Big) -ge $script:SceneTol) {
+                    $dup = $true; $keySig = $prev.Sig; break
+                }
+            }
+            if (-not $dup) {
+                $script:SceneIndex += [PSCustomObject]@{ Sig = $keySig; Big = $sceneSigA.Big }
+            }
+        } else {
+            $dup = ($keySig -ne "" -and $keySig -eq $lastSig)
+        }
         $shot = ""
         $stem = ""
         if (-not $dup) {
