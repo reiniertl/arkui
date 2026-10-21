@@ -2007,8 +2007,12 @@ function Get-Features {
                 # Anywhere in the value, not anchored: a style enum spells
                 # off as BlurStyle.NONE or NoMaterial, and an anchored test
                 # reads both as on.
+                # Zero carries a unit on this build: uitest writes blur as
+                # "0.00px" on 51 of 336 nodes and "" on the other 285, and a
+                # zero test anchored on digits alone reads every one of those
+                # 51 as blurred.
                 if ($v -ne "" -and $v -notmatch '(?i)(false|none|null|unset|default|^no$)' -and
-                    $v -notmatch '^0+(\.0+)?$') { return $true }
+                    $v -notmatch '^0+(\.0+)?\s*(px|vp|fp|%)?$') { return $true }
             }
             return $false
         }
@@ -2021,7 +2025,14 @@ function Get-Features {
         $t = $n.Text
         if (& $fxOn $t 'blur')                     { $fxBlur++ }
         if (& $fxOn $t 'shadow')                   { $fxShadow++ }
-        if (& $fxOn $t 'opacity')                  { $fxOpacity++ }
+        # Opacity is not an effect at 1.0, and uitest writes 1.000000 on 333
+        # of 336 nodes - the generic test has no way to know that a full
+        # value means nothing is happening, so it counted the whole tree.
+        $mo = [regex]::Match($t, '(?i)"opacity"\s*:\s*"?([0-9.]+)')
+        if ($mo.Success) {
+            $ov = [double]$mo.Groups[1].Value
+            if ($ov -gt 0.0 -and $ov -lt 0.999) { $fxOpacity++ }
+        } elseif (& $fxOn $t 'opacity')            { $fxOpacity++ }
         if ((& $fxOn $t 'clip') -or (& $fxOn $t 'mask')) { $fxClip++ }
         if (& $fxOn $t 'gradient')                 { $fxGrad++ }
         if ($t -match '(?i)lazyforeach')           { $lazy++ }
