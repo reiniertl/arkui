@@ -360,36 +360,37 @@ function Set-Occlusion {
         Add-Member -InputObject $rr -NotePropertyName Occ -NotePropertyValue $g -Force
     }
 
-    $xs = @(@(0.0, $PanelW) + @($rs | ForEach-Object { $_.L; $_.R }) | Sort-Object -Unique)
-    $ys = @(@(0.0, $PanelH) + @($rs | ForEach-Object { $_.T; $_.B }) | Sort-Object -Unique)
+    # Per window, not per cell. The cell scan walked every window twice for
+    # each of ~4500 cells - 300,000 property reads, and -ListWindows alone
+    # took 9.9 seconds on a display with 33 windows.
+    #
+    # A window's unoccluded area is its rect minus whatever opaque geometry
+    # sits above it, so clip the occluders to the rect and measure their union
+    # with the same sweep Get-RegionArea uses. One sweep per window.
     $area = $PanelW * $PanelH
     $layers = @{}
-    for ($i = 0; $i -lt $xs.Count - 1; $i++) {
-        $cx = ([double]$xs[$i] + [double]$xs[$i+1]) / 2.0
-        for ($j = 0; $j -lt $ys.Count - 1; $j++) {
-            $cy = ([double]$ys[$j] + [double]$ys[$j+1]) / 2.0
-            # Highest z that actually covers this point with something opaque.
-            $zTop = [int]::MinValue
-            foreach ($rr in $rs) {
-                if ($rr.Z -le $zTop) { continue }
-                foreach ($g in $rr.Occ) {
-                    if ($cx -ge $g.X -and $cx -lt ($g.X + $g.W) -and $cy -ge $g.Y -and $cy -lt ($g.Y + $g.H)) {
-                        $zTop = [int]$rr.Z; break
-                    }
+    foreach ($w in $rs) {
+        $wa = ($w.R - $w.L) * ($w.B - $w.T)
+        if ($wa -le 0) { continue }
+        $occ = @()
+        foreach ($o in $rs) {
+            if ($o.Z -le $w.Z) { continue }
+            foreach ($g in $o.Occ) {
+                $l = [math]::Max($w.L, [double]$g.X)
+                $t = [math]::Max($w.T, [double]$g.Y)
+                $r = [math]::Min($w.R, ([double]$g.X + $g.W))
+                $bm = [math]::Min($w.B, ([double]$g.Y + $g.H))
+                if ($r -gt $l -and $bm -gt $t) {
+                    $occ += [PSCustomObject]@{ X=$l; Y=$t; W=($r-$l); H=($bm-$t) }
                 }
             }
-            $cell = ([double]$xs[$i+1] - [double]$xs[$i]) * ([double]$ys[$j+1] - [double]$ys[$j])
-            # Every window whose rect reaches this point and which nothing
-            # opaque sits above can be seen here. Several windows can share a
-            # point now, which is the whole correction: a transparent layer
-            # over a feed no longer hides the feed.
-            foreach ($rr in $rs) {
-                if ($cx -lt $rr.L -or $cx -ge $rr.R -or $cy -lt $rr.T -or $cy -ge $rr.B) { continue }
-                if ($rr.Z -lt $zTop) { continue }
-                $rr.Win.Unocc += $cell / $area
-                $layers[[string]$rr.Win.WinId] = $true
-            }
         }
+        $covered = 0.0
+        if ($occ.Count -gt 0) { $covered = Get-RegionArea -Rects $occ }
+        $vis = $wa - $covered
+        if ($vis -lt 0) { $vis = 0.0 }
+        $w.Win.Unocc = $vis / $area
+        if ($vis -gt 0) { $layers[[string]$w.Win.WinId] = $true }
     }
     return $layers.Count
 }
