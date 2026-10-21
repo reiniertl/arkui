@@ -116,7 +116,7 @@ FEATURES = [
 #   protected, skipped, nodes     reported; nodes is unnormalised and
 #       rs_node_den carries it in a form that transfers across panels.
 HELD_OUT = ("shape", "split_main", "scene", "name", "window", "pid", "described",
-            "jitter", "still", "session", "rs_top_name", "rs_vsync",
+            "jitter", "still", "session", "rs_top_name", "rs_vsync", "rs_fps_scene",
             "rs_blur_frac", "rs_shadow_frac", "rs_corner_frac", "rs_blend_frac",
             "rs_dirty_frac", "rs_anim_n", "rs_anim_forever", "rs_fps_pref",
             "rs_hwc", "rs_hwc_frac", "rs_hdr", "rs_draw_slots", "rs_power", "rs_rotation",

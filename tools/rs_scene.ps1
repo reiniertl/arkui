@@ -576,6 +576,16 @@ function Measure-RsShape {
     $sh.anim_forever = @($an | Where-Object { $_.Anim.Repeat -lt 0 }).Count
     $sh.fps_pref = 0
     foreach ($n in $an) { if ($n.Anim.FpsPref -gt $sh.fps_pref) { $sh.fps_pref = $n.Anim.FpsPref } }
+    # The platform's own name for what kind of scene this animation belongs
+    # to, which is the one thing on the device that is doing our job already.
+    # The value set is not discoverable: UNKNOWN_SCENE appears in no binary
+    # under /system/lib64 on this build. So it is collected rather than
+    # looked up, and the vocabulary accumulates across captures.
+    $sh.fps_scene = ""
+    foreach ($n in $an) {
+        if ($n.Anim.Scene -and $n.Anim.Scene -ne 'UNKNOWN_SCENE') { $sh.fps_scene = $n.Anim.Scene; break }
+        if (-not $sh.fps_scene) { $sh.fps_scene = $n.Anim.Scene }
+    }
 
     return [PSCustomObject]$sh
 }
@@ -781,6 +791,12 @@ function Get-RsScene {
         $x = $c.PSObject.Properties['fps_pref']
         if ($x -and [int]$x.Value -gt $sc.fps_pref) { $sc.fps_pref = [int]$x.Value }
     }
+    $sc.fps_scene = ""
+    foreach ($c in $contrib) {
+        $x = $c.PSObject.Properties['fps_scene']
+        if ($x -and $x.Value -and $x.Value -ne 'UNKNOWN_SCENE') { $sc.fps_scene = $x.Value; break }
+        if ($x -and $x.Value -and -not $sc.fps_scene) { $sc.fps_scene = $x.Value }
+    }
     # The dominant contributor, kept because the roll-up alone cannot say
     # whether one window owns the scene or five share it.
     $top = $contrib | Sort-Object { -$_.weight } | Select-Object -First 1
@@ -837,8 +853,8 @@ function Show-RsScene {
         $s.paints, $s.paint_frac, $s.redrawn)
     Write-Host ("  cost         blur {0}   shadow {1}   corner {2}   hwc area {3}   hdr {4}   slots {5}" -f `
         $s.blur_frac, $s.shadow_frac, $s.corner_frac, $s.hwc_frac, $s.hdr, $s.draw_slots)
-    Write-Host ("  motion       dirty {0}   anims {1} ({2} endless)   prefers {3}fps   skipped {4}" -f `
-        $s.dirty_frac, $s.anim_n, $s.anim_forever, $s.fps_pref, $s.skipped)
+    Write-Host ("  motion       dirty {0}   anims {1} ({2} endless)   prefers {3}fps [{5}]   skipped {4}" -f `
+        $s.dirty_frac, $s.anim_n, $s.anim_forever, $s.fps_pref, $s.skipped, $s.fps_scene)
     if ($s.protected -gt 0) {
         Write-Host ("  PROTECTED    {0} layer(s) - content we are not allowed to see" -f $s.protected) -ForegroundColor Yellow
     }
@@ -873,6 +889,8 @@ function Get-RsRowFields {
     # on the app is how you get one cluster per app instead of one per scene.
     $p = $s.PSObject.Properties['top_name']
     $o["rs_top_name"] = if ($p) { $p.Value } else { "" }
+    $q = $s.PSObject.Properties['fps_scene']
+    $o["rs_fps_scene"] = if ($q) { $q.Value } else { "" }
     $o["rs_vsync"]    = $s.vsync
     return $o
 }
