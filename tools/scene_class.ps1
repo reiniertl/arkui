@@ -4684,7 +4684,11 @@ if ($ListWindows) {
         # share is how big it is; unocc is how much of the panel it actually
         # reaches. A window at 100% share and 0% unocc is completely hidden,
         # and the two columns differing is the whole point of printing both.
-        $un    = if ($null -ne $w.Unocc -and $w.Unocc -ge 0) { "{0}%" -f [int]($w.Unocc * 100 + 0.5) } else { "?" }
+        # Unocc can arrive as a one-element array when the same window object
+        # is reached twice; multiplying an array by 100 repeats it rather than
+        # scaling it, and the cast then fails on the joined string.
+        $uv    = @($w.Unocc)[0]
+        $un    = if ($null -ne $uv -and ([double]$uv) -ge 0) { "{0}%" -f [int](([double]$uv) * 100 + 0.5) } else { "?" }
         $role  = if ($host_ -and $w.WinId -eq $host_.WinId) { "HOST" }
                  elseif ($null -eq $w.Share) { "hidden" }
                  elseif ($w.IsOverlay) { "overlay" } else { "content" }
@@ -4697,12 +4701,13 @@ if ($ListWindows) {
     # can go to a hardware overlay plane and skip GPU composition entirely;
     # the moment a sheet and an IME land on top of it, that path is gone and
     # every frame is blended. That is a power difference no tree can show.
-    $reach = @($table | Where-Object { $null -ne $_.Unocc -and $_.Unocc -ge 0.01 })
-    $topw  = $reach | Sort-Object Unocc -Descending | Select-Object -First 1
+    $reach = @($table | Where-Object { $null -ne $_.Unocc -and ([double]@($_.Unocc)[0]) -ge 0.01 })
+    $topw  = @($reach | Sort-Object { [double]@($_.Unocc)[0] } -Descending)[0]
     Write-Host ("  composition  {0} windows reach the panel" -f $reach.Count) -ForegroundColor Cyan
     if ($topw) {
-        Write-Host ("               largest is {0} at {1}% - {2}" -f $topw.Name, [int]($topw.Unocc * 100 + 0.5),
-                    $(if ($topw.Unocc -ge 0.97) { "one window owns the display" }
+        $tu = [double]@($topw.Unocc)[0]
+        Write-Host ("               largest is {0} at {1}% - {2}" -f $topw.Name, [int]($tu * 100 + 0.5),
+                    $(if ($tu -ge 0.97) { "one window owns the display" }
                       else { "no window owns the display, so every frame is composited" })) -ForegroundColor DarkGray
     }
     if ($script:SceneContext -contains "OVERLAPPING_FULLSCREEN") {
