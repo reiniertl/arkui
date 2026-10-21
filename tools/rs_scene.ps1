@@ -967,3 +967,31 @@ function Save-RsSample {
     }
     return [PSCustomObject]@{ Tree = (ConvertFrom-RsTree -Lines $rs); Map = (ConvertFrom-RsClient -Lines $cl) }
 }
+
+# Opaque regions keyed by window id, for the window-rect occlusion on the
+# uitest path. RenderService names its window surfaces after the window -
+# WindowScene_aweme215, SCBStatusBar25 - so the trailing digits are the join.
+#
+# Note the two services order z oppositely: WindowManagerService puts the top
+# window at the highest z, RenderService at the lowest. Only the geometry
+# crosses over. The ordering stays with whoever is doing the sorting.
+function Get-RsOpaqueByWindow {
+    $rs = @(Invoke-RsDump -Arg 'RSTree')
+    if ($rs.Count -lt 5) { return $null }
+    $tree = ConvertFrom-RsTree -Lines $rs
+    Set-RsOwnership -Tree $tree
+    $byWin = @{}
+    foreach ($s in $tree.Surfaces) {
+        if ($s.WinId -le 0) { continue }
+        # A nested surface carries the app's real opaque region; the window
+        # surface above it often carries none. Both belong to the window.
+        $owner = $s.WinId
+        if ($s.Nested -and $tree.ById.ContainsKey($s.Node.SurfId)) {
+            $o = $tree.ById[$s.Node.SurfId]
+            if ($o.WinId -gt 0) { $owner = $o.WinId }
+        }
+        if (-not $byWin.ContainsKey($owner)) { $byWin[$owner] = @() }
+        $byWin[$owner] += $s.Opq
+    }
+    return $byWin
+}

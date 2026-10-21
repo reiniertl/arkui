@@ -321,6 +321,27 @@ function Set-Occlusion {
     }
     if ($rs.Count -eq 0) { return 0 }
 
+    # What a window OCCLUDES is not its rect. SCBGestureBack20 spans the whole
+    # panel and its opaque region is empty - it is a transparent gesture
+    # layer - so taking rects as occluders reported every content window
+    # underneath it as entirely covered, which is where unocc 0% came from.
+    #
+    # When the render tree has been read this tick, a window's occluding
+    # geometry is its opaque region. When it has not, the rect is all we have
+    # and the old behaviour stands.
+    #
+    # The z ordering stays WindowManagerService's: highest is nearest. Render
+    # Service orders the other way and only its geometry is borrowed.
+    $opq = $script:RsOpaque
+    foreach ($rr in $rs) {
+        $g = $null
+        if ($opq -and $opq.ContainsKey([int]$rr.Win.WinId)) {
+            $g = @($opq[[int]$rr.Win.WinId] | Where-Object { $_ -and $_.W -gt 0 -and $_.H -gt 0 })
+        }
+        if ($null -eq $g) { $g = @([PSCustomObject]@{ X=$rr.L; Y=$rr.T; W=($rr.R-$rr.L); H=($rr.B-$rr.T) }) }
+        Add-Member -InputObject $rr -NotePropertyName Occ -NotePropertyValue $g -Force
+    }
+
     $xs = @(@(0.0, $PanelW) + @($rs | ForEach-Object { $_.L; $_.R }) | Sort-Object -Unique)
     $ys = @(@(0.0, $PanelH) + @($rs | ForEach-Object { $_.T; $_.B }) | Sort-Object -Unique)
     $area = $PanelW * $PanelH
@@ -329,16 +350,26 @@ function Set-Occlusion {
         $cx = ([double]$xs[$i] + [double]$xs[$i+1]) / 2.0
         for ($j = 0; $j -lt $ys.Count - 1; $j++) {
             $cy = ([double]$ys[$j] + [double]$ys[$j+1]) / 2.0
-            $top = $null
+            # Highest z that actually covers this point with something opaque.
+            $zTop = [int]::MinValue
             foreach ($rr in $rs) {
-                if ($cx -ge $rr.L -and $cx -lt $rr.R -and $cy -ge $rr.T -and $cy -lt $rr.B) {
-                    if ($null -eq $top -or $rr.Z -gt $top.Z) { $top = $rr }
+                if ($rr.Z -le $zTop) { continue }
+                foreach ($g in $rr.Occ) {
+                    if ($cx -ge $g.X -and $cx -lt ($g.X + $g.W) -and $cy -ge $g.Y -and $cy -lt ($g.Y + $g.H)) {
+                        $zTop = [int]$rr.Z; break
+                    }
                 }
             }
-            if ($top) {
-                $cell = ([double]$xs[$i+1] - [double]$xs[$i]) * ([double]$ys[$j+1] - [double]$ys[$j])
-                $top.Win.Unocc += $cell / $area
-                $layers[[string]$top.Win.WinId] = $true
+            $cell = ([double]$xs[$i+1] - [double]$xs[$i]) * ([double]$ys[$j+1] - [double]$ys[$j])
+            # Every window whose rect reaches this point and which nothing
+            # opaque sits above can be seen here. Several windows can share a
+            # point now, which is the whole correction: a transparent layer
+            # over a feed no longer hides the feed.
+            foreach ($rr in $rs) {
+                if ($cx -lt $rr.L -or $cx -ge $rr.R -or $cy -lt $rr.T -or $cy -ge $rr.B) { continue }
+                if ($rr.Z -lt $zTop) { continue }
+                $rr.Win.Unocc += $cell / $area
+                $layers[[string]$rr.Win.WinId] = $true
             }
         }
     }
@@ -4320,10 +4351,14 @@ function Invoke-Capture {
     # The display does not change between samples, and reading it per sample
     # would add a dump to every tick for a value that is constant.
     $script:RsDisplay = $null
+    $script:RsOpaque  = $null
     if ($script:CaptureRs) { $script:RsDisplay = Get-RsDisplay }
 
     while (((Get-Date) - $t0).TotalSeconds -lt $Seconds) {
         $tick = Get-Date
+        # Read before the window table is resolved, because Set-Occlusion
+        # needs it and runs inside Resolve-Scene.
+        if ($script:CaptureRs) { $script:RsOpaque = Get-RsOpaqueByWindow }
         $table = Get-WindowTable
         if ($table.Count -eq 0) { $failed++; $carry = $null; Start-Sleep -Milliseconds 500; continue }
         $fg = Resolve-Scene -Table $table -Quiet
