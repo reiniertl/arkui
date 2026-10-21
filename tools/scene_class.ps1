@@ -332,6 +332,16 @@ function Set-Occlusion {
     #
     # The z ordering stays WindowManagerService's: highest is nearest. Render
     # Service orders the other way and only its geometry is borrowed.
+    # Every path that resolves a scene needs this, not just the capture loop:
+    # -ListWindows was still reporting unocc 0% for everything under the
+    # gesture layer because it never populated the map. One dump costs ~200ms
+    # and is cached for the life of the process; the capture loop refreshes it
+    # per tick by setting the variable itself.
+    if ($null -eq $script:RsOpaque -and -not $script:RsOpaqueTried -and
+        (Get-Command Get-RsOpaqueByWindow -ErrorAction SilentlyContinue)) {
+        $script:RsOpaqueTried = $true
+        $script:RsOpaque = Get-RsOpaqueByWindow
+    }
     $opq = $script:RsOpaque
     foreach ($rr in $rs) {
         $g = $null
