@@ -4398,7 +4398,8 @@ function Invoke-Capture {
                         $mrow | Add-Member -NotePropertyName $kv.Key -NotePropertyValue $kv.Value -Force
                     }
                     $magree = 0
-                    if ([int]$rsNow.Scene.top_win -eq [int]$fgId) { $magree = 1 }
+                    if ([int]$rsNow.Scene.top_win -eq [int]$fgId) { $magree = 2 }
+                    elseif ($win -and [int]$rsNow.Scene.top_pid -eq [int]$win.Pid) { $magree = 1 }
                     $mrow | Add-Member -NotePropertyName rs_same_win -NotePropertyValue $magree -Force
                     [void](Save-RsSample -Dir $session -Stem $mstem)
                 }
@@ -4455,8 +4456,17 @@ function Invoke-Capture {
             # render tree through the trailing digits of its surface name.
             # Without this a mismatch is invisible and the comparison the two
             # feature sets exist for is quietly meaningless.
+            # Three states, not two. SceneBoard owns a dozen windows and the
+            # two routes pick different ones on its screens - uitest called the
+            # launcher SCBScenePanel12 while the render tree called it
+            # SCBDesktop8 - which is a different thing from the two routes
+            # looking at different applications.
+            #   2  same window
+            #   1  same process, different window
+            #   0  different process
             $agree = 0
-            if ([int]$rsNow.Scene.top_win -eq [int]$fgId) { $agree = 1 }
+            if ([int]$rsNow.Scene.top_win -eq [int]$fgId) { $agree = 2 }
+            elseif ($win -and [int]$rsNow.Scene.top_pid -eq [int]$win.Pid) { $agree = 1 }
             $row | Add-Member -NotePropertyName rs_same_win -NotePropertyValue $agree -Force
             if ($stem) { [void](Save-RsSample -Dir $session -Stem $stem) }
         }

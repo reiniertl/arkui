@@ -853,6 +853,7 @@ function Get-RsScene {
         $sc.top_name   = $top.name
         $sc.top_weight = $top.weight
         $sc.top_z      = $top.z
+        $sc.top_pid    = $top.pid
     }
 
     return [PSCustomObject]@{ Scene = [PSCustomObject]$sc; Contributors = $contrib; Display = $Display }
@@ -938,7 +939,7 @@ function Get-RsRowFields {
                      'scroller','surface_tag','hwc','hdr','anim_n','anim_forever',
                      'fps_pref','skipped','rotation','refresh','refresh_max','power','top_weight',
                      'dropped','admit_frac','drop_skip','drop_odd','paints','redrawn','paint_frac',
-                     'hwc_frac','top_win','top_z')) {
+                     'hwc_frac','top_win','top_z','top_pid')) {
         $p = $s.PSObject.Properties[$f]
         $o["rs_$f"] = if ($p -and $null -ne $p.Value) { $p.Value } else { 0 }
     }
