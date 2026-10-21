@@ -4397,6 +4397,9 @@ function Invoke-Capture {
                     foreach ($kv in (Get-RsRowFields -R $rsNow).GetEnumerator()) {
                         $mrow | Add-Member -NotePropertyName $kv.Key -NotePropertyValue $kv.Value -Force
                     }
+                    $magree = 0
+                    if ([int]$rsNow.Scene.top_win -eq [int]$fgId) { $magree = 1 }
+                    $mrow | Add-Member -NotePropertyName rs_same_win -NotePropertyValue $magree -Force
                     [void](Save-RsSample -Dir $session -Stem $mstem)
                 }
                 Add-CaptureRow -Row $mrow -Path $rowsCsv
@@ -4445,6 +4448,16 @@ function Invoke-Capture {
             foreach ($kv in (Get-RsRowFields -R $rsNow).GetEnumerator()) {
                 $row | Add-Member -NotePropertyName $kv.Key -NotePropertyValue $kv.Value -Force
             }
+            # The two routes do not join node for node - 38% tag agreement on
+            # a static screen - so the row carries two descriptions that are
+            # only comparable if they described the same screen. The window id
+            # is the one thing both name: uitest through hostWindowId, the
+            # render tree through the trailing digits of its surface name.
+            # Without this a mismatch is invisible and the comparison the two
+            # feature sets exist for is quietly meaningless.
+            $agree = 0
+            if ([int]$rsNow.Scene.top_win -eq [int]$fgId) { $agree = 1 }
+            $row | Add-Member -NotePropertyName rs_same_win -NotePropertyValue $agree -Force
             if ($stem) { [void](Save-RsSample -Dir $session -Stem $stem) }
         }
         Add-CaptureRow -Row $row -Path $rowsCsv

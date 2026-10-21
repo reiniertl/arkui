@@ -122,7 +122,7 @@ HELD_OUT = ("shape", "split_main", "scene", "name", "window", "pid", "described"
             "rs_hwc", "rs_hwc_frac", "rs_hdr", "rs_draw_slots", "rs_power", "rs_rotation",
             "rs_refresh", "rs_refresh_max", "rs_protected", "rs_skipped", "rs_nodes", "rs_z_span",
             "rs_dropped", "rs_admit_frac", "rs_drop_skip", "rs_drop_odd",
-            "rs_paints", "rs_redrawn")
+            "rs_paints", "rs_redrawn", "rs_same_win", "rs_top_win")
 
 
 def transform(kind, raw):

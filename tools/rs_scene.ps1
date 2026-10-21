@@ -922,7 +922,7 @@ function Get-RsRowFields {
                      'scroller','surface_tag','hwc','hdr','anim_n','anim_forever',
                      'fps_pref','skipped','rotation','refresh','refresh_max','power','top_weight',
                      'dropped','admit_frac','drop_skip','drop_odd','paints','redrawn','paint_frac',
-                     'hwc_frac')) {
+                     'hwc_frac','top_win')) {
         $p = $s.PSObject.Properties[$f]
         $o["rs_$f"] = if ($p -and $null -ne $p.Value) { $p.Value } else { 0 }
     }
