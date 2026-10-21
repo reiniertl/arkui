@@ -629,7 +629,7 @@ function Get-RsScene {
         }
         $sc[$f] = [math]::Round($v / $wsum, 3)
     }
-    foreach ($f in @('nodes','repeat_n','scroller','surface_tag','hwc','hdr','anim_n','anim_forever','skipped')) {
+    foreach ($f in @('nodes','dropped','repeat_n','scroller','surface_tag','hwc','hdr','anim_n','anim_forever','skipped')) {
         $v = 0
         foreach ($c in $contrib) {
             $x = $c.PSObject.Properties[$f]
@@ -637,6 +637,15 @@ function Get-RsScene {
         }
         $sc[$f] = $v
     }
+    # How much of the tree actually made it into the scene. A node is dropped
+    # when it has no innerAbsDrawRect, or when its rect falls outside what the
+    # compositor says is visible. 52 of 485 nodes had no absolute rect on the
+    # capture this was built against, and a scene computed from 60% of its
+    # nodes used to be indistinguishable from one computed from all of them.
+    $seen = [double]($sc.nodes + $sc.dropped)
+    $sc.admit_frac = 1.0
+    if ($seen -gt 0) { $sc.admit_frac = [math]::Round($sc.nodes / $seen, 3) }
+
     $sc.fps_pref = 0
     foreach ($c in $contrib) {
         $x = $c.PSObject.Properties['fps_pref']
@@ -681,8 +690,12 @@ function Show-RsScene {
             $nm, $c.weight, $c.nodes, $c.repeat_n, $c.text_frac, $c.image_frac, $c.dirty_frac)
     }
     Write-Host ""
+    $admCol = "DarkGray"
+    if ($s.admit_frac -lt 0.8) { $admCol = "Yellow" }
     Write-Host ("  contributors {0}   z span {1}   opaque cover {2}   uncovered {3}" -f `
         $s.contributors, $s.z_span, $s.cover_opaque, $s.uncovered)
+    Write-Host ("  admitted     {0} of {1} nodes ({2})   dropped: no rect, or outside the visible region" -f `
+        $s.nodes, ($s.nodes + $s.dropped), $s.admit_frac) -ForegroundColor $admCol
     Write-Host ("  weighted     nodes/1000vp2 {0}   depth {1}   leaf {2}   fanout {3}" -f `
         $s.node_den, $s.depth_mean, $s.leaf_frac, $s.fanout)
     Write-Host ("  content      text {0}   image {1}   repeat {2}   scrollers {3}   surfaces {4}" -f `
@@ -715,7 +728,8 @@ function Get-RsRowFields {
                      'text_frac','image_frac','sym_frac','blur_frac','shadow_frac',
                      'corner_frac','blend_frac','dirty_frac','draw_slots','nodes',
                      'scroller','surface_tag','hwc','hdr','anim_n','anim_forever',
-                     'fps_pref','skipped','rotation','refresh','power','top_weight')) {
+                     'fps_pref','skipped','rotation','refresh','power','top_weight',
+                     'dropped','admit_frac')) {
         $p = $s.PSObject.Properties[$f]
         $o["rs_$f"] = if ($p -and $null -ne $p.Value) { $p.Value } else { 0 }
     }
