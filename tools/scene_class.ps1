@@ -64,6 +64,7 @@ param(
     [switch] $RsProbe,
     [switch] $RsScene,
     [switch] $CaptureRs,
+    [switch] $NoRsOcclusion,
     [int]    $UitestEvery = 1,
     [string] $RsFrom,
     [string] $RsSave,
@@ -98,6 +99,7 @@ $script:LastRawJson = ""
 # with everything above, and keeping it separate makes clear that it is a
 # second, independent route to the scene rather than a layer on the first.
 $script:CaptureRs = $CaptureRs
+$script:RsOpaqueTried = [bool]$NoRsOcclusion
 $script:UitestEvery = $UitestEvery
 $script:RsModule = Join-Path $PSScriptRoot "rs_scene.ps1"
 if (Test-Path $script:RsModule) { . $script:RsModule }
