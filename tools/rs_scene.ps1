@@ -548,7 +548,11 @@ function Measure-RsShape {
     foreach ($pair in @(@('text','Text'), @('image','Image'), @('sym','SymbolGlyph'))) {
         $a = 0.0
         foreach ($n in $adm) { if ($n.Tag -eq $pair[1]) { $a += $n.VisArea } }
-        $sh[($pair[0] + "_frac")] = [math]::Round($a / $own, 3)
+        # Clamped. A node's visible area is clipped to its contributor's
+        # region, but several tagged nodes can overlap the same pixels - a
+        # Text over an Image over a background - so the sum can exceed the
+        # area they sit in. A clock screen reported image_frac 1.28.
+        $sh[($pair[0] + "_frac")] = [math]::Round([math]::Min(1.0, $a / $own), 3)
     }
     $sh.tagged = @($adm | Where-Object { $_.Tag }).Count
     $container = @('List','Grid','Swiper','Scroll','Tabs','WaterFlow','Navigation')
