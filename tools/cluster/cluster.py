@@ -73,8 +73,12 @@ FEATURES = [
 # the tree churned between the two dumps that bracketed the screenshot: a
 # measure of animation, which belongs beside a cluster rather than inside the
 # definition of one. A still list and an animating list are the same shape.
+# rs_top_name identifies the app, and clustering on the app gives one cluster
+# per app instead of one per scene - the mistake this whole pipeline exists to
+# avoid. rs_vsync is a frame counter: monotonic, so it would order the rows by
+# capture time and nothing else.
 HELD_OUT = ("shape", "split_main", "scene", "name", "window", "pid", "described",
-            "jitter", "still", "session")
+            "jitter", "still", "session", "rs_top_name", "rs_vsync")
 
 
 def transform(kind, raw):

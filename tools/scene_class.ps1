@@ -63,6 +63,7 @@ param(
     [switch] $Attrs,
     [switch] $RsProbe,
     [switch] $RsScene,
+    [switch] $CaptureRs,
     [string] $RsFrom,
     [string] $RsSave,
     [string] $RsFps,
@@ -95,6 +96,7 @@ $script:LastRawJson = ""
 # The render-tree path lives in its own file: it shares only Invoke-HdcRaw
 # with everything above, and keeping it separate makes clear that it is a
 # second, independent route to the scene rather than a layer on the first.
+$script:CaptureRs = $CaptureRs
 $script:RsModule = Join-Path $PSScriptRoot "rs_scene.ps1"
 if (Test-Path $script:RsModule) { . $script:RsModule }
 
@@ -4304,6 +4306,10 @@ function Invoke-Capture {
     # exactly what dump A of the next sample would be. Carrying it halves the
     # cost of a retry, and a uitest dump is the slowest thing in this loop.
     $carry = $null
+    # The display does not change between samples, and reading it per sample
+    # would add a dump to every tick for a value that is constant.
+    $script:RsDisplay = $null
+    if ($script:CaptureRs) { $script:RsDisplay = Get-RsDisplay }
 
     while (((Get-Date) - $t0).TotalSeconds -lt $Seconds) {
         $tick = Get-Date
@@ -4333,6 +4339,16 @@ function Invoke-Capture {
             Write-Host ("{0,5}  {1,-8} {2,-10} {3,-22} {4}" -f $idx, "empty", "-", "-", "no usable dump") -ForegroundColor DarkGray
             Start-Sleep -Milliseconds 500
             continue
+        }
+
+        # Taken here, beside dump A, so the render tree describes the same
+        # instant the layout does. It costs ~0.4s against uitest's ~1.4s, so
+        # it does not meaningfully widen the window the stillness guard has
+        # to hold across.
+        $rsNow = $null
+        if ($script:CaptureRs) {
+            $pair = Save-RsSample -Dir $null -Stem $null
+            if ($pair) { $rsNow = Get-RsScene -Tree $pair.Tree -ClientMap $pair.Map -Display $script:RsDisplay }
         }
 
         Invoke-HdcRaw "shell `"rm -f $dev`"" | Out-Null
@@ -4377,6 +4393,12 @@ function Invoke-Capture {
                 $mrow | Add-Member -NotePropertyName shot   -NotePropertyValue "" -Force
                 $mrow | Add-Member -NotePropertyName jitter -NotePropertyValue $jitter -Force
                 $mrow | Add-Member -NotePropertyName still  -NotePropertyValue $holdBig -Force
+                if ($rsNow) {
+                    foreach ($kv in (Get-RsRowFields -R $rsNow).GetEnumerator()) {
+                        $mrow | Add-Member -NotePropertyName $kv.Key -NotePropertyValue $kv.Value -Force
+                    }
+                    [void](Save-RsSample -Dir $session -Stem $mstem)
+                }
                 Add-CaptureRow -Row $mrow -Path $rowsCsv
             }
             Write-Host ("{0,5}  {1,-8} {2,-10} {3,-22} {4}" -f $idx, "moving", $mshape, $name,
@@ -4419,6 +4441,12 @@ function Invoke-Capture {
         $row | Add-Member -NotePropertyName shot   -NotePropertyValue $shot -Force
         $row | Add-Member -NotePropertyName jitter -NotePropertyValue $jitter -Force
         $row | Add-Member -NotePropertyName still  -NotePropertyValue $holdBig -Force
+        if ($rsNow) {
+            foreach ($kv in (Get-RsRowFields -R $rsNow).GetEnumerator()) {
+                $row | Add-Member -NotePropertyName $kv.Key -NotePropertyValue $kv.Value -Force
+            }
+            if ($stem) { [void](Save-RsSample -Dir $session -Stem $stem) }
+        }
         Add-CaptureRow -Row $row -Path $rowsCsv
 
         if (-not $dup) {

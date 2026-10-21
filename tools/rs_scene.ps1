@@ -659,3 +659,45 @@ function Show-RsScene {
     Write-Host "  the usable display. A split-screen chat and a full-screen one have the" -ForegroundColor DarkGray
     Write-Host "  same shape and different weight, which is the point." -ForegroundColor DarkGray
 }
+
+# Flatten the scene vector for the CSV. Prefixed rs_ so a row carries both
+# routes side by side: the uitest features that the existing class set was
+# measured on, and these. Nothing is replaced until the clustering says the
+# new columns separate scenes better than the old ones, and that comparison
+# is only possible if both are in the same row.
+function Get-RsRowFields {
+    param($R)
+    $o = [ordered]@{}
+    if (-not $R) { return $o }
+    $s = $R.Scene
+    foreach ($f in @('contributors','z_span','cover_opaque','uncovered','protected',
+                     'node_den','depth_mean','leaf_frac','fanout','repeat_frac','repeat_n',
+                     'text_frac','image_frac','sym_frac','blur_frac','shadow_frac',
+                     'corner_frac','blend_frac','dirty_frac','draw_slots','nodes',
+                     'scroller','surface_tag','hwc','hdr','anim_n','anim_forever',
+                     'fps_pref','skipped','rotation','refresh','power','top_weight')) {
+        $p = $s.PSObject.Properties[$f]
+        $o["rs_$f"] = if ($p -and $null -ne $p.Value) { $p.Value } else { 0 }
+    }
+    # Names are held out of clustering - they identify the app, and clustering
+    # on the app is how you get one cluster per app instead of one per scene.
+    $p = $s.PSObject.Properties['top_name']
+    $o["rs_top_name"] = if ($p) { $p.Value } else { "" }
+    $o["rs_vsync"]    = $s.vsync
+    return $o
+}
+
+# The two RenderService dumps for one sample, saved raw. The join between them
+# is only exact because nothing moves in between, so they are taken back to
+# back and stored together or not at all.
+function Save-RsSample {
+    param([string] $Dir, [string] $Stem)
+    $rs = @(Invoke-RsDump -Arg 'RSTree')
+    $cl = @(Invoke-RsDump -Arg 'client')
+    if ($rs.Count -lt 5) { return $null }
+    if ($Dir -and $Stem) {
+        $rs | Set-Content (Join-Path $Dir "$Stem.rstree.txt")
+        $cl | Set-Content (Join-Path $Dir "$Stem.client.txt")
+    }
+    return [PSCustomObject]@{ Tree = (ConvertFrom-RsTree -Lines $rs); Map = (ConvertFrom-RsClient -Lines $cl) }
+}
