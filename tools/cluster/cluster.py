@@ -66,6 +66,26 @@ FEATURES = [
     ("cover_web",     "permille", 0.7),
     ("cover_xc",      "permille", 0.7),
     ("cover_emb",     "permille", 0.7),
+
+    # ---- from the render tree -------------------------------------------
+    # Structure only. What a scene costs and how it moves are read off the
+    # same dump and reported beside the cluster, not folded into what makes
+    # two screens the same kind of screen.
+    ("rs_repeat_frac", "unit",    1.0),   # how much of the display repeats
+    ("rs_repeat_n",    "log1p",   0.7),
+    ("rs_text_frac",   "unit",    1.0),   # a form and a player differ here most
+    ("rs_image_frac",  "unit",    1.0),
+    ("rs_sym_frac",    "unit",    0.5),   # glyph chrome: bars, tool rows
+    ("rs_surface_tag", "clip4",   1.0),   # a video or web surface in the scene
+    ("rs_scroller",    "clip4",   0.7),   # List, Grid, Swiper, Scroll, Tabs
+    ("rs_leaf_frac",   "unit",    0.7),   # deep and sparse vs shallow and dense
+    ("rs_fanout",      "log1p",   0.7),
+    ("rs_depth_mean",  "log1p",   0.7),
+    ("rs_node_den",    "log1p",   1.0),   # nodes per 1000 vp2, so it transfers
+    ("rs_contributors","clip4",   0.7),   # one window, or five sharing a display
+    ("rs_top_weight",  "unit",    0.7),   # does one of them own the scene
+    ("rs_cover_opaque","unit",    0.5),
+    ("rs_uncovered",   "unit",    0.5),
 ]
 
 # Read, reported, never clustered on.
@@ -77,8 +97,29 @@ FEATURES = [
 # per app instead of one per scene - the mistake this whole pipeline exists to
 # avoid. rs_vsync is a frame counter: monotonic, so it would order the rows by
 # capture time and nothing else.
+#
+# The render-tree columns that are read but not clustered on, and why each
+# one is kept out:
+#
+#   blur, shadow, corner, blend   house style. The design-language alarm
+#       already fires when apps separate by how they look rather than by how
+#       they are built; clustering on an app's corner radius is that mistake
+#       written into the feature table.
+#   dirty, anim, forever, fps     the scene in time. A still list and an
+#       animating list are the same shape - the same argument that keeps
+#       jitter out. These are modifiers on a class, not part of one.
+#   hwc, hdr, draw_slots, power   what the scene costs. Consequences of the
+#       structure, and the thing the class set is meant to predict. Folding
+#       them in would be clustering on the answer.
+#   rotation, refresh             device state, constant across a session.
+#   protected, skipped, nodes     reported; nodes is unnormalised and
+#       rs_node_den carries it in a form that transfers across panels.
 HELD_OUT = ("shape", "split_main", "scene", "name", "window", "pid", "described",
-            "jitter", "still", "session", "rs_top_name", "rs_vsync")
+            "jitter", "still", "session", "rs_top_name", "rs_vsync",
+            "rs_blur_frac", "rs_shadow_frac", "rs_corner_frac", "rs_blend_frac",
+            "rs_dirty_frac", "rs_anim_n", "rs_anim_forever", "rs_fps_pref",
+            "rs_hwc", "rs_hdr", "rs_draw_slots", "rs_power", "rs_rotation",
+            "rs_refresh", "rs_protected", "rs_skipped", "rs_nodes", "rs_z_span")
 
 
 def transform(kind, raw):
@@ -100,6 +141,10 @@ def transform(kind, raw):
         return min(v, 4.0)
     if kind == "flag":
         return 1.0 if v else 0.0
+    if kind == "unit":
+        # Already a fraction of the display or of a contributor. The render
+        # tree path emits fractions directly; the uitest path emits permille.
+        return min(max(v, 0.0), 1.0)
     raise ValueError(kind)
 
 
