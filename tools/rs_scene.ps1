@@ -1159,7 +1159,9 @@ function Get-RsQuickSig {
     $rx   = [regex]'innerAbsDrawRect: \[\s*(-?\d+),\s*(-?\d+),\s*(-?\d+),\s*(-?\d+)\s*\]'
     $rxNm = [regex]'Name \[([^\]]+)\]'
     foreach ($l in $Lines) {
-        if ($l -notlike '*NODE[*') { continue }
+        # Contains, not -like: '[' opens a character class in a wildcard
+        # pattern, and '*NODE[*' is not a valid one.
+        if (-not $l.Contains('NODE[')) { continue }
         $m = $rx.Match($l)
         if ($m.Success) {
             $x = [double]$m.Groups[1].Value; $y = [double]$m.Groups[2].Value
@@ -1174,7 +1176,7 @@ function Get-RsQuickSig {
                 if ($dispArea -gt 1 -and (1000.0 * $w * $h / $dispArea) -ge $floor) { [void]$big.Add($k) }
             }
         }
-        if ($l -like '*SURFACE_NODE[*') {
+        if ($l.Contains('SURFACE_NODE[')) {
             $n = $rxNm.Match($l)
             if ($n.Success) { $tok = "W:" + $n.Groups[1].Value; [void]$all.Add($tok); [void]$big.Add($tok) }
         }
