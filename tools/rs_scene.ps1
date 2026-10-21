@@ -485,16 +485,40 @@ function Measure-RsShape {
     # Repeats are the single strongest structural signal we have: a gallery, a
     # feed and an icon grid differ from a player and a form mainly in how many
     # same-sized things they show. Sized in vp so the group survives scaling.
+    # Two rules this had wrong, both found by printing the winner next to a
+    # screenshot of the screen it came from.
+    #
+    # It took the group with the most members, so on a video player it chose
+    # four labels at 34x23 vp over the five-item action rail and the five-item
+    # nav bar that dominate the screen. The group that matters is the one that
+    # covers the most, not the one that counts the most: a feed is many cards
+    # covering most of the display, and four glyphs are not a feed whatever
+    # their count.
+    #
+    # And the floor was 24 raw pixels - 7 vp on this panel - which let glyph
+    # fragments form groups at all. The runner-up on the same screen was four
+    # leaves of 376x732 vp, i.e. four full-screen boxes stacked: that is
+    # layering, not repetition, so near-full-screen members are excluded too.
+    $minVp = 12.0
     $grp = @{}
     foreach ($n in $leaves) {
-        if ($n.Abs.W -lt 24 -or $n.Abs.H -lt 24) { continue }
-        $k = ("{0}x{1}" -f [int]([math]::Round($n.Abs.W / $Density)), [int]([math]::Round($n.Abs.H / $Density)))
+        $wv = $n.Abs.W / $Density; $hv = $n.Abs.H / $Density
+        if ($wv -lt $minVp -or $hv -lt $minVp) { continue }
+        if ($n.VisArea -gt (0.6 * $own)) { continue }
+        $k = ("{0}x{1}" -f [int]([math]::Round($wv)), [int]([math]::Round($hv)))
         if (-not $grp.ContainsKey($k)) { $grp[$k] = @() }
         $grp[$k] += $n
     }
-    $best = $null
+    $score = @{}
     foreach ($k in $grp.Keys) {
-        if ($null -eq $best -or $grp[$k].Count -gt $grp[$best].Count) { $best = $k }
+        if ($grp[$k].Count -lt 2) { continue }
+        $a = 0.0
+        foreach ($n in $grp[$k]) { $a += $n.VisArea }
+        $score[$k] = $a
+    }
+    $best = $null
+    foreach ($k in $score.Keys) {
+        if ($null -eq $best -or $score[$k] -gt $score[$best]) { $best = $k }
     }
     $sh.repeat_n = 0; $sh.repeat_size = ""; $sh.repeat_frac = 0.0; $sh.repeat_2nd = ""
     if ($best -and $grp[$best].Count -gt 1) {
@@ -507,9 +531,9 @@ function Measure-RsShape {
         # screenshot: a rail of five and a nav bar of five are both real, and
         # knowing only that the answer was "five" says nothing about which.
         $second = $null
-        foreach ($k in $grp.Keys) {
+        foreach ($k in $score.Keys) {
             if ($k -eq $best) { continue }
-            if ($null -eq $second -or $grp[$k].Count -gt $grp[$second].Count) { $second = $k }
+            if ($null -eq $second -or $score[$k] -gt $score[$second]) { $second = $k }
         }
         if ($second -and $grp[$second].Count -gt 1) {
             $sh.repeat_2nd = ("{0} x{1}" -f $second, $grp[$second].Count)
