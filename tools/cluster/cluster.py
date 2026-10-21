@@ -377,9 +377,9 @@ def main():
               % (len(moving), len(raw), 100.0 * len(moving) / len(raw)))
 
     rows = dedupe(settled)
-    print("  %d distinct screens (deduplicated by layout signature)" % len(rows))
+    print("  %d distinct scenes (deduplicated by scene signature)" % len(rows))
     if len(rows) < 10:
-        sys.exit("too few distinct screens to cluster. Capture more.")
+        sys.exit("too few distinct scenes to cluster. Capture more.")
 
     Z, dead, fit = build_matrix(rows)
     if dead.any():
@@ -591,7 +591,22 @@ def blind_spots(rows, clusters):
     xc = [r for r in rows if pm(r, "cover_xc") >= 500]
     emb = [r for r in rows if pm(r, "cover_emb") >= 500]
     opaque = [r for r in rows if pm(r, "cover_web") + pm(r, "cover_xc") + pm(r, "cover_emb") >= 500]
-    thin = [r for r in rows if float(r.get("total") or 0) < 15]
+    # `total` is a uitest measurement and uitest now runs on a cadence, so on
+    # a render-tree-only row it is empty - and an empty string read as 0 made
+    # every such row look like a dump with no nodes in it. Five of ten scenes
+    # were reported that way on a session where the thinnest carried 151.
+    # Count a row only when the measurement that decides it was actually
+    # taken, and prefer the render tree's own count when it is there.
+    def _nodes(r):
+        v = r.get("rs_nodes")
+        if v not in (None, ""):
+            return float(v)
+        v = r.get("total")
+        if v in (None, ""):
+            return None
+        return float(v)
+
+    thin = [r for r in rows if (_nodes(r) is not None and _nodes(r) < 15)]
 
     # A cluster tight in feature space but mixed in hand-label is the worse
     # failure: ArkUI cannot tell apart screens that look different.
@@ -719,7 +734,7 @@ def report(clusters, rows, sil, flagged):
             print("  list was written before any data existed; this is the data.")
 
     b = blind_spots(rows, clusters)
-    print("\nwhere ArkUI is blind, over %d distinct screens:" % b["n"])
+    print("\nwhere ArkUI is blind, over %d distinct scenes:" % b["n"])
     print("  %d (%.0f%%) describable from the tree alone"
           % (b["describable"], 100.0 * b["describable"] / max(1, b["n"])))
     print("  %d mostly behind a Web region      - recoverable in-process by an ArkWeb producer"
