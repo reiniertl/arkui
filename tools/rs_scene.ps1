@@ -913,6 +913,8 @@ function Show-RsScene {
     Write-Host ""
     $admCol = "DarkGray"
     if ($s.drop_odd -gt 0) { $admCol = "Yellow" }
+    $sg = Get-RsSceneSig -R $R
+    Write-Host ("  scene sig    {0}" -f $sg.Hash) -ForegroundColor DarkGray
     Write-Host ("  owner        {0}  (window {1}, weight {2}, z {3})" -f `
         $s.top_name, $s.top_win, $s.top_weight, $s.top_z) -ForegroundColor Cyan
     Write-Host ("  contributors {0}   z span {1}   opaque cover {2}   uncovered {3}" -f `
