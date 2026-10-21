@@ -496,13 +496,24 @@ function Measure-RsShape {
     foreach ($k in $grp.Keys) {
         if ($null -eq $best -or $grp[$k].Count -gt $grp[$best].Count) { $best = $k }
     }
-    $sh.repeat_n = 0; $sh.repeat_size = ""; $sh.repeat_frac = 0.0
+    $sh.repeat_n = 0; $sh.repeat_size = ""; $sh.repeat_frac = 0.0; $sh.repeat_2nd = ""
     if ($best -and $grp[$best].Count -gt 1) {
         $ra = 0.0
         foreach ($n in $grp[$best]) { $ra += $n.VisArea }
         $sh.repeat_n    = $grp[$best].Count
         $sh.repeat_size = $best
         $sh.repeat_frac = [math]::Round($ra / $own, 3)
+        # The runner-up, because the winner alone cannot be checked against a
+        # screenshot: a rail of five and a nav bar of five are both real, and
+        # knowing only that the answer was "five" says nothing about which.
+        $second = $null
+        foreach ($k in $grp.Keys) {
+            if ($k -eq $best) { continue }
+            if ($null -eq $second -or $grp[$k].Count -gt $grp[$second].Count) { $second = $k }
+        }
+        if ($second -and $grp[$second].Count -gt 1) {
+            $sh.repeat_2nd = ("{0} x{1}" -f $second, $grp[$second].Count)
+        }
     }
 
     # Area by component kind. Area, not count, because one full-bleed Image is
@@ -849,6 +860,12 @@ function Show-RsScene {
         $s.node_den, $s.depth_mean, $s.leaf_frac, $s.fanout)
     Write-Host ("  content      text {0}   image {1}   repeat {2}   scrollers {3}   surfaces {4}" -f `
         $s.text_frac, $s.image_frac, $s.repeat_frac, $s.scroller, $s.surface_tag)
+    foreach ($c in ($R.Contributors | Sort-Object { -$_.weight } | Select-Object -First 3)) {
+        if ($c.repeat_n -gt 1) {
+            Write-Host ("  repeats      {0,-22} {1} x{2} vp{3}" -f $c.name, $c.repeat_size, $c.repeat_n,
+                $(if ($c.repeat_2nd) { "   then " + $c.repeat_2nd } else { "" })) -ForegroundColor DarkGray
+        }
+    }
     Write-Host ("  content      paints {0} nodes over {1} of the display   ({2} re-recorded)" -f `
         $s.paints, $s.paint_frac, $s.redrawn)
     Write-Host ("  cost         blur {0}   shadow {1}   corner {2}   hwc area {3}   hdr {4}   slots {5}" -f `
