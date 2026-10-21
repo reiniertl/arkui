@@ -62,6 +62,9 @@ param(
     [switch] $Separation,
     [switch] $Attrs,
     [switch] $RsProbe,
+    [switch] $RsScene,
+    [string] $RsFrom,
+    [string] $RsSave,
     [string] $RsFps,
     [int]    $Capture = 0,
     [string] $CaptureDir = "captures",
@@ -88,6 +91,12 @@ $script:ImeTop      = 0.0
 $script:VpImeClipped = $false
 $script:LastRawJson = ""
 
+
+# The render-tree path lives in its own file: it shares only Invoke-HdcRaw
+# with everything above, and keeping it separate makes clear that it is a
+# second, independent route to the scene rather than a layer on the first.
+$script:RsModule = Join-Path $PSScriptRoot "rs_scene.ps1"
+if (Test-Path $script:RsModule) { . $script:RsModule }
 
 function Invoke-HdcRaw {
     param([string] $CommandLine)
@@ -4627,6 +4636,7 @@ if ($Version) {
     Write-Host "  classify     -Watch  -Out  -Label  -Fit  -Apply  -Calib"
     Write-Host "  validate     -Separation"
     Write-Host "  discovery    -FindRects  -RsProbe  -RsFps  -Deep  -Services"
+    Write-Host "  render tree  -RsScene [-RsSave <dir>]   -RsFrom <dir>"
     Write-Host "  diagnostics  -DumpOpt  -Explain  -Raw  -ShowCmd  -WindowId  -Attrs"
     Write-Host ""
     Write-Host "  repo  https://github.com/reiniertl/arkui" -ForegroundColor DarkGray
@@ -4665,6 +4675,42 @@ if ($Attrs) {
 if ($Capture -gt 0) { Invoke-Capture -Seconds $Capture -Dir $CaptureDir -Every $Every -Tol $MoveTol; exit 0 }
 if ($Services) { Show-Services; exit 0 }
 if ($RsProbe) { Show-RsProbe; exit 0 }
+
+# Offline: parse dumps already on disk. The point is that the whole scene
+# construction can be re-run and argued with long after the phone has moved
+# on, which is how the window-rect occlusion bug was found.
+if ($RsFrom) {
+    $rsf = Join-Path $RsFrom "rstree.txt"
+    $clf = Join-Path $RsFrom "client.txt"
+    if (-not (Test-Path $rsf)) { Write-Host "no rstree.txt in $RsFrom" -ForegroundColor Red; exit 1 }
+    $tree = ConvertFrom-RsTree -Lines (Get-Content $rsf)
+    $map  = @{}
+    if (Test-Path $clf) { $map = ConvertFrom-RsClient -Lines (Get-Content $clf) }
+    $dj = Join-Path $RsFrom "display.txt"
+    $disp = [PSCustomObject]@{ Id=0; W=1316.0; H=2832.0; Density=3.5; Rotation=0; Refresh=0; Power=-1; Internal=$true; Cutout=$null }
+    if (Test-Path $dj) {
+        foreach ($l in (Get-Content $dj)) {
+            if ($l -match 'Bounds[^\d-]*(-?\d+)[,\s]+(-?\d+)[,\s]+(\d+)[,\s]+(\d+)') { $disp.W=[double]$matches[3]; $disp.H=[double]$matches[4] }
+            if ($l -match 'Density\s*[:=]?\s*([\d.]+)') { $disp.Density=[double]$matches[1] }
+        }
+    }
+    Show-RsScene -R (Get-RsScene -Tree $tree -ClientMap $map -Display $disp)
+    exit 0
+}
+
+if ($RsScene) {
+    if ($RsSave) {
+        # Keep the raw dumps beside the result. A feature we cannot re-derive
+        # from a saved dump is a feature we cannot defend later.
+        New-Item -ItemType Directory -Force -Path $RsSave | Out-Null
+        (Invoke-RsDump -Arg 'RSTree') | Set-Content (Join-Path $RsSave "rstree.txt")
+        (Invoke-RsDump -Arg 'client') | Set-Content (Join-Path $RsSave "client.txt")
+        (Invoke-HdcRaw "shell `"hidumper -s DisplayManagerService -a '-a'`"") | Set-Content (Join-Path $RsSave "display.txt")
+        Write-Host "dumps saved -> $RsSave" -ForegroundColor DarkGray
+    }
+    Show-RsScene -R (Get-RsSceneNow)
+    exit 0
+}
 if ($RsFps)   { Show-RsFps -Layer $RsFps; exit 0 }
 
 # The display: every window, every process, in one call. Nothing inside ArkUI
