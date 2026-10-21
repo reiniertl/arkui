@@ -603,7 +603,7 @@ function Show-RsScene {
     Write-Host ("  display    {0}x{1} @{2}  rot {3}  {4}Hz  power {5}  vsync {6}" -f `
         $s.disp_w, $s.disp_h, $s.density, $s.rotation, $s.refresh, $s.power, $s.vsync) -ForegroundColor DarkGray
     Write-Host ""
-    Write-Host ("  {0,-26} {1,>7} {2,>7} {3,>6} {4,>7} {5,>7} {6,>7}" -f "contributor","weight","nodes","rep","text","image","dirty")
+    Write-Host ("  {0,-26} {1,7} {2,7} {3,6} {4,7} {5,7} {6,7}" -f "contributor","weight","nodes","rep","text","image","dirty")
     foreach ($c in ($R.Contributors | Sort-Object { -$_.weight })) {
         $nm = $c.name; if ($nm.Length -gt 26) { $nm = $nm.Substring(0,26) }
         Write-Host ("  {0,-26} {1,7:N3} {2,7} {3,6} {4,7:N3} {5,7:N3} {6,7:N3}" -f `
