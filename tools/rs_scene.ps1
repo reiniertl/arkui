@@ -338,6 +338,7 @@ function Measure-RsShape {
     $mine = @($Tree.Nodes | Where-Object { $_.SurfId -eq $Surf.Id -and $_.Kind -ne 'SURFACE_NODE' })
     if ($own -le 0 -or $mine.Count -eq 0) {
         $sh.nodes = $mine.Count
+        $sh.paint_px = 0
         return [PSCustomObject]$sh
     }
 
@@ -354,7 +355,7 @@ function Measure-RsShape {
     }
     $sh.nodes    = $adm.Count
     $sh.dropped  = $mine.Count - $adm.Count
-    if ($adm.Count -eq 0) { return [PSCustomObject]$sh }
+    if ($adm.Count -eq 0) { $sh.paint_px = 0; return [PSCustomObject]$sh }
 
     # Counts are per 1000 vp squared, not raw: raw counts do not survive a
     # device with a different panel, and the whole point of a class set is
@@ -363,7 +364,7 @@ function Measure-RsShape {
     if ($vp2 -le 0) { $vp2 = 1.0 }
     $sh.node_den = [math]::Round($adm.Count / $vp2, 2)
 
-    $depths = @($adm | ForEach-Object { $_.Depth })
+    $depths = @($adm | ForEach-Object { $_.Depth - $Surf.Depth })
     $sh.depth_max  = ($depths | Measure-Object -Maximum).Maximum
     $sh.depth_mean = [math]::Round((($depths | Measure-Object -Average).Average), 2)
     $leaves = @($adm | Where-Object { $_.Kids.Count -eq 0 })
@@ -435,6 +436,21 @@ function Measure-RsShape {
     }
     $sh.skipped = @($adm | Where-Object { $_.Skipped }).Count
 
+    # Painted area, and the one number that decides how much this contributor
+    # counts in the scene. Not the region it spans: SCBGestureBack20 spans the
+    # whole panel and draws three small things, and WindowScene_aweme215 spans
+    # it and draws nothing at all - it is a host for the app's own surface.
+    # Taking the span as weight gave those two the same say as the app.
+    # Leaves only, because a container is a box, not a mark.
+    $paint = @()
+    foreach ($n in $leaves) {
+        $x = [math]::Max($n.Abs.X, 0.0); $y = [math]::Max($n.Abs.Y, 0.0)
+        $w = $n.Abs.W; $h = $n.Abs.H
+        if ($w -le 0 -or $h -le 0) { continue }
+        $paint += [PSCustomObject]@{ X=$x; Y=$y; W=$w; H=$h }
+    }
+    $sh.paint_px = [math]::Round((Get-RegionArea -Rects $paint), 0)
+
     # Animation, and what frame rate it asks for. This is the only place in any
     # dump we have found that states an expected frame rate.
     $an = @($adm | Where-Object { $_.Anim })
@@ -451,7 +467,12 @@ function Measure-RsShape {
 # Read, not inferred. The panel used to be taken as the largest window rect,
 # which an oversized window could redefine; DisplayManagerService states it.
 function Get-RsDisplay {
-    $lines = Invoke-HdcRaw "shell `"hidumper -s DisplayManagerService -a '-a'`""
+    return (Read-RsDisplay -Lines (Invoke-HdcRaw "shell `"hidumper -s DisplayManagerService -a '-a'`""))
+}
+
+function Read-RsDisplay {
+    param([string[]] $Lines)
+    $lines = $Lines
     $d = [PSCustomObject]@{
         Id = 0; W = 0.0; H = 0.0; Density = 3.5; Rotation = 0
         Refresh = 0; Power = -1; Internal = $true; Cutout = $null
@@ -465,6 +486,7 @@ function Get-RsDisplay {
         if ($l -match 'Rotation\s*[:=]?\s*(\d+)')                 { $d.Rotation = [int]$matches[1] }
         if ($l -match 'RefreshRate\s*[:=]?\s*(\d+)')              { $d.Refresh  = [int]$matches[1] }
         if ($l -match 'ScreenPowerState\s*[:=]?\s*(\d+)')         { $d.Power    = [int]$matches[1] }
+        if ($d.Power -lt 0 -and $l -match 'PowerState\s*[:=]?\s*(\d+)') { $d.Power = [int]$matches[1] }
         if ($l -match 'isInternal\s*[:=]?\s*(\w+)')               { $d.Internal = ($matches[1] -eq 'true') }
         if ($l -match 'Cutout.*?\[\s*(\d+)[,\s]+(\d+)[,\s]+(\d+)[,\s]+(\d+)\s*\]') {
             $d.Cutout = [PSCustomObject]@{
@@ -503,11 +525,20 @@ function Get-RsScene {
         $_.Visible -eq 1 -and $_.Alpha -gt 0.0 -and (Get-RegionArea -Rects $_.Vis) -gt 0
     })
 
+    # Low zOrder is nearer the viewer on this build: the wallpaper sits at 108
+    # with an empty visible region while the status bar sits at 9 and is on
+    # screen. VisibleRegion is therefore already occlusion-resolved, which is
+    # why admission needs no z walk of its own.
     $contrib = @()
-    foreach ($s in ($live | Sort-Object { -$_.Z })) {
+    foreach ($s in ($live | Sort-Object { $_.Z })) {
         $sh = Measure-RsShape -Tree $Tree -Surf $s -Density $Display.Density
-        Add-Member -InputObject $sh -NotePropertyName weight -NotePropertyValue ([math]::Round($sh.vis_px / $usable, 4)) -Force
-        $contrib += $sh
+        $w = 0.0
+        if ($sh.PSObject.Properties['paint_px']) { $w = [double]$sh.paint_px / $usable }
+        Add-Member -InputObject $sh -NotePropertyName weight -NotePropertyValue ([math]::Round([math]::Min(1.0, $w), 4)) -Force
+        # A surface that paints nothing is a host, not a contributor. The one
+        # that matters is WindowScene_<app><id>: SceneBoard's shell around the
+        # app's own surface. Counting it doubled the app's say in the scene.
+        if ($sh.nodes -gt 0 -and $w -gt 0) { $contrib += $sh }
     }
 
     # Coverage from OpaqueRegion, never from the window rect. SCBGestureBack20

@@ -4688,12 +4688,7 @@ if ($RsFrom) {
     if (Test-Path $clf) { $map = ConvertFrom-RsClient -Lines (Get-Content $clf) }
     $dj = Join-Path $RsFrom "display.txt"
     $disp = [PSCustomObject]@{ Id=0; W=1316.0; H=2832.0; Density=3.5; Rotation=0; Refresh=0; Power=-1; Internal=$true; Cutout=$null }
-    if (Test-Path $dj) {
-        foreach ($l in (Get-Content $dj)) {
-            if ($l -match 'Bounds[^\d-]*(-?\d+)[,\s]+(-?\d+)[,\s]+(\d+)[,\s]+(\d+)') { $disp.W=[double]$matches[3]; $disp.H=[double]$matches[4] }
-            if ($l -match 'Density\s*[:=]?\s*([\d.]+)') { $disp.Density=[double]$matches[1] }
-        }
-    }
+    if (Test-Path $dj) { $disp = Read-RsDisplay -Lines (Get-Content $dj) }
     Show-RsScene -R (Get-RsScene -Tree $tree -ClientMap $map -Display $disp)
     exit 0
 }
