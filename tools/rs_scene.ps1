@@ -426,7 +426,7 @@ function Set-RsTags {
 # How much the contributor MATTERS to the scene is a separate number, carried
 # alongside as Weight and applied only when the display vector is composed.
 function Measure-RsShape {
-    param($Tree, $Surf, [double] $Density = 3.5)
+    param($Tree, $Surf, [double] $Density = 3.5, [double] $DispArea = 0.0)
 
     $own = Get-RegionArea -Rects $Surf.Vis
     $sh = [ordered]@{
@@ -438,6 +438,8 @@ function Measure-RsShape {
     if ($own -le 0 -or $mine.Count -eq 0) {
         $sh.nodes = $mine.Count
         $sh.paint_px = 0; $sh.drop_skip = 0; $sh.drop_odd = 0
+        Add-Member -InputObject $sh -NotePropertyName SigAll -NotePropertyValue (New-Object 'System.Collections.Generic.HashSet[string]') -Force
+        Add-Member -InputObject $sh -NotePropertyName SigBig -NotePropertyValue (New-Object 'System.Collections.Generic.HashSet[string]') -Force
         return [PSCustomObject]$sh
     }
 
@@ -604,6 +606,26 @@ function Measure-RsShape {
     }
     $sh.paint_px = [math]::Round((Get-RegionArea -Rects $paint), 0)
 
+    # The quantised rects this contributor admitted, for the scene signature.
+    # Kept off the ordered dict so they never reach a CSV column.
+    $gq = [double]$script:SigGrid
+    if ($gq -lt 1) { $gq = 16.0 }
+    $ka = New-Object 'System.Collections.Generic.HashSet[string]'
+    $kb = New-Object 'System.Collections.Generic.HashSet[string]'
+    foreach ($n in $adm) {
+        $k = "{0},{1},{2},{3}" -f `
+            ([int][math]::Round($n.Abs.X / $gq, [System.MidpointRounding]::AwayFromZero)),
+            ([int][math]::Round($n.Abs.Y / $gq, [System.MidpointRounding]::AwayFromZero)),
+            ([int][math]::Round(($n.Abs.X + $n.Abs.W) / $gq, [System.MidpointRounding]::AwayFromZero)),
+            ([int][math]::Round(($n.Abs.Y + $n.Abs.H) / $gq, [System.MidpointRounding]::AwayFromZero))
+        [void]$ka.Add($k)
+        if ($DispArea -gt 1 -and (1000.0 * ($n.Abs.W * $n.Abs.H) / $DispArea) -ge $script:SigBigArea) {
+            [void]$kb.Add($k)
+        }
+    }
+    Add-Member -InputObject $sh -NotePropertyName SigAll -NotePropertyValue $ka -Force
+    Add-Member -InputObject $sh -NotePropertyName SigBig -NotePropertyValue $kb -Force
+
     # Animation, and what frame rate it asks for. This is the only place in any
     # dump we have found that states an expected frame rate.
     $an = @($adm | Where-Object { $_.Anim })
@@ -731,7 +753,7 @@ function Get-RsScene {
     # why admission needs no z walk of its own.
     $contrib = @()
     foreach ($s in ($live | Sort-Object { $_.Z })) {
-        $sh = Measure-RsShape -Tree $Tree -Surf $s -Density $Display.Density
+        $sh = Measure-RsShape -Tree $Tree -Surf $s -Density $Display.Density -DispArea ($dw * $dh)
         $w = 0.0
         if ($sh.PSObject.Properties['paint_px']) { $w = [double]$sh.paint_px / $usable }
         Add-Member -InputObject $sh -NotePropertyName weight -NotePropertyValue ([math]::Round([math]::Min(1.0, $w), 4)) -Force
@@ -998,4 +1020,45 @@ function Get-RsOpaqueByWindow {
         $byName[$owner] += $s.Opq
     }
     return $byName
+}
+
+# The scene's own signature - display-scoped, as the model says it should be.
+#
+# The old one hashed the uitest dump of the FOREGROUND WINDOW, so two samples
+# were "the same screen" when one window's layout matched. A dialog opening
+# over an unchanged app window was the same screen and a different scene; a
+# scrolled feed was a different screen and arguably the same scene. Counting
+# ran window-scoped under a display-scoped definition, which is the confusion
+# the model exists to remove.
+#
+# This hashes every admitted rect from every contributor, in display
+# coordinates, together with the contributor set itself - so a dialog, an IME
+# or a status-bar change moves the signature, because each of those changes
+# the scene.
+function Get-RsSceneSig {
+    param($R)
+    $all = New-Object 'System.Collections.Generic.HashSet[string]'
+    $big = New-Object 'System.Collections.Generic.HashSet[string]'
+    if (-not $R) { return [PSCustomObject]@{ Hash = ""; Big = $big; All = $all } }
+
+    foreach ($c in $R.Contributors) {
+        $p = $c.PSObject.Properties['SigAll']
+        if ($p) { foreach ($k in $p.Value) { [void]$all.Add($k) } }
+        $q = $c.PSObject.Properties['SigBig']
+        if ($q) { foreach ($k in $q.Value) { [void]$big.Add($k) } }
+        # The contributor set is part of the scene. Two displays showing the
+        # same app with and without an IME are not the same scene, and nothing
+        # in the rect sets alone would say so.
+        $tok = "W:{0}" -f $c.name
+        [void]$all.Add($tok); [void]$big.Add($tok)
+    }
+
+    $src = if ($big.Count -gt 0) { $big } else { $all }
+    $sb  = New-Object System.Text.StringBuilder
+    foreach ($k in ($src | Sort-Object)) { [void]$sb.Append($k); [void]$sb.Append(';') }
+    $algo = [System.Security.Cryptography.MD5]::Create()
+    $raw  = $algo.ComputeHash([System.Text.Encoding]::UTF8.GetBytes($sb.ToString()))
+    $algo.Dispose()
+    $hex = (([System.BitConverter]::ToString($raw)) -replace '-','').Substring(0, 16)
+    return [PSCustomObject]@{ Hash = ("{0}-{1}" -f $src.Count, $hex); Big = $big; All = $all }
 }

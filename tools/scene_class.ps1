@@ -64,6 +64,7 @@ param(
     [switch] $RsProbe,
     [switch] $RsScene,
     [switch] $CaptureRs,
+    [int]    $UitestEvery = 1,
     [string] $RsFrom,
     [string] $RsSave,
     [string] $RsFps,
@@ -97,6 +98,7 @@ $script:LastRawJson = ""
 # with everything above, and keeping it separate makes clear that it is a
 # second, independent route to the scene rather than a layer on the first.
 $script:CaptureRs = $CaptureRs
+$script:UitestEvery = $UitestEvery
 $script:RsModule = Join-Path $PSScriptRoot "rs_scene.ps1"
 if (Test-Path $script:RsModule) { . $script:RsModule }
 
@@ -4388,15 +4390,23 @@ function Invoke-Capture {
         # that never happened.
         if ($fgId -ne $lastWin) { $script:PrevTally = $null; $lastWin = $fgId }
 
-        if ($carry -and $carry.Id -eq $fgId) {
-            $linesA = $carry.Lines; $jsonA = $carry.Json; $sigA = $carry.Sig
-        } else {
-            $linesA = Get-Tree -Id $fgId
-            $jsonA  = $script:LastRawJson
-            $sigA   = Get-DumpSig $jsonA
+        # uitest is enrichment now, not the spine. It carries text and the
+        # baseline feature set and nothing the scene is built from, and it
+        # costs 1.4s against the render tree's 200ms - so it runs on a cadence
+        # rather than on every sample.
+        $uitestDue = ($script:UitestEvery -le 1) -or ($idx % $script:UitestEvery -eq 0) -or ($null -eq $script:RowTemplate)
+        $linesA = $null; $jsonA = ""; $sigA = $null
+        if ($uitestDue) {
+            if ($carry -and $carry.Id -eq $fgId) {
+                $linesA = $carry.Lines; $jsonA = $carry.Json; $sigA = $carry.Sig
+            } else {
+                $linesA = Get-Tree -Id $fgId
+                $jsonA  = $script:LastRawJson
+                $sigA   = Get-DumpSig $jsonA
+            }
         }
         $carry = $null
-        if (-not $linesA -or $linesA.Count -lt 2 -or $sigA.Hash -eq "") {
+        if ($uitestDue -and (-not $linesA -or $linesA.Count -lt 2 -or $sigA.Hash -eq "")) {
             $failed++
             Write-Host ("{0,5}  {1,-8} {2,-10} {3,-22} {4}" -f $idx, "empty", "-", "-", "no usable dump") -ForegroundColor DarkGray
             Start-Sleep -Milliseconds 500
@@ -4416,17 +4426,40 @@ function Invoke-Capture {
         Invoke-HdcRaw "shell `"rm -f $dev`"" | Out-Null
         Invoke-HdcRaw $script:ShotCmd | Out-Null
 
-        $linesB = Get-Tree -Id $fgId
-        $jsonB  = $script:LastRawJson
-        $sigB   = Get-DumpSig $jsonB
+        # The guard brackets the screenshot with the SCENE, not with one
+        # window's layout. Two render-tree reads cost ~400ms where two uitest
+        # reads cost 2.8s, so the window the picture has to stay still across
+        # is seven times narrower - and what it compares is display-scoped, so
+        # a dialog appearing mid-shot is correctly a change.
+        $linesB = $null; $jsonB = ""; $sigB = $null
+        $rsAfter = $null
+        if ($script:CaptureRs) {
+            $pairB = Save-RsSample -Dir $null -Stem $null
+            if ($pairB) { $rsAfter = Get-RsScene -Tree $pairB.Tree -ClientMap $pairB.Map -Display $script:RsDisplay }
+        }
+        if ($uitestDue -and -not $script:CaptureRs) {
+            $linesB = Get-Tree -Id $fgId
+            $jsonB  = $script:LastRawJson
+            $sigB   = Get-DumpSig $jsonB
+        }
 
         # Two readings. holdBig is the verdict: did the structure stay put.
         # holdAll is not a verdict at all - the small rects that came and went
         # are animation, and animation is the thing this project exists to
         # correlate with power, so it is recorded rather than judged.
-        $holdBig = Get-SetHold $sigA.Big $sigB.Big
-        $holdAll = Get-SetHold $sigA.All $sigB.All
+        $sceneSigA = Get-RsSceneSig -R $rsNow
+        $sceneSigB = Get-RsSceneSig -R $rsAfter
+        if ($sceneSigA.Hash -ne "" -and $sceneSigB.Hash -ne "") {
+            $holdBig = Get-SetHold $sceneSigA.Big $sceneSigB.Big
+            $holdAll = Get-SetHold $sceneSigA.All $sceneSigB.All
+        } else {
+            $holdBig = Get-SetHold $sigA.Big $sigB.Big
+            $holdAll = Get-SetHold $sigA.All $sigB.All
+        }
         $jitter  = 1000 - $holdAll
+        # The dedup key. Display-scoped when the render tree answered; the old
+        # window-scoped hash only when it did not.
+        $keySig = if ($sceneSigA.Hash -ne "") { $sceneSigA.Hash } elseif ($sigA) { $sigA.Hash } else { "" }
 
         $name = if ($win) { $win.Name } else { "?" }
         if ($holdBig -lt $keepAt) {
@@ -4440,8 +4473,18 @@ function Invoke-Capture {
             # touching, and would quietly under-count the dwell of every
             # screen that moves - which is every screen that matters.
             $moved++
-            $carry = [PSCustomObject]@{ Id = $fgId; Lines = $linesB; Json = $jsonB; Sig = $sigB }
-            $mrow = Invoke-Classify -Id $fgId -Table $table -Terse:$false -PreLines $linesA -Quiet
+            if ($linesB) { $carry = [PSCustomObject]@{ Id = $fgId; Lines = $linesB; Json = $jsonB; Sig = $sigB } }
+            $mrow = $null
+            if ($uitestDue -and $linesA) {
+                $mrow = Invoke-Classify -Id $fgId -Table $table -Terse:$false -PreLines $linesA -Quiet
+            } elseif ($script:RowTemplate) {
+                $mrow = New-Object PSObject
+                foreach ($k in $script:RowTemplate) {
+                    Add-Member -InputObject $mrow -NotePropertyName $k -NotePropertyValue "" -Force
+                }
+                if ($win) { $mrow.window = $win.WinId; $mrow.name = $win.Name }
+                if ($mrow.PSObject.Properties['shape']) { $mrow.shape = "RS" }
+            }
             $mshape = "-"
             if ($mrow) {
                 $mshape = $mrow.shape
@@ -4449,9 +4492,9 @@ function Invoke-Capture {
                 $mstem = "m{0:D4}" -f $mseq
                 [void](Save-DumpFile -Json $jsonA -Stem $mstem -Dir $session)
                 Write-CaptureMeta -Path (Join-Path $session "$mstem.meta") -Win $win -Extra @{
-                    sig = $sigA.Hash; shot = ""; jitter = $jitter; still = $holdBig }
+                    sig = $keySig; shot = ""; jitter = $jitter; still = $holdBig }
                 $mrow | Add-Member -NotePropertyName stem   -NotePropertyValue $mstem -Force
-                $mrow | Add-Member -NotePropertyName sig    -NotePropertyValue $sigA.Hash -Force
+                $mrow | Add-Member -NotePropertyName sig    -NotePropertyValue $keySig -Force
                 $mrow | Add-Member -NotePropertyName shot   -NotePropertyValue "" -Force
                 $mrow | Add-Member -NotePropertyName jitter -NotePropertyValue $jitter -Force
                 $mrow | Add-Member -NotePropertyName still  -NotePropertyValue $holdBig -Force
@@ -4473,13 +4516,37 @@ function Invoke-Capture {
             continue
         }
 
-        $row = Invoke-Classify -Id $fgId -Table $table -Terse:$false -PreLines $linesA -Quiet
-        if (-not $row) { $failed++; continue }
+        if ($uitestDue) {
+            $row = Invoke-Classify -Id $fgId -Table $table -Terse:$false -PreLines $linesA -Quiet
+            if (-not $row) { $failed++; continue }
+            # The first full row fixes the schema. Export-Csv -Append drops
+            # anything the first row did not have, so every later row - full
+            # or render-tree-only - has to carry the same column set.
+            if ($null -eq $script:RowTemplate) {
+                $script:RowTemplate = @($row.PSObject.Properties.Name)
+            }
+        } else {
+            # No uitest this tick: a row with the same columns, the baseline
+            # ones left empty and the render-tree ones filled below. Empty is
+            # the honest value - it says the measurement was not taken, which
+            # is a different thing from taking it and getting nothing.
+            $row = New-Object PSObject
+            foreach ($k in $script:RowTemplate) {
+                Add-Member -InputObject $row -NotePropertyName $k -NotePropertyValue "" -Force
+            }
+            if ($win) {
+                $row.window = $win.WinId
+                $row.name   = $win.Name
+                if ($row.PSObject.Properties['pid']) { $row.pid = $win.Pid }
+            }
+            if ($row.PSObject.Properties['dev_mono']) { $row.dev_mono = (Get-DeviceMono) }
+            if ($row.PSObject.Properties['shape'])    { $row.shape = "RS" }
+        }
 
         # The signature goes on the row so the clusterer can collapse repeats
         # exactly, and so the number of rows sharing one signature measures
         # how long that screen was actually on screen. Dwell is a weight.
-        $dup = ($sigA.Hash -eq $lastSig)
+        $dup = ($keySig -ne "" -and $keySig -eq $lastSig)
         $shot = ""
         $stem = ""
         if (-not $dup) {
@@ -4497,13 +4564,14 @@ function Invoke-Capture {
             }
             [void](Save-DumpFile -Json $jsonA -Stem $stem -Dir $session)
             Write-CaptureMeta -Path (Join-Path $session "$stem.meta") -Win $win -Extra @{
-                sig = $sigA.Hash; shot = $shot; jitter = $jitter; still = $holdBig }
+                sig = $keySig; shot = $shot; jitter = $jitter; still = $holdBig }
             $kept++
         } else { $dups++ }
-        $lastSig = $sigA.Hash
+        $lastSig = $keySig
 
         $row | Add-Member -NotePropertyName stem   -NotePropertyValue $stem -Force
-        $row | Add-Member -NotePropertyName sig    -NotePropertyValue $sigA.Hash -Force
+        $row | Add-Member -NotePropertyName sig    -NotePropertyValue $keySig -Force
+        $row | Add-Member -NotePropertyName win_sig -NotePropertyValue $(if ($sigA) { $sigA.Hash } else { "" }) -Force
         $row | Add-Member -NotePropertyName shot   -NotePropertyValue $shot -Force
         $row | Add-Member -NotePropertyName jitter -NotePropertyValue $jitter -Force
         $row | Add-Member -NotePropertyName still  -NotePropertyValue $holdBig -Force
