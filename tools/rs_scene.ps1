@@ -690,8 +690,13 @@ function Get-RsScene {
         internal    = $Display.Internal
         contributors= $contrib.Count
         z_span      = 0
-        cover_opaque= [math]::Round($covered / $usable, 3)
-        uncovered   = [math]::Round([math]::Max(0.0, 1.0 - ($covered / $usable)), 3)
+        # Coverage is against the panel, not against the usable area: an
+        # opaque region spans the whole display including the cutout, and
+        # dividing it by a denominator with the cutout removed reported 100.7%
+        # of the screen as covered. Weights keep the usable denominator, which
+        # is the area a contributor can actually compete for.
+        cover_opaque= [math]::Round($covered / ($dw * $dh), 3)
+        uncovered   = [math]::Round([math]::Max(0.0, 1.0 - ($covered / ($dw * $dh))), 3)
         protected   = @($live | Where-Object { $_.Special }).Count
         anim_live   = $Tree.Animating.Count
     }
