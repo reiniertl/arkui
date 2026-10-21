@@ -283,20 +283,51 @@ function ConvertFrom-RsClient {
 # in the tree. Walking down from each surface and claiming its subtree does
 # that in one pass, and the "nearest" part falls out of claiming in depth
 # order - a nested surface overwrites its parent's claim on its own subtree.
+# A contributor is a WINDOW, not a surface. Those are not the same thing: a
+# window is often a chain of surfaces, and only the outermost one carries the
+# facts that matter.
+#
+#   SCBStatusBar25   vis=[0, 0, 1316, 203]   <- the window
+#     StatusBarBox
+#       ArkTSCardNode  vis=[Empty]           <- nested, holds the content
+#
+#   WindowScene_aweme215  <- SceneBoard's shell
+#     aweme0              <- the app's own surface
+#
+# Measured on the home screen with the status bar plainly visible:
+# VisibleRegion is populated for the window surface and reads Empty on the
+# nested one. Treating the nested surface as its own contributor therefore
+# deletes the status bar from the scene, and treating the shell and the app
+# as two contributors counts one window twice.
+#
+# So: claim from the outermost surface down, through nested surfaces, and
+# mark those nested so they never stand as contributors of their own.
 function Set-RsOwnership {
     param($Tree)
 
+    # Outermost first. A surface reached while claiming another surface's
+    # subtree is by definition nested.
     $surfByDepth = @($Tree.Surfaces | Sort-Object Depth)
     foreach ($s in $surfByDepth) {
+        Add-Member -InputObject $s -NotePropertyName Nested -NotePropertyValue $false -Force
+    }
+    $surfById = @{}
+    foreach ($s in $Tree.Surfaces) { $surfById[$s.Id] = $s }
+
+    foreach ($s in $surfByDepth) {
+        if ($s.Nested) { continue }
+        $seen = @{}
         $stack = New-Object System.Collections.Stack
         foreach ($k in $s.Node.Kids) { $stack.Push($k) }
         while ($stack.Count -gt 0) {
             $id = $stack.Pop()
+            if ($seen.ContainsKey($id)) { continue }     # sortedChildren is
+            $seen[$id] = $true                           # trusted to be a tree
             if (-not $Tree.ById.ContainsKey($id)) { continue }
             $n = $Tree.ById[$id]
-            # Do not cross into another surface: that subtree is its own
-            # contributor and will be claimed when its surface comes up.
-            if ($n.Kind -eq 'SURFACE_NODE') { continue }
+            if ($n.Kind -eq 'SURFACE_NODE' -and $surfById.ContainsKey($id)) {
+                $surfById[$id].Nested = $true
+            }
             $n.SurfId = $s.Id
             $n.WinId  = $s.WinId
             foreach ($k in $n.Kids) { $stack.Push($k) }
@@ -522,7 +553,8 @@ function Get-RsScene {
     # and the desktop behind a full-screen app drop out here, whole, with no
     # geometry computed at all.
     $live = @($Tree.Surfaces | Where-Object {
-        $_.Visible -eq 1 -and $_.Alpha -gt 0.0 -and (Get-RegionArea -Rects $_.Vis) -gt 0
+        -not $_.Nested -and $_.Visible -eq 1 -and $_.Alpha -gt 0.0 -and
+        (Get-RegionArea -Rects $_.Vis) -gt 0
     })
 
     # Low zOrder is nearer the viewer on this build: the wallpaper sits at 108
