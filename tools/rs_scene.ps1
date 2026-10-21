@@ -555,27 +555,62 @@ function Get-RsDisplay {
 
 function Read-RsDisplay {
     param([string[]] $Lines)
-    $lines = $Lines
+
+    # The dump is sectioned, and the sections disagree on purpose:
+    #
+    #   [SCREEN PROPERTY]        RefreshRate: 30   <- what the panel is doing
+    #   Client Screen Infos      RefreshRate: 60   <- what the mode allows
+    #
+    # Thirty is not an error. The only animation on screen asked for
+    # FrameRateRange_prefered: 30 and the panel followed it down, which is the
+    # whole mechanism this project exists to feed. Reading one value for
+    # "refresh" threw that away and reported whichever section came last.
+    #
+    # It also opens with replayed log lines, timestamped, full of numbers that
+    # match the same patterns as the fields below. Those are skipped.
     $d = [PSCustomObject]@{
         Id = 0; W = 0.0; H = 0.0; Density = 3.5; Rotation = 0
-        Refresh = 0; Power = -1; Internal = $true; Cutout = $null
+        Refresh = 0; RefreshMax = 0; Power = -1; Internal = $true; Extend = $false
+        Cutout = $null; Avail = $null
     }
-    foreach ($l in $lines) {
-        if ($l -match 'DisplayId\s*[:=]?\s*(\d+)')               { $d.Id = [int]$matches[1] }
-        if ($l -match 'Bounds[^\d-]*(-?\d+)[,\s]+(-?\d+)[,\s]+(\d+)[,\s]+(\d+)') {
+    $sect = ""
+    foreach ($l in $Lines) {
+        if ($l -match '^\s*\[\d\d-\d\d \d\d:\d\d:') { continue }   # replayed log
+        if ($l -match '^\s*\[([A-Z][A-Z ]+)\]\s*$')        { $sect = $matches[1]; continue }
+        if ($l -match '-+\s*Client Screen Infos\s*-+')        { $sect = "CLIENT"; continue }
+        if ($l -match '-+\s*Display ID:\s*(\d+)\s*-+')      { $sect = "DISPLAY"; continue }
+
+        if ($l -match '^\s*DisplayId:\s*(\d+)')              { $d.Id = [int]$matches[1] }
+        if ($l -match '^\s*isInternal:\s*(\w+)')             { $d.Internal = ($matches[1] -eq 'true') }
+        if ($l -match '^\s*isExtend:\s*(\w+)' -and $matches[1] -match 'true|1') { $d.Extend = $true }
+        if ($l -match '^\s*ScreenPowerState:\s*(\d+)')       { $d.Power = [int]$matches[1] }
+        if ($l -match '^\s*Bounds<L,T,W,H>:\s*(-?\d+),\s*(-?\d+),\s*(\d+),\s*(\d+)') {
             if ($d.W -le 0) { $d.W = [double]$matches[3]; $d.H = [double]$matches[4] }
         }
-        if ($l -match 'Density\s*[:=]?\s*([\d.]+)')               { $d.Density  = [double]$matches[1] }
-        if ($l -match 'Rotation\s*[:=]?\s*(\d+)')                 { $d.Rotation = [int]$matches[1] }
-        if ($l -match 'RefreshRate\s*[:=]?\s*(\d+)')              { $d.Refresh  = [int]$matches[1] }
-        if ($l -match 'ScreenPowerState\s*[:=]?\s*(\d+)')         { $d.Power    = [int]$matches[1] }
-        if ($d.Power -lt 0 -and $l -match 'PowerState\s*[:=]?\s*(\d+)') { $d.Power = [int]$matches[1] }
-        if ($l -match 'isInternal\s*[:=]?\s*(\w+)')               { $d.Internal = ($matches[1] -eq 'true') }
-        if ($l -match 'Cutout.*?\[\s*(\d+)[,\s]+(\d+)[,\s]+(\d+)[,\s]+(\d+)\s*\]') {
-            $d.Cutout = [PSCustomObject]@{
-                X=[double]$matches[1]; Y=[double]$matches[2]; W=[double]$matches[3]; H=[double]$matches[4] }
+        if ($l -match '^\s*AvailableArea<X,Y,W,H>:?\s*(-?\d+),\s*(-?\d+),\s*(\d+),\s*(\d+)') {
+            if (-not $d.Avail) {
+                $d.Avail = [PSCustomObject]@{ X=[double]$matches[1]; Y=[double]$matches[2]
+                                              W=[double]$matches[3]; H=[double]$matches[4] }
+            }
+        }
+        if ($l -match '^\s*BoundingRects<X,Y,W,H>:\s*\[\s*(\d+),\s*(\d+),\s*(\d+),\s*(\d+)\s*\]') {
+            $d.Cutout = [PSCustomObject]@{ X=[double]$matches[1]; Y=[double]$matches[2]
+                                           W=[double]$matches[3]; H=[double]$matches[4] }
+        }
+        # activeModes<id, W, H, RS> states the mode's rate before any section
+        # has had a chance to disagree about it.
+        if ($l -match 'activeModes<[^>]*>:\s*\d+,\s*\d+,\s*\d+,\s*(\d+)') { $d.RefreshMax = [int]$matches[1] }
+
+        if ($sect -eq 'SCREEN PROPERTY') {
+            if ($l -match '^\s*Density:\s*([\d.]+)')    { $d.Density  = [double]$matches[1] }
+            if ($l -match '^\s*Rotation:\s*(\d+)')      { $d.Rotation = [int]$matches[1] }
+            if ($l -match '^\s*RefreshRate:\s*(\d+)')   { $d.Refresh  = [int]$matches[1] }
+        }
+        if ($sect -eq 'CLIENT' -and $l -match '^\s*RefreshRate:\s*(\d+)') {
+            if ($d.RefreshMax -le 0) { $d.RefreshMax = [int]$matches[1] }
         }
     }
+    if ($d.Refresh -le 0) { $d.Refresh = $d.RefreshMax }
     return $d
 }
 
@@ -598,6 +633,7 @@ function Get-RsScene {
     $dw = $Display.W; $dh = $Display.H
     if ($dw -le 0 -or $dh -le 0) { $dw = 1.0; $dh = 1.0 }
     $usable = $dw * $dh
+    if ($Display.Avail -and $Display.Avail.W -gt 0) { $usable = $Display.Avail.W * $Display.Avail.H }
     if ($Display.Cutout) { $usable -= ($Display.Cutout.W * $Display.Cutout.H) }
     if ($usable -le 0) { $usable = $dw * $dh }
 
@@ -649,6 +685,7 @@ function Get-RsScene {
         density     = $Display.Density
         rotation    = $Display.Rotation
         refresh     = $Display.Refresh
+        refresh_max = $Display.RefreshMax
         power       = $Display.Power
         internal    = $Display.Internal
         contributors= $contrib.Count
@@ -733,8 +770,8 @@ function Show-RsScene {
     $s = $R.Scene
     Write-Host ""
     Write-Host "SCENE FROM THE RENDER TREE  [RS]" -ForegroundColor Cyan
-    Write-Host ("  display    {0}x{1} @{2}  rot {3}  {4}Hz  power {5}  vsync {6}" -f `
-        $s.disp_w, $s.disp_h, $s.density, $s.rotation, $s.refresh, $s.power, $s.vsync) -ForegroundColor DarkGray
+    Write-Host ("  display    {0}x{1} @{2}  rot {3}  {4}Hz of {5}  power {6}  vsync {7}" -f `
+        $s.disp_w, $s.disp_h, $s.density, $s.rotation, $s.refresh, $s.refresh_max, $s.power, $s.vsync) -ForegroundColor DarkGray
     if ($s.split -ne "marker") {
         Write-Host ("  NOTE       pass split found by {0}, not by the usual marker" -f $s.split) -ForegroundColor Yellow
     }
@@ -784,7 +821,7 @@ function Get-RsRowFields {
                      'text_frac','image_frac','sym_frac','blur_frac','shadow_frac',
                      'corner_frac','blend_frac','dirty_frac','draw_slots','nodes',
                      'scroller','surface_tag','hwc','hdr','anim_n','anim_forever',
-                     'fps_pref','skipped','rotation','refresh','power','top_weight',
+                     'fps_pref','skipped','rotation','refresh','refresh_max','power','top_weight',
                      'dropped','admit_frac','drop_skip','drop_odd')) {
         $p = $s.PSObject.Properties[$f]
         $o["rs_$f"] = if ($p -and $null -ne $p.Value) { $p.Value } else { 0 }

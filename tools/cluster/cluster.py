@@ -119,7 +119,7 @@ HELD_OUT = ("shape", "split_main", "scene", "name", "window", "pid", "described"
             "rs_blur_frac", "rs_shadow_frac", "rs_corner_frac", "rs_blend_frac",
             "rs_dirty_frac", "rs_anim_n", "rs_anim_forever", "rs_fps_pref",
             "rs_hwc", "rs_hdr", "rs_draw_slots", "rs_power", "rs_rotation",
-            "rs_refresh", "rs_protected", "rs_skipped", "rs_nodes", "rs_z_span",
+            "rs_refresh", "rs_refresh_max", "rs_protected", "rs_skipped", "rs_nodes", "rs_z_span",
             "rs_dropped", "rs_admit_frac", "rs_drop_skip", "rs_drop_odd")
 
 
