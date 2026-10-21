@@ -318,9 +318,10 @@ function Set-RsOwnership {
         if ($s.Nested) { continue }
         $seen = @{}
         $stack = New-Object System.Collections.Stack
-        foreach ($k in $s.Node.Kids) { $stack.Push($k) }
+        foreach ($k in $s.Node.Kids) { $stack.Push(@($k, $false)) }
         while ($stack.Count -gt 0) {
-            $id = $stack.Pop()
+            $item = $stack.Pop()
+            $id = [long]$item[0]; $skipCtx = [bool]$item[1]
             if ($seen.ContainsKey($id)) { continue }     # sortedChildren is
             $seen[$id] = $true                           # trusted to be a tree
             if (-not $Tree.ById.ContainsKey($id)) { continue }
@@ -330,7 +331,11 @@ function Set-RsOwnership {
             }
             $n.SurfId = $s.Id
             $n.WinId  = $s.WinId
-            foreach ($k in $n.Kids) { $stack.Push($k) }
+            # A node under a skipped subtree does not paint, and the dump does
+            # not give it an absolute rect. Carrying the flag down is what
+            # separates a node we correctly ignored from one we failed to read.
+            Add-Member -InputObject $n -NotePropertyName SkipCtx -NotePropertyValue ($skipCtx -or $n.Skipped) -Force
+            foreach ($k in $n.Kids) { $stack.Push(@($k, ($skipCtx -or $n.Skipped))) }
         }
         $s.Node.SurfId = $s.Id
         $s.Node.WinId  = $s.WinId
@@ -369,7 +374,7 @@ function Measure-RsShape {
     $mine = @($Tree.Nodes | Where-Object { $_.SurfId -eq $Surf.Id -and $_.Kind -ne 'SURFACE_NODE' })
     if ($own -le 0 -or $mine.Count -eq 0) {
         $sh.nodes = $mine.Count
-        $sh.paint_px = 0
+        $sh.paint_px = 0; $sh.drop_skip = 0; $sh.drop_odd = 0
         return [PSCustomObject]$sh
     }
 
@@ -386,6 +391,15 @@ function Measure-RsShape {
     }
     $sh.nodes    = $adm.Count
     $sh.dropped  = $mine.Count - $adm.Count
+    # 45 of the 46 rectless leaves on the capture this was built against were
+    # under a skipped subtree - the renderer declined to draw them, and it is
+    # right that they are not in the scene. Only the rest is evidence of a
+    # parse we got wrong, so only the rest is worth raising.
+    $sh.drop_skip = @($mine | Where-Object {
+        (-not $_.Abs -or $_.Abs.W -le 0) -and ($_.PSObject.Properties['SkipCtx'] -and $_.SkipCtx) }).Count
+    $sh.drop_odd  = @($mine | Where-Object {
+        -not $_.Abs -and -not ($_.PSObject.Properties['SkipCtx'] -and $_.SkipCtx) -and
+        $_.Local -and $_.Local.W -gt 0 }).Count
     if ($adm.Count -eq 0) { $sh.paint_px = 0; return [PSCustomObject]$sh }
 
     # Counts are per 1000 vp squared, not raw: raw counts do not survive a
@@ -629,7 +643,7 @@ function Get-RsScene {
         }
         $sc[$f] = [math]::Round($v / $wsum, 3)
     }
-    foreach ($f in @('nodes','dropped','repeat_n','scroller','surface_tag','hwc','hdr','anim_n','anim_forever','skipped')) {
+    foreach ($f in @('nodes','dropped','drop_skip','drop_odd','repeat_n','scroller','surface_tag','hwc','hdr','anim_n','anim_forever','skipped')) {
         $v = 0
         foreach ($c in $contrib) {
             $x = $c.PSObject.Properties[$f]
@@ -691,11 +705,11 @@ function Show-RsScene {
     }
     Write-Host ""
     $admCol = "DarkGray"
-    if ($s.admit_frac -lt 0.8) { $admCol = "Yellow" }
+    if ($s.drop_odd -gt 0) { $admCol = "Yellow" }
     Write-Host ("  contributors {0}   z span {1}   opaque cover {2}   uncovered {3}" -f `
         $s.contributors, $s.z_span, $s.cover_opaque, $s.uncovered)
-    Write-Host ("  admitted     {0} of {1} nodes ({2})   dropped: no rect, or outside the visible region" -f `
-        $s.nodes, ($s.nodes + $s.dropped), $s.admit_frac) -ForegroundColor $admCol
+    Write-Host ("  admitted     {0} of {1} ({2})   {3} skipped by the renderer, {4} unexplained" -f `
+        $s.nodes, ($s.nodes + $s.dropped), $s.admit_frac, $s.drop_skip, $s.drop_odd) -ForegroundColor $admCol
     Write-Host ("  weighted     nodes/1000vp2 {0}   depth {1}   leaf {2}   fanout {3}" -f `
         $s.node_den, $s.depth_mean, $s.leaf_frac, $s.fanout)
     Write-Host ("  content      text {0}   image {1}   repeat {2}   scrollers {3}   surfaces {4}" -f `
@@ -729,7 +743,7 @@ function Get-RsRowFields {
                      'corner_frac','blend_frac','dirty_frac','draw_slots','nodes',
                      'scroller','surface_tag','hwc','hdr','anim_n','anim_forever',
                      'fps_pref','skipped','rotation','refresh','power','top_weight',
-                     'dropped','admit_frac')) {
+                     'dropped','admit_frac','drop_skip','drop_odd')) {
         $p = $s.PSObject.Properties[$f]
         $o["rs_$f"] = if ($p -and $null -ne $p.Value) { $p.Value } else { 0 }
     }
