@@ -968,30 +968,34 @@ function Save-RsSample {
     return [PSCustomObject]@{ Tree = (ConvertFrom-RsTree -Lines $rs); Map = (ConvertFrom-RsClient -Lines $cl) }
 }
 
-# Opaque regions keyed by window id, for the window-rect occlusion on the
-# uitest path. RenderService names its window surfaces after the window -
-# WindowScene_aweme215, SCBStatusBar25 - so the trailing digits are the join.
+# Opaque regions keyed by surface NAME, for the window-rect occlusion on the
+# uitest path.
 #
-# Note the two services order z oppositely: WindowManagerService puts the top
-# window at the highest z, RenderService at the lowest. Only the geometry
-# crosses over. The ordering stays with whoever is doing the sorting.
+# Not by id. The trailing digits of a RenderService surface name are a
+# SceneBoard id, not a WindowManagerService window id: WMS lists the status
+# bar as window 30 and RenderService names the same surface SCBStatusBar25.
+# uitest's hostWindowId does agree with those digits, which is what made the
+# id look like a join key until the two tables were put side by side. The
+# names are identical in both services, so the name is the join.
 function Get-RsOpaqueByWindow {
     $rs = @(Invoke-RsDump -Arg 'RSTree')
     if ($rs.Count -lt 5) { return $null }
     $tree = ConvertFrom-RsTree -Lines $rs
     Set-RsOwnership -Tree $tree
-    $byWin = @{}
+    $byName = @{}
     foreach ($s in $tree.Surfaces) {
-        if ($s.WinId -le 0) { continue }
-        # A nested surface carries the app's real opaque region; the window
-        # surface above it often carries none. Both belong to the window.
-        $owner = $s.WinId
+        if (-not $s.Name) { continue }
+        # A nested surface carries the app's real opaque region while the
+        # window surface above it often carries none. Both belong to the
+        # window, so both are filed under the outer name.
+        $owner = $s.Name
         if ($s.Nested -and $tree.ById.ContainsKey($s.Node.SurfId)) {
-            $o = $tree.ById[$s.Node.SurfId]
-            if ($o.WinId -gt 0) { $owner = $o.WinId }
+            foreach ($o in $tree.Surfaces) {
+                if ($o.Id -eq $s.Node.SurfId -and $o.Name) { $owner = $o.Name; break }
+            }
         }
-        if (-not $byWin.ContainsKey($owner)) { $byWin[$owner] = @() }
-        $byWin[$owner] += $s.Opq
+        if (-not $byName.ContainsKey($owner)) { $byName[$owner] = @() }
+        $byName[$owner] += $s.Opq
     }
-    return $byWin
+    return $byName
 }

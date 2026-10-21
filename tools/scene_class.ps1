@@ -345,9 +345,15 @@ function Set-Occlusion {
     $opq = $script:RsOpaque
     foreach ($rr in $rs) {
         $g = $null
-        if ($opq -and $opq.ContainsKey([int]$rr.Win.WinId)) {
-            $g = @($opq[[int]$rr.Win.WinId] | Where-Object { $_ -and $_.W -gt 0 -and $_.H -gt 0 })
+        $wn = [string]$rr.Win.Name
+        if ($opq -and $wn -and $opq.ContainsKey($wn)) {
+            $g = @($opq[$wn] | Where-Object { $_ -and $_.W -gt 0 -and $_.H -gt 0 })
+            if ($g.Count -eq 0) { $g = @() }   # named, and opaque nowhere
         }
+        # $null means the render tree never named this window, so the rect is
+        # all we have. An EMPTY list means it was named and is opaque nowhere -
+        # a transparent layer - and that must not fall back to the rect, which
+        # is the whole point of the change.
         if ($null -eq $g) { $g = @([PSCustomObject]@{ X=$rr.L; Y=$rr.T; W=($rr.R-$rr.L); H=($rr.B-$rr.T) }) }
         Add-Member -InputObject $rr -NotePropertyName Occ -NotePropertyValue $g -Force
     }
