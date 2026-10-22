@@ -100,6 +100,7 @@ FEATURES = [
     ("rs_bar_top",     "unit",    0.5),
     ("rs_bar_bot",     "unit",    0.5),
     ("rs_split_n",     "clip6",   0.7),
+    ("rs_has_repeat",  "flag",    0.7),   # whether there was anything to measure
 ]
 
 # Read, reported, never clustered on.
@@ -140,6 +141,14 @@ HELD_OUT = ("shape", "split_main", "scene", "name", "window", "pid", "described"
 
 
 def transform(kind, raw):
+    # An empty field is a measurement that was not taken, not a zero. item_h
+    # was reported as 0.0 when a screen had no repeating group, and on a
+    # continuous scale that reads as the smallest possible items rather than
+    # as absence. It comes back as nan and is filled with the column mean
+    # below, so the dimension contributes nothing to the distance instead of
+    # contributing a fiction.
+    if raw is None or str(raw).strip() == "":
+        return float("nan")
     try:
         v = float(raw)
     except (TypeError, ValueError):
@@ -253,6 +262,12 @@ def build_matrix(rows):
     for name, kind, _ in FEATURES:
         cols.append([transform(kind, r.get(name)) for r in rows])
     X = np.array(cols, dtype=float).T
+    # fill what was never measured with the column mean, so a missing value
+    # sits at the centre of that axis and adds nothing to any distance
+    for j in range(X.shape[1]):
+        m = np.isnan(X[:, j])
+        if m.any():
+            X[m, j] = np.nanmean(X[:, j]) if not m.all() else 0.0
     mean = X.mean(axis=0)
     std = X.std(axis=0)
     # A feature that never varies in this session carries no information and

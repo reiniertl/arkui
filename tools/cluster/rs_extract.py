@@ -380,9 +380,19 @@ def measure(tree, surf, density, disp_area, dw=1316.0, dh=2832.0):
     # These were uitest features once, which is a historical accident: when
     # they were written uitest was the only source of per-component rects.
     # What they actually need is geometry, and innerAbsDrawRect carries it.
-    sh["cols"], sh["rows_n"] = 0, 0
-    sh["item_h"], sh["item_aspect"] = 0.0, 1.0
+    # Empty, not zero. item_h = 0.0 did not mean "items of no height", it
+    # meant "no repeating group here" - and on a continuous scale the vector
+    # read that as the smallest possible items, the opposite end from a
+    # full-height card. item_aspect = 1.0 was worse: the no-group default was
+    # indistinguishable from a genuinely square item, and 1,266 samples
+    # carried it. A sixth of the dataset was feeding the clustering three
+    # fabricated coordinates and sitting as a dense lump in the middle of the
+    # space. has_repeat says whether there was anything to measure.
+    sh["cols"], sh["rows_n"] = "", ""
+    sh["item_h"], sh["item_aspect"] = "", ""
+    sh["has_repeat"] = 0
     if score:
+        sh["has_repeat"] = 1
         # The repeat group, chosen so the choice does not flip.
         #
         # Taking whichever group covered the most area made these features
@@ -537,13 +547,12 @@ def build_scene(tree, cmap, disp):
         sc["z_span"] = max(zs) - min(zs)
 
     wsum = sum(c["weight"] for c in contrib) or 1.0
-    for fld in ("node_den", "depth_mean", "leaf_frac", "fanout", "repeat_frac",
-                "text_frac", "image_frac", "sym_frac", "blur_frac", "shadow_frac",
+    for fld in ("node_den", "depth_mean", "leaf_frac", "fanout", "text_frac", "image_frac", "sym_frac", "blur_frac", "shadow_frac",
                 "corner_frac", "blend_frac", "dirty_frac", "draw_slots",
                 "paint_frac", "hwc_frac"):
-        sc[fld] = round(sum(float(c.get(fld, 0)) * c["weight"] for c in contrib) / wsum, 3)
+        sc[fld] = round(sum(float(c.get(fld, 0) or 0) * c["weight"] for c in contrib) / wsum, 3)
     for fld in ("nodes", "dropped", "drop_skip", "drop_odd", "paints", "redrawn",
-                "repeat_n", "scroller", "surface_tag", "hwc", "hdr", "anim_n",
+                "scroller", "surface_tag", "hwc", "hdr", "anim_n",
                 "anim_forever", "skipped"):
         sc[fld] = sum(int(c.get(fld, 0)) for c in contrib)
     seen_n = sc["nodes"] + sc["dropped"]
@@ -564,9 +573,14 @@ def build_scene(tree, cmap, disp):
     # across them and not averaged with them: columns counted over a grid, a
     # status bar and a nav bar add up to six columns of nothing. A status bar
     # has a layout, but it is not the screen's layout.
+    # All of these describe ONE screen's layout, so all come from the
+    # contributor that owns the scene. repeat_n and repeat_frac used to be
+    # summed and weighted across contributors instead, which is how 740
+    # samples ended up reporting four repeats with no columns: the status bar
+    # had a group and the app did not.
     for fld in ("cols", "rows_n", "split_n", "item_h", "item_aspect",
-                "bar_top", "bar_bot"):
-        sc[fld] = (top.get(fld, 0) if top else 0)
+                "bar_top", "bar_bot", "repeat_n", "repeat_frac", "has_repeat"):
+        sc[fld] = (top.get(fld, "") if top else "")
 
     if top:
         sc["top_win"] = top["win"]; sc["top_name"] = top["name"]
@@ -587,11 +601,11 @@ ROW_FIELDS = ["contributors", "z_span", "cover_opaque", "uncovered", "protected"
               "admit_frac", "drop_skip", "drop_odd", "paints", "redrawn",
               "paint_frac", "hwc_frac", "top_win", "top_z", "top_pid",
               "transition", "cols", "rows_n", "item_h", "item_aspect",
-              "bar_top", "bar_bot", "split_n"]
+              "bar_top", "bar_bot", "split_n", "has_repeat"]
 
 
 def row_of(scene):
-    r = {("rs_" + k): scene.get(k, 0) for k in ROW_FIELDS}
+    r = {("rs_" + k): scene.get(k, "") for k in ROW_FIELDS}
     r["rs_top_name"] = scene.get("top_name", "")
     r["rs_fps_scene"] = scene.get("fps_scene", "")
     r["rs_vsync"] = scene.get("vsync", 0)
