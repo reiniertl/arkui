@@ -507,7 +507,11 @@ def main():
     payload = {
         "session": " + ".join(os.path.basename(d) for d in dirs),
         "sessions": [os.path.basename(d) for d in dirs],
-        "samples": len(raw),
+        # The number of samples the device actually took, not the number of
+        # rows in the file. A scene row stands for however many samples
+        # matched it, and that count is its dwell - reporting len(raw) made a
+        # 569-sample session read as 39.
+        "samples": sum(int(float(r.get("dwell") or 1)) for r in rows),
         "scenes": len(rows),
         "silhouette": sil,
         "explained": explained,
