@@ -209,8 +209,8 @@
       var t = thumb(m.shot);
       h += "<div class='shot'>" +
         (t ? "<img loading='lazy' src='" + esc(t) + "' onerror=\"this.onerror=null;this.src='" +
-             esc(m.shot || "") + "'\">" : "<img alt='no screenshot'>") +
-        "<div class='cap'>" + esc(m.shot || "") +
+             esc(m.shot || "") + "'\">" : "<div class='undecided'><span>undecided<br>scene</span></div>") +
+        "<div class='cap'>" + esc(m.shot || "never held still") +
         (m.sil === null || m.sil === undefined ? "" : " · " + m.sil) +
         "</div></div>";
     });
