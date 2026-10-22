@@ -1403,6 +1403,12 @@ function Invoke-RsFastCapture {
     $rawDir = Join-Path $session "raw"
     [void](New-Item -ItemType Directory -Force -Path $rawDir)
 
+    # The display, once. It does not change during a session, and without it
+    # an offline rebuild has to guess the panel, the density and the refresh
+    # rate - or ask a device that may not be attached any more.
+    Invoke-HdcRaw "shell `"hidumper -s DisplayManagerService -a '-a'`"" |
+        Set-Content (Join-Path $session "display.txt")
+
     Write-Host ""
     Write-Host ("capturing to {0} for {1}s - Ctrl+C to stop early" -f $session, $Seconds) -ForegroundColor Cyan
     Write-Host  "one render-tree read per sample. Nothing is computed from it here:" -ForegroundColor DarkGray

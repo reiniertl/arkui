@@ -44,6 +44,19 @@ SCROLLERS = {"List", "Grid", "Swiper", "Scroll", "Tabs", "WaterFlow", "Navigatio
 RX_SURFTAG = re.compile(r'XComponent|Web|UIExtension|Embedded|Plugin')
 
 
+RX_LOCAL = re.compile(r'Properties:\s*Bounds\[\s*(-?[\d.]+)\s+(-?[\d.]+)\s+(-?[\d.]+)\s+(-?[\d.]+)\s*\]')
+
+
+def _local_w(line):
+    m = RX_LOCAL.search(line)
+    if not m or "inf" in m.group(1):
+        return 0.0
+    try:
+        return float(m.group(3))
+    except ValueError:
+        return 0.0
+
+
 def region_rects(line, key):
     """A region is '[x, y, w, h]' repeated, or '[Empty]'."""
     m = re.search(re.escape(key) + r'(?:\s+\d+)?\s*:?\s*(.*)$', line)
@@ -138,9 +151,14 @@ def parse_tree(lines):
             hwc_ids.update(int(x) for x in RX_HWCID.findall(hw.group(1)))
         n = {
             "id": nid, "kind": m.group(2), "pid": nid >> 32,
-            "depth": len(m.group(1).replace("|", "")) // 2,
+            # round, not floor: PowerShell computes this as [int]($indent/2)
+            # and [int] rounds half to even, so an odd indent lands a level
+            # higher there. Flooring here put depth_mean out by half a level
+            # on every scene.
+            "depth": int(round(len(m.group(1).replace("|", "")) / 2)),
             "abs": tuple(int(v) for v in a.groups()) if a else None,
             "old": tuple(int(v) for v in od.groups()) if od else None,
+            "localw": _local_w(l),
             "kids": [int(x) for x in k.group(1).split()] if k else [],
             "blur": bool(re.search(r'BlurRadiusX|BackgroundFilter|HasFrostedGlassEffect|NeedFilter: true', l)),
             "shadow": "ShadowRadius" in l or "ShadowElevation" in l,
@@ -297,7 +315,10 @@ def measure(tree, surf, density, disp_area):
     sh["dropped"] = len(mine) - len(adm)
     sh["drop_skip"] = sum(1 for n in mine
                           if (not n["abs"] or n["abs"][2] <= 0) and n["skipctx"])
-    sh["drop_odd"] = sum(1 for n in mine if not n["abs"] and not n["skipctx"])
+    # a node with no absolute rect but a real local one: something we failed
+    # to read, as opposed to something the renderer declined to draw
+    sh["drop_odd"] = sum(1 for n in mine
+                         if not n["abs"] and not n["skipctx"] and n["localw"] > 0)
     if not adm:
         sh["paint_px"] = 0
         return sh
@@ -525,7 +546,15 @@ def read_display(path):
 
 def session_rows(sdir, per_sample):
     """One row per scene, or one per sample when the raw stream is wanted."""
-    disp = read_display(os.path.join(sdir, "display.txt"))
+    # A fast capture does not write display.txt, so fall back to one left at
+    # the capture root. Without it refresh, power and rotation read as
+    # defaults and differ from a PowerShell rebuild, which asks the device.
+    dpath = os.path.join(sdir, "display.txt")
+    if not os.path.exists(dpath):
+        alt = os.path.join(os.path.dirname(sdir.rstrip("/\\")), "display.txt")
+        if os.path.exists(alt):
+            dpath = alt
+    disp = read_display(dpath)
     name = os.path.basename(sdir.rstrip("/\\"))
     samp = os.path.join(sdir, "samples.csv")
     stem_of, dwell_of = {}, defaultdict(int)
