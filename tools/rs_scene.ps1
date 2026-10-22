@@ -1504,9 +1504,15 @@ function Invoke-RsFastCapture {
     }
 
     # One transfer for every picture taken, now that the device is free.
-    if ($idx -gt 0) {
+    # Against the number of pictures TAKEN, not the number of scenes. Scene
+    # shots and periodic ones both land here, so comparing to the scene count
+    # printed "51 of 39 arrived" - and worse, it would have called a transfer
+    # complete and wiped the device while pictures were still missing, as
+    # long as more than one per scene had made it back.
+    $want = $shots + $periodic
+    if ($want -gt 0) {
         Write-Host ""
-        Write-Host ("  pulling {0} pictures back in one transfer..." -f $idx) -ForegroundColor DarkGray
+        Write-Host ("  pulling {0} pictures back in one transfer..." -f $want) -ForegroundColor DarkGray
         $t0r = Get-Date
         Invoke-HdcRaw ("file recv {0} `"{1}`"" -f $devDir, $session) | Out-Null
         # hdc drops a directory transfer into a subfolder named after it.
@@ -1518,9 +1524,9 @@ function Invoke-RsFastCapture {
             Remove-Item -Path $sub -Recurse -Force -ErrorAction SilentlyContinue
         }
         $got = @(Get-ChildItem -Path $session -Filter ("*" + $script:ShotExt)).Count
-        Write-Host ("  {0} of {1} arrived in {2:N1}s" -f $got, $idx, ((Get-Date) - $t0r).TotalSeconds) -ForegroundColor DarkGray
-        if ($got -lt $idx) {
-            Write-Host ("  {0} missing. They are still on the device at {1}" -f ($idx - $got), $devDir) -ForegroundColor Yellow
+        Write-Host ("  {0} of {1} arrived in {2:N1}s" -f $got, $want, ((Get-Date) - $t0r).TotalSeconds) -ForegroundColor DarkGray
+        if ($got -lt $want) {
+            Write-Host ("  {0} missing. They are still on the device at {1}" -f ($want - $got), $devDir) -ForegroundColor Yellow
         } else {
             Invoke-HdcRaw "shell `"rm -rf $devDir`"" | Out-Null
         }
