@@ -1366,7 +1366,7 @@ function Invoke-RsRebuildAll {
 # Repeats cost two dumps and a regex pass. Only a new scene pays for storage
 # and a screenshot, which on a phone held on one screen is almost never.
 function Invoke-RsFastCapture {
-    param([int] $Seconds, [string] $Dir, [int] $Tol = 650)
+    param([int] $Seconds, [string] $Dir, [int] $Tol = 650, [int] $ShotEvery = 5)
 
     if (-not (Find-ShotCommand)) { return }
     $stamp   = (Get-Date).ToString("yyyyMMdd_HHmmss")
@@ -1413,6 +1413,15 @@ function Invoke-RsFastCapture {
     $t0 = Get-Date
     $index = @(); $idx = 0; $n = 0; $failed = 0
     $sw = New-Object System.Diagnostics.Stopwatch
+    # A scene does not get its picture when it first appears. It gets one on
+    # its first REPEAT, when the screen has demonstrably held still across a
+    # sample - taken at first sight, the shot landed while the display was
+    # still moving into the scene, and a third of scenes last under two
+    # seconds.
+    $pending  = @{}          # scene key -> stem still waiting for a picture
+    $prevKey  = ""
+    $lastShot = (Get-Date).AddSeconds(-$ShotEvery)
+    $shots = 0; $periodic = 0
 
     while (((Get-Date) - $t0).TotalSeconds -lt $Seconds) {
         $sw.Restart()
@@ -1437,23 +1446,41 @@ function Invoke-RsFastCapture {
         if ($hit) {
             $hit.Dwell++
             $key = $hit.Sig
+            # The same scene twice running: the screen held across a sample,
+            # so a picture taken now shows what the dump described.
+            if ($key -eq $prevKey -and $pending.ContainsKey($key)) {
+                $st = $pending[$key]
+                Invoke-HdcRaw ("shell `"{0} {1}/{2}{3}`"" -f $script:ShotBin, $devDir, $st, $script:ShotExt) | Out-Null
+                $shot = $st + $script:ShotExt
+                $pending.Remove($key)
+                $shots++
+                $lastShot = Get-Date
+            }
         } else {
             $idx++
             $stem = "{0:D4}" -f $idx
             $key  = $sig.Hash
             $index += [PSCustomObject]@{ Sig = $key; All = $sig.All; Dwell = 1 }
-            # The picture FIRST, while the screen is still the one the tree
-            # just described. Everything else about this scene can wait; the
-            # screen cannot.
-            Invoke-HdcRaw ("shell `"{0} {1}/{2}{3}`"" -f $script:ShotBin, $devDir, $stem, $script:ShotExt) | Out-Null
-            $shot = $stem + $script:ShotExt
-            # Then the tags, a signature and a snapshot after the tree. The
-            # two dumps join by node id and that join is exact only because
-            # little moves between them - this is the cost of not paying
-            # 193ms on every repeat.
+            # Tags now, picture later. The two dumps join by node id and that
+            # join is exact only because little moves between them.
             $cl = @(Invoke-RsDump -Arg 'client')
             $rs | Set-Content (Join-Path $session "$stem.rstree.txt")
             $cl | Set-Content (Join-Path $session "$stem.client.txt")
+            $pending[$key] = $stem
+        }
+
+        # The backstop. A scene seen once and never again never earns a
+        # stable pair, so without this it would have no picture at all - and
+        # a periodic frame taken while the display sat on one screen is the
+        # best evidence available for it. Which scene each belongs to is
+        # settled offline, against the signature of the sample it was taken
+        # at, which is why the sample number is in the name.
+        if (-not $shot -and ((Get-Date) - $lastShot).TotalSeconds -ge $ShotEvery) {
+            $pn = "p{0:D6}" -f $n
+            Invoke-HdcRaw ("shell `"{0} {1}/{2}{3}`"" -f $script:ShotBin, $devDir, $pn, $script:ShotExt) | Out-Null
+            $shot = $pn + $script:ShotExt
+            $lastShot = Get-Date
+            $periodic++
         }
 
         $row = [PSCustomObject]@{
@@ -1468,6 +1495,7 @@ function Invoke-RsFastCapture {
         if (Test-Path $csv) { $row | Export-Csv -Path $csv -NoTypeInformation -Append }
         else                { $row | Export-Csv -Path $csv -NoTypeInformation }
 
+        $prevKey = $key
         if (-not $hit) {
             Write-Host ("{0,6}  {1,-7} {2,-9} {3}" -f $n, $idx, $row.ms, "new scene -> $stem") -ForegroundColor Green
         } elseif ($n % 25 -eq 0) {
@@ -1509,6 +1537,8 @@ function Invoke-RsFastCapture {
     Write-Host ""
     Write-Host ("captured {0:N0}s: {1} samples, {2} distinct scenes, {3} failed" -f $el, $n, $idx, $failed) -ForegroundColor Green
     Write-Host ("  raw stream: {0} dumps, {1:N0} MB in {2}" -f $n, $rawMB, $rawDir) -ForegroundColor DarkGray
+    Write-Host ("  pictures: {0} on a stable pair, {1} periodic, {2} scenes never settled" -f `
+        $shots, $periodic, $pending.Count) -ForegroundColor DarkGray
     if ($n -gt 0) { Write-Host ("  {0:N2} s per sample" -f ($el / $n)) -ForegroundColor Green }
     Write-Host ("  -> {0}" -f $session)
     Write-Host ""

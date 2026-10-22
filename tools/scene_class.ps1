@@ -68,6 +68,7 @@ param(
     [switch] $NoRsOcclusion,
     [int]    $UitestEvery = 0,
     [int]    $SceneTol = 800,
+    [int]    $ShotEvery = 5,
     [string] $RsFrom,
     [string] $RsRebuildAll,
     [string] $RsSave,
@@ -4978,7 +4979,7 @@ if ($Attrs) {
     Show-Attrs -Id $id; exit 0
 }
 if ($Capture -gt 0 -and $Fast) {
-    Invoke-RsFastCapture -Seconds $Capture -Dir $CaptureDir -Tol $SceneTol; exit 0
+    Invoke-RsFastCapture -Seconds $Capture -Dir $CaptureDir -Tol $SceneTol -ShotEvery $ShotEvery; exit 0
 }
 if ($Capture -gt 0) { Invoke-Capture -Seconds $Capture -Dir $CaptureDir -Every $Every -Tol $MoveTol; exit 0 }
 if ($Services) { Show-Services; exit 0 }
