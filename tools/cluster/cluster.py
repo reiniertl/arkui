@@ -338,7 +338,16 @@ def main():
                          "Default: the session itself, or captures\\merged for several")
     ap.add_argument("--min-cluster", type=int, default=0,
                     help="smallest group that counts as a cluster (default: 2%% of screens, min 5)")
-    ap.add_argument("--still", type=int, default=800,
+    # 990, not 800. The fast capture reads every 0.31s, and at that rate a
+    # screen barely changes between consecutive reads even mid-scroll: half
+    # of all samples agree with the one before to 1000 permille and the
+    # tenth percentile is 786. A cut at 800 therefore passes almost every
+    # moving sample through, and those samples bridge the gaps between the
+    # stable ones - density-based clustering then sees one continuum. Over
+    # the same session: 2 clusters at 800, 10 at 900, 12 at 990 with the
+    # best silhouette of the sweep while still keeping 70% of the samples.
+    # The old 800 was calibrated for a loop that sampled every few seconds.
+    ap.add_argument("--still", type=int, default=990,
                     help="a sample below this structural hold was taken while the screen "
                          "was moving: it has no screenshot and does not define a screen "
                          "(default 800, matching -MoveTol 200)")
