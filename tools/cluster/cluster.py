@@ -302,6 +302,12 @@ def main():
     ap.add_argument("--include-moving", action="store_true",
                     help="cluster the moving samples too, instead of attributing them")
     ap.add_argument("--no-thumbs", action="store_true")
+    ap.add_argument("--min-dist", type=float, default=0.25,
+                    help="collapse measurements closer than this in the "
+                         "clustering space, carrying the count as dwell. "
+                         "0 keeps every sample, which lets identical points "
+                         "form clusters of their own out of sheer density. "
+                         "Default 0.25, from the plateau in the sweep.")
     ap.add_argument("--app", default="",
                     help="cluster only scenes whose owning window or app name "
                          "contains this, e.g. --app aweme. The match is made "
@@ -390,38 +396,49 @@ def main():
         names = [FEATURES[i][0] for i in np.flatnonzero(dead)]
         print("  constant in this session, carrying no information: %s" % ", ".join(names))
 
-    # Collapse measurements that are IDENTICAL, and carry the count as dwell.
+    # Collapse measurements that sit within --min-dist of each other, and
+    # carry the count as dwell.
     #
-    # A screen held still produces the same vector sample after sample: 780
-    # samples of one app came to 188 distinct measurements, the largest group
-    # 40 strong. Those points sit at distance zero from each other, so their
-    # density is unbounded and HDBSCAN makes each a cluster whatever surrounds
-    # it - six such groups, and six clusters with a spread of 0.000 that were
-    # not scene kinds at all but single screens somebody sat on. Three of them
-    # had the same medians to three decimals.
+    # A screen held still produces nearly the same vector sample after
+    # sample: of 780 samples from one app, 674 had a nearest neighbour at
+    # distance exactly zero. Points at distance zero have unbounded density,
+    # so HDBSCAN makes each such group a cluster whatever surrounds it - and
+    # collapsing only EXACT duplicates left the near-duplicates doing the
+    # same thing, one step quieter. Three clusters came back with medians
+    # agreeing to three decimals.
     #
-    # This is deduplication with nothing arbitrary in it. The old kind merged
-    # scenes whose rects agreed to a chosen permille, and a sweep showed that
-    # number sliding the scene count from 13 to 178 with no plateau anywhere.
-    # Identical is identical.
-    keys = np.round(Z, 6)
-    _, first, inverse = np.unique(keys, axis=0, return_index=True, return_inverse=True)
-    if len(first) < len(rows):
-        # unique ids, ordered by where each was first seen, so the output
-        # follows the session rather than numpy's sort
-        order = list(np.argsort(first))
-        upos = {int(u): i for i, u in enumerate(order)}
-        merged = []
-        for u in order:
-            r = dict(rows[int(first[int(u)])])
-            r["dwell"] = 0
-            merged.append(r)
-        for i, u in enumerate(inverse):
-            merged[upos[int(u)]]["dwell"] += max(1, int(float(rows[i].get("dwell") or 1)))
-        print("  %d samples -> %d distinct measurements (identical ones carry a dwell)"
-              % (len(rows), len(merged)))
-        rows = merged
-        Z, dead, fit = build_matrix(rows)
+    # Unlike the signature tolerance this radius has a plateau. Sweeping it
+    # over the same session: 15 clusters at 0, then 10 at both 0.10 and 0.25
+    # with the silhouette unchanged to three decimals, then a steady slide to
+    # 7, 6, 5, 4 as it over-merges. The flat stretch is where the number
+    # stops deciding the answer.
+    #
+    # For scale, in the same space: 90% of consecutive samples the capture
+    # called the same scene lie within 0.68 of each other, and only 5% of
+    # consecutive samples it called different lie within 0.52.
+    eps = args.min_dist
+    if eps > 0 and len(rows) > 1:
+        keep, weight, lead = [], [], np.zeros((0, Z.shape[1]))
+        for i in range(len(Z)):
+            if len(keep) == 0:
+                keep.append(i); weight.append(0); lead = Z[[i]]
+                j = 0
+            else:
+                d = np.linalg.norm(lead - Z[i], axis=1)
+                j = int(np.argmin(d))
+                if d[j] > eps:
+                    keep.append(i); weight.append(0)
+                    lead = np.vstack([lead, Z[i]])
+                    j = len(keep) - 1
+            weight[j] += max(1, int(float(rows[i].get("dwell") or 1)))
+        if len(keep) < len(rows):
+            merged = []
+            for k, i in enumerate(keep):
+                r = dict(rows[i]); r["dwell"] = weight[k]; merged.append(r)
+            print("  %d samples -> %d distinct measurements at min-dist %.2f"
+                  % (len(rows), len(merged), eps))
+            rows = merged
+            Z, dead, fit = build_matrix(rows)
 
     mcs = args.min_cluster or max(5, int(round(0.02 * len(rows))))
     print("  HDBSCAN, min_cluster_size=%d over %d features" % (mcs, Z.shape[1]))
