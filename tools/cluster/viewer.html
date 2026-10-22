@@ -143,7 +143,7 @@
   }
   function thumb(shot) {
     return shot ? "thumbs/" + shot.replace(/\.\.\//g, "").replace(/\//g, "__")
-      .replace(".png", ".jpg") : "";
+      .replace(".jpeg", ".jpg").replace(".png", ".jpg") : "";
   }
 
   document.getElementById("sub").textContent =

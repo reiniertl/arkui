@@ -4121,6 +4121,8 @@ Import-Thresholds
 #      an hour is worse than one that refuses to start.
 $script:ShotCmd  = ""
 $script:ShotName = ""
+$script:ShotDev  = "/data/local/tmp/ark_shot.png"
+$script:ShotExt  = ".png"
 
 function Get-DeviceFileSize {
     param([string] $Path)
@@ -4133,24 +4135,42 @@ function Get-DeviceFileSize {
 }
 
 function Find-ShotCommand {
-    $dev = "/data/local/tmp/ark_shot.png"
-    # Ordered by how likely they are on an OpenHarmony-derived build, but the
-    # order is only a preference - whichever one puts bytes on the device wins.
+    # Each candidate names its own device file, because the suffix is not a
+    # detail: snapshot_display refuses anything but .jpeg - "error: fileName
+    # ... invalid, suffix must be .jpeg" - and probing it with a .png was why
+    # it was written off as unavailable and every capture fell through to
+    # uitest screenCap. It works, it needs no uitest, and a frame is 187 KB
+    # against the PNG's 3.5 MB.
     $cands = @(
-        @{ Name = "snapshot_display -f";    Line = "shell `"snapshot_display -f $dev`"" },
-        @{ Name = "snapshot_display -i 0";  Line = "shell `"snapshot_display -i 0 -f $dev`"" },
-        @{ Name = "uitest screenCap -p";    Line = "shell `"uitest screenCap -p $dev`"" },
-        @{ Name = "screencap -p";           Line = "shell `"screencap -p $dev`"" }
+        @{ Name = "snapshot_display -f";   Dev = "/data/local/tmp/ark_shot.jpeg"
+           Line = "shell `"snapshot_display -f /data/local/tmp/ark_shot.jpeg`"" },
+        @{ Name = "snapshot_display -i 0"; Dev = "/data/local/tmp/ark_shot.jpeg"
+           Line = "shell `"snapshot_display -i 0 -f /data/local/tmp/ark_shot.jpeg`"" },
+        @{ Name = "screencap -p";          Dev = "/data/local/tmp/ark_shot.png"
+           Line = "shell `"screencap -p /data/local/tmp/ark_shot.png`"" },
+        # Last, and only as a fallback: it is the uitest binary. A capture
+        # that reads no layout tree still shells out to uitest for a picture
+        # if nothing above answers, and that is worth knowing rather than
+        # discovering later.
+        @{ Name = "uitest screenCap -p";   Dev = "/data/local/tmp/ark_shot.png"
+           Line = "shell `"uitest screenCap -p /data/local/tmp/ark_shot.png`"" }
     )
     Write-Host "probing for a screenshot command..." -ForegroundColor Cyan
     foreach ($c in $cands) {
-        Invoke-HdcRaw "shell `"rm -f $dev`"" | Out-Null
+        Invoke-HdcRaw "shell `"rm -f $($c.Dev)`"" | Out-Null
         $resp = Invoke-HdcRaw $c.Line
-        $sz = Get-DeviceFileSize $dev
+        $sz = Get-DeviceFileSize $c.Dev
         if ($sz -gt 10000) {
-            Write-Host ("  {0,-22} OK  ({1:N0} bytes)" -f $c.Name, $sz) -ForegroundColor Green
+            Write-Host ("  {0,-22} OK  ({1:N0} bytes, {2})" -f $c.Name, $sz,
+                [System.IO.Path]::GetExtension($c.Dev)) -ForegroundColor Green
+            if ($c.Name -like "uitest*") {
+                Write-Host "  NOTE  this is the uitest binary. No layout tree is read or stored," -ForegroundColor Yellow
+                Write-Host "        but the picture comes from uitest, not from the render path." -ForegroundColor Yellow
+            }
             $script:ShotCmd  = $c.Line
             $script:ShotName = $c.Name
+            $script:ShotDev  = $c.Dev
+            $script:ShotExt  = [System.IO.Path]::GetExtension($c.Dev)
             return $true
         }
         $why = if ($sz -gt 0) { "$sz bytes - too small to be a frame" }
@@ -4382,7 +4402,7 @@ function Invoke-Capture {
     $session = Join-Path $Dir $stamp
     [void](New-Item -ItemType Directory -Force -Path $session)
     $rowsCsv = Join-Path $session "rows.csv"
-    $dev     = "/data/local/tmp/ark_shot.png"
+    $dev     = $script:ShotDev
 
     Write-Host ""
     Write-Host ("capturing to {0} for {1}s - Ctrl+C to stop early" -f $session, $Seconds) -ForegroundColor Cyan
@@ -4648,7 +4668,7 @@ function Invoke-Capture {
         if (-not $dup) {
             $idx++
             $stem = "{0:D4}" -f $idx
-            $shot = "$stem.png"
+            $shot = $stem + $script:ShotExt
             $local = Join-Path $session $shot
             Invoke-HdcRaw "shell `"rm -f $dev`"" | Out-Null
             Invoke-HdcRaw $script:ShotCmd | Out-Null

@@ -182,7 +182,11 @@ def thumb_name(shot):
     every shot path starts with one, and a file called "..__0003.jpg" is
     hidden on anything unix-shaped and confusing everywhere else.
     """
-    return shot.replace("../", "").replace("/", "__").replace(".png", ".jpg")
+    # .jpeg as well as .png: snapshot_display only writes .jpeg, and it is
+    # the capture path now that it turned out to work - it was written off
+    # earlier only because the probe handed it a .png.
+    return (shot.replace("../", "").replace("/", "__")
+            .replace(".jpeg", ".jpg").replace(".png", ".jpg"))
 
 
 def dedupe(rows):
@@ -298,6 +302,12 @@ def main():
     ap.add_argument("--include-moving", action="store_true",
                     help="cluster the moving samples too, instead of attributing them")
     ap.add_argument("--no-thumbs", action="store_true")
+    ap.add_argument("--app", default="",
+                    help="cluster only scenes whose owning window or app name "
+                         "contains this, e.g. --app aweme. The match is made "
+                         "BEFORE the vector is built, so one app's scenes are "
+                         "standardised against each other rather than against "
+                         "a launcher that dominates the session.")
     args = ap.parse_args()
 
     # cmd.exe does not expand wildcards, so captures\2026* arrives literally.
@@ -349,6 +359,26 @@ def main():
     if moving:
         print("  %d of %d samples were taken while the screen was moving (%.0f%%)"
               % (len(moving), len(raw), 100.0 * len(moving) / len(raw)))
+
+    if args.app:
+
+        want = args.app.lower()
+
+        before = len(raw)
+
+        raw = [r for r in raw
+
+               if want in str(r.get("rs_top_name", "")).lower()
+
+               or want in str(r.get("name", "")).lower()]
+
+        print("  --app %s: %d of %d samples" % (args.app, len(raw), before))
+
+        if not raw:
+
+            print("  nothing matched. Check the owning window names in rows.csv.")
+
+            return
 
     rows = dedupe(settled)
     print("  %d distinct scenes (deduplicated by scene signature)" % len(rows))
