@@ -1373,7 +1373,21 @@ function Invoke-RsFastCapture {
     $session = Join-Path $Dir $stamp
     [void](New-Item -ItemType Directory -Force -Path $session)
     $csv = Join-Path $session "samples.csv"
-    $dev = $script:ShotDev
+
+    # Pictures stay on the device until the end.
+    #
+    # Per scene the old path paid 130ms to delete the last frame and 75ms to
+    # pull the new one back, for a file nothing reads until the session is
+    # over. Writing each to its own name on the device removes the delete,
+    # and one directory transfer at the end costs 227ms for thirteen files
+    # where thirteen separate pulls cost 975.
+    #
+    # Freeing those 205ms also lets the snapshot move ahead of the client
+    # dump and the file writes, which is what matters more: the picture used
+    # to be taken 810ms after the tree read that defined the scene, and a
+    # third of scenes lasted under two seconds.
+    $devDir = "/data/local/tmp/arkshots"
+    Invoke-HdcRaw "shell `"rm -rf $devDir; mkdir -p $devDir`"" | Out-Null
 
     Write-Host ""
     Write-Host ("capturing to {0} for {1}s - Ctrl+C to stop early" -f $session, $Seconds) -ForegroundColor Cyan
@@ -1412,18 +1426,18 @@ function Invoke-RsFastCapture {
             $stem = "{0:D4}" -f $idx
             $key  = $sig.Hash
             $index += [PSCustomObject]@{ Sig = $key; All = $sig.All; Dwell = 1 }
-            # Fetched here, a signature's width after the tree rather than
-            # beside it. The two join by node id and that join is exact only
-            # because little moves between them; 60ms is the price of not
-            # paying 193 on every repeat.
+            # The picture FIRST, while the screen is still the one the tree
+            # just described. Everything else about this scene can wait; the
+            # screen cannot.
+            Invoke-HdcRaw ("shell `"{0} {1}/{2}{3}`"" -f $script:ShotBin, $devDir, $stem, $script:ShotExt) | Out-Null
+            $shot = $stem + $script:ShotExt
+            # Then the tags, a signature and a snapshot after the tree. The
+            # two dumps join by node id and that join is exact only because
+            # little moves between them - this is the cost of not paying
+            # 193ms on every repeat.
             $cl = @(Invoke-RsDump -Arg 'client')
             $rs | Set-Content (Join-Path $session "$stem.rstree.txt")
             $cl | Set-Content (Join-Path $session "$stem.client.txt")
-            Invoke-HdcRaw "shell `"rm -f $dev`"" | Out-Null
-            Invoke-HdcRaw $script:ShotCmd | Out-Null
-            $local = Join-Path $session ($stem + $script:ShotExt)
-            Invoke-HdcRaw ("file recv {0} `"{1}`"" -f $dev, $local) | Out-Null
-            if (Test-Path $local) { $shot = $stem + $script:ShotExt }
         }
 
         $row = [PSCustomObject]@{
@@ -1440,6 +1454,29 @@ function Invoke-RsFastCapture {
             Write-Host ("{0,6}  {1,-7} {2,-9} {3}" -f $n, $idx, $row.ms, "new scene -> $stem") -ForegroundColor Green
         } elseif ($n % 25 -eq 0) {
             Write-Host ("{0,6}  {1,-7} {2,-9} {3}" -f $n, $idx, $row.ms, "same scene") -ForegroundColor DarkGray
+        }
+    }
+
+    # One transfer for every picture taken, now that the device is free.
+    if ($idx -gt 0) {
+        Write-Host ""
+        Write-Host ("  pulling {0} pictures back in one transfer..." -f $idx) -ForegroundColor DarkGray
+        $t0r = Get-Date
+        Invoke-HdcRaw ("file recv {0} `"{1}`"" -f $devDir, $session) | Out-Null
+        # hdc drops a directory transfer into a subfolder named after it.
+        $sub = Join-Path $session "arkshots"
+        if (Test-Path $sub) {
+            Get-ChildItem -Path $sub -File | ForEach-Object {
+                Move-Item -Path $_.FullName -Destination (Join-Path $session $_.Name) -Force
+            }
+            Remove-Item -Path $sub -Recurse -Force -ErrorAction SilentlyContinue
+        }
+        $got = @(Get-ChildItem -Path $session -Filter ("*" + $script:ShotExt)).Count
+        Write-Host ("  {0} of {1} arrived in {2:N1}s" -f $got, $idx, ((Get-Date) - $t0r).TotalSeconds) -ForegroundColor DarkGray
+        if ($got -lt $idx) {
+            Write-Host ("  {0} missing. They are still on the device at {1}" -f ($idx - $got), $devDir) -ForegroundColor Yellow
+        } else {
+            Invoke-HdcRaw "shell `"rm -rf $devDir`"" | Out-Null
         }
     }
 

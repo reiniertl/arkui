@@ -4124,6 +4124,7 @@ $script:ShotCmd  = ""
 $script:ShotName = ""
 $script:ShotDev  = "/data/local/tmp/ark_shot.png"
 $script:ShotExt  = ".png"
+$script:ShotBin  = "snapshot_display -f"
 
 function Get-DeviceFileSize {
     param([string] $Path)
@@ -4143,17 +4144,17 @@ function Find-ShotCommand {
     # uitest screenCap. It works, it needs no uitest, and a frame is 187 KB
     # against the PNG's 3.5 MB.
     $cands = @(
-        @{ Name = "snapshot_display -f";   Dev = "/data/local/tmp/ark_shot.jpeg"
+        @{ Name = "snapshot_display -f";   Dev = "/data/local/tmp/ark_shot.jpeg"; Bin = "snapshot_display -f"
            Line = "shell `"snapshot_display -f /data/local/tmp/ark_shot.jpeg`"" },
-        @{ Name = "snapshot_display -i 0"; Dev = "/data/local/tmp/ark_shot.jpeg"
+        @{ Name = "snapshot_display -i 0"; Dev = "/data/local/tmp/ark_shot.jpeg"; Bin = "snapshot_display -i 0 -f"
            Line = "shell `"snapshot_display -i 0 -f /data/local/tmp/ark_shot.jpeg`"" },
-        @{ Name = "screencap -p";          Dev = "/data/local/tmp/ark_shot.png"
+        @{ Name = "screencap -p";          Dev = "/data/local/tmp/ark_shot.png"; Bin = "screencap -p"
            Line = "shell `"screencap -p /data/local/tmp/ark_shot.png`"" },
         # Last, and only as a fallback: it is the uitest binary. A capture
         # that reads no layout tree still shells out to uitest for a picture
         # if nothing above answers, and that is worth knowing rather than
         # discovering later.
-        @{ Name = "uitest screenCap -p";   Dev = "/data/local/tmp/ark_shot.png"
+        @{ Name = "uitest screenCap -p";   Dev = "/data/local/tmp/ark_shot.png"; Bin = "uitest screenCap -p"
            Line = "shell `"uitest screenCap -p /data/local/tmp/ark_shot.png`"" }
     )
     Write-Host "probing for a screenshot command..." -ForegroundColor Cyan
@@ -4172,6 +4173,7 @@ function Find-ShotCommand {
             $script:ShotName = $c.Name
             $script:ShotDev  = $c.Dev
             $script:ShotExt  = [System.IO.Path]::GetExtension($c.Dev)
+            $script:ShotBin  = $c.Bin
             return $true
         }
         $why = if ($sz -gt 0) { "$sz bytes - too small to be a frame" }
