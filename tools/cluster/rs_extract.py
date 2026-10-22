@@ -291,7 +291,7 @@ def quick_sig(lines, disp_area):
     return {"hash": f"{len(src)}/{len(allk)}-{hexd}", "all": allk, "big": bigk}
 
 
-def measure(tree, surf, density, disp_area):
+def measure(tree, surf, density, disp_area, dw=1316.0, dh=2832.0):
     nodes = tree["nodes"]
     own = region_area(surf["vis"])
     sh = {"win": surf["win"], "name": surf["name"], "pid": surf["pid"],
@@ -350,6 +350,45 @@ def measure(tree, surf, density, disp_area):
         sh["repeat_n"] = len(grp[best])
         sh["repeat_size"] = f"{best[0]}x{best[1]}"
         sh["repeat_frac"] = round(score[best] / own, 3)
+
+    # ---- arrangement -----------------------------------------------------
+    #
+    # How the screen is laid out, as opposed to how much is on it. The vector
+    # had densities, fractions and counts and nothing about arrangement, so
+    # screens built the same way and carrying different amounts of text were
+    # separating while screens laid out differently collapsed onto one point.
+    #
+    # These were uitest features once, which is a historical accident: when
+    # they were written uitest was the only source of per-component rects.
+    # What they actually need is geometry, and innerAbsDrawRect carries it.
+    sh["cols"], sh["rows_n"] = 0, 0
+    sh["item_h"], sh["item_aspect"] = 0.0, 1.0
+    if score:
+        iw, ih = best
+        mem = grp[best]
+        # positions tolerated to 40px: a grid's columns are not pixel-exact
+        sh["cols"] = len({round(n["abs"][0] / 40) for n in mem})
+        sh["rows_n"] = len({round(n["abs"][1] / 40) for n in mem})
+        sh["item_h"] = round(ih * density / dh, 3)
+        sh["item_aspect"] = round(iw / max(1, ih), 3)
+
+    # bars: full width, thin, against an edge. Chrome, and the clearest
+    # structural difference between a player and a page.
+    bt = bb = 0.0
+    for n in leaves:
+        x, y, w, h = n["abs"]
+        if w >= 0.9 * dw and h <= 0.12 * dh:
+            if y <= 0.1 * dh:
+                bt = max(bt, h / dh)
+            elif y + h >= 0.9 * dh:
+                bb = max(bb, h / dh)
+    sh["bar_top"], sh["bar_bot"] = round(bt, 3), round(bb, 3)
+
+    # stacked divisions of the content band: distinct horizontal bands among
+    # the wide, tall leaves. A split screen and a single pane differ here.
+    bands = {(round(n["abs"][1] / 60), round((n["abs"][1] + n["abs"][3]) / 60))
+             for n in leaves if n["abs"][2] >= 0.6 * dw and n["abs"][3] >= 0.05 * dh}
+    sh["split_n"] = len(bands)
 
     acc = defaultdict(float)
     cnt = defaultdict(int)
@@ -427,7 +466,7 @@ def build_scene(tree, cmap, disp):
             and region_area(s["vis"]) > 0]
     contrib = []
     for s in sorted(live, key=lambda s: s["z"]):
-        sh = measure(tree, s, disp["density"], dw * dh)
+        sh = measure(tree, s, disp["density"], dw * dh, dw, dh)
         w = min(1.0, sh.get("paint_px", 0) / usable)
         sh["weight"] = round(w, 4)
         if sh.get("nodes", 0) > 0 and w > 0:
@@ -458,11 +497,12 @@ def build_scene(tree, cmap, disp):
     for fld in ("node_den", "depth_mean", "leaf_frac", "fanout", "repeat_frac",
                 "text_frac", "image_frac", "sym_frac", "blur_frac", "shadow_frac",
                 "corner_frac", "blend_frac", "dirty_frac", "draw_slots",
-                "paint_frac", "hwc_frac"):
+                "paint_frac", "hwc_frac", "item_h", "item_aspect",
+                "bar_top", "bar_bot"):
         sc[fld] = round(sum(float(c.get(fld, 0)) * c["weight"] for c in contrib) / wsum, 3)
     for fld in ("nodes", "dropped", "drop_skip", "drop_odd", "paints", "redrawn",
                 "repeat_n", "scroller", "surface_tag", "hwc", "hdr", "anim_n",
-                "anim_forever", "skipped"):
+                "anim_forever", "skipped", "cols", "rows_n", "split_n"):
         sc[fld] = sum(int(c.get(fld, 0)) for c in contrib)
     seen_n = sc["nodes"] + sc["dropped"]
     sc["admit_frac"] = round(sc["nodes"] / seen_n, 3) if seen_n else 1.0
@@ -496,7 +536,8 @@ ROW_FIELDS = ["contributors", "z_span", "cover_opaque", "uncovered", "protected"
               "refresh", "refresh_max", "power", "top_weight", "dropped",
               "admit_frac", "drop_skip", "drop_odd", "paints", "redrawn",
               "paint_frac", "hwc_frac", "top_win", "top_z", "top_pid",
-              "transition"]
+              "transition", "cols", "rows_n", "item_h", "item_aspect",
+              "bar_top", "bar_bot", "split_n"]
 
 
 def row_of(scene):

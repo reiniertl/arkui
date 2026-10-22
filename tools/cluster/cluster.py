@@ -85,6 +85,21 @@ FEATURES = [
     ("rs_cover_opaque","unit",    0.5),
     ("rs_uncovered",   "unit",    0.5),
     ("rs_paint_frac",  "unit",    0.75),  # how much of it carries content, not boxes
+
+    # ---- arrangement -----------------------------------------------------
+    # How the screen is laid out, rather than how much is on it. Without
+    # these the vector measured densities, fractions and counts and nothing
+    # else, so three clusters collapsed onto one point at den 0.60, depth 18,
+    # leaf 0.30, scroll 8 and separated only on content. cols was called the
+    # single best axis on the uitest vector, and it is geometry, not
+    # accessibility - innerAbsDrawRect carries it.
+    ("rs_cols",        "clip6",   1.2),   # gallery vs feed
+    ("rs_rows_n",      "clip6",   0.7),
+    ("rs_item_h",      "unit",    1.0),   # a 70-permille row vs a 400-permille card
+    ("rs_item_aspect", "logratio",1.0),   # log, so 0.5 and 2.0 sit equally from square
+    ("rs_bar_top",     "unit",    0.5),
+    ("rs_bar_bot",     "unit",    0.5),
+    ("rs_split_n",     "clip6",   0.7),
 ]
 
 # Read, reported, never clustered on.
