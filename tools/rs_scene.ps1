@@ -906,6 +906,14 @@ function Get-RsScene {
         $sc.top_weight = $top.weight
         $sc.top_z      = $top.z
         $sc.top_pid    = $top.pid
+        # A scene whose owner is a blur or transition surface is the display
+        # mid-animation, not a screen. It is still a scene by the definition -
+        # what is rendered at an instant - so it is flagged rather than
+        # dropped, and held out of the vector. Half of one cluster in the
+        # 95-scene session was BackgroundBlurView3, caught by a tour that
+        # switched apps faster than the phone could finish animating.
+        $sc.transition = 0
+        if ($top.name -match '(?i)blur|transition|splash|animation|freeze') { $sc.transition = 1 }
     }
 
     return [PSCustomObject]@{ Scene = [PSCustomObject]$sc; Contributors = $contrib; Display = $Display }
@@ -993,7 +1001,7 @@ function Get-RsRowFields {
                      'scroller','surface_tag','hwc','hdr','anim_n','anim_forever',
                      'fps_pref','skipped','rotation','refresh','refresh_max','power','top_weight',
                      'dropped','admit_frac','drop_skip','drop_odd','paints','redrawn','paint_frac',
-                     'hwc_frac','top_win','top_z','top_pid')) {
+                     'hwc_frac','top_win','top_z','top_pid','transition')) {
         $p = $s.PSObject.Properties[$f]
         $o["rs_$f"] = if ($p -and $null -ne $p.Value) { $p.Value } else { 0 }
     }
