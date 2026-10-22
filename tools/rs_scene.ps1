@@ -1551,3 +1551,91 @@ function Invoke-RsFastCapture {
     Write-Host "  derive the features when you are done:" -ForegroundColor DarkCyan
     Write-Host ("  scene_class.cmd -RsRebuildAll {0}" -f $Dir) -ForegroundColor DarkCyan
 }
+
+# Every sample as its own row, with no deduplication at all.
+#
+# Clustering the deduplicated scenes put 40 points on a map that stood for
+# 780 readings, and it made the 650 tolerance part of the answer: a sweep
+# showed scene count sliding smoothly from 13 to 178 as that number moved,
+# with no plateau anywhere, which means it sets the granularity rather than
+# detecting it. HDBSCAN is density-based and was built to find that itself.
+#
+# The raw stream holds every render tree. The client dump does not - it is
+# fetched only when a scene is new - so each sample borrows the tags of the
+# scene it matched. Component tags are structural and barely move within one
+# scene, which is the same reason the capture does not re-fetch them.
+function Invoke-RsRebuildSamples {
+    param([string] $Root, [string] $OutCsv)
+
+    $sessions = @(Get-ChildItem -Path $Root -Directory | Sort-Object Name)
+    $disp = Get-RsDisplay
+    if ($disp.W -le 0) {
+        $disp = [PSCustomObject]@{ Id=0; W=1316.0; H=2832.0; Density=3.5; Rotation=0
+                                   Refresh=0; RefreshMax=0; Power=-1; Internal=$true
+                                   Extend=$false; Cutout=$null; Avail=$null }
+    }
+    Write-Host ""
+    Write-Host ("REBUILD SAMPLES  {0} sessions under {1}" -f $sessions.Count, $Root) -ForegroundColor Cyan
+    Write-Host  "  every sample, no deduplication" -ForegroundColor DarkGray
+    Write-Host ""
+
+    $rows = @(); $seen = 0; $skipped = 0
+    foreach ($s in $sessions) {
+        $rawDir = Join-Path $s.FullName "raw"
+        if (-not (Test-Path $rawDir)) { continue }
+        $sampCsv = Join-Path $s.FullName "samples.csv"
+        if (-not (Test-Path $sampCsv)) { continue }
+        $samples = @(Import-Csv $sampCsv)
+
+        # sig -> the scene stem that owns its client dump
+        $stemOf = @{}
+        foreach ($r in $samples) { if ($r.stem) { $stemOf[$r.sig] = $r.stem } }
+        $mapOf = @{}
+        foreach ($sg in $stemOf.Keys) {
+            $cf = Join-Path $s.FullName ($stemOf[$sg] + ".client.txt")
+            if (Test-Path $cf) { $mapOf[$sg] = ConvertFrom-RsClient -Lines (Get-Content $cf) }
+        }
+        # and the picture that scene ended up with, so a sample can show one
+        $shotOf = @{}
+        foreach ($sg in $stemOf.Keys) {
+            foreach ($ext in @(".jpeg", ".png", ".jpg")) {
+                $p = Join-Path $s.FullName ($stemOf[$sg] + $ext)
+                if (Test-Path $p) { $shotOf[$sg] = $s.Name + "/" + $stemOf[$sg] + $ext; break }
+            }
+        }
+
+        $i = 0
+        foreach ($r in $samples) {
+            if (-not $r.raw) { continue }
+            $f = Join-Path $rawDir ($r.raw + ".rstree.txt")
+            if (-not (Test-Path $f)) { $skipped++; continue }
+            $lines = @(Get-Content $f)
+            if ($lines.Count -lt 5) { $skipped++; continue }
+            $tree = ConvertFrom-RsTree -Lines $lines
+            $map  = @{}
+            if ($mapOf.ContainsKey($r.sig)) { $map = $mapOf[$r.sig] }
+            $scene = Get-RsScene -Tree $tree -ClientMap $map -Display $disp
+            $row = Get-RsRow -Scene $scene -Win $null -Mono 0
+            Add-Member -InputObject $row -NotePropertyName session -NotePropertyValue $s.Name -Force
+            Add-Member -InputObject $row -NotePropertyName stem    -NotePropertyValue $r.raw -Force
+            # Unique per sample: nothing downstream may collapse these rows.
+            Add-Member -InputObject $row -NotePropertyName sig     -NotePropertyValue ($s.Name + "/" + $r.raw) -Force
+            Add-Member -InputObject $row -NotePropertyName scene_sig -NotePropertyValue $r.sig -Force
+            Add-Member -InputObject $row -NotePropertyName dwell   -NotePropertyValue 1 -Force
+            Add-Member -InputObject $row -NotePropertyName win_sig -NotePropertyValue "" -Force
+            Add-Member -InputObject $row -NotePropertyName jitter  -NotePropertyValue "" -Force
+            Add-Member -InputObject $row -NotePropertyName still   -NotePropertyValue "" -Force
+            $sh = ""
+            if ($shotOf.ContainsKey($r.sig)) { $sh = $shotOf[$r.sig] }
+            Add-Member -InputObject $row -NotePropertyName shot -NotePropertyValue $sh -Force
+            $rows += $row
+            $seen++; $i++
+            if ($i % 100 -eq 0) { Write-Host ("  {0,-20} {1,5} of {2}" -f $s.Name, $i, $samples.Count) -ForegroundColor DarkGray }
+        }
+        Write-Host ("  {0,-20} {1,5} samples" -f $s.Name, $i)
+    }
+    $rows | Export-Csv -Path $OutCsv -NoTypeInformation
+    Write-Host ""
+    Write-Host ("  {0} samples rebuilt, {1} skipped" -f $seen, $skipped) -ForegroundColor Green
+    Write-Host ("  -> {0}" -f $OutCsv)
+}

@@ -71,6 +71,7 @@ param(
     [int]    $ShotEvery = 5,
     [string] $RsFrom,
     [string] $RsRebuildAll,
+    [switch] $AllSamples,
     [string] $RsSave,
     [string] $RsFps,
     [int]    $Capture = 0,
@@ -5005,6 +5006,10 @@ if ($RsFrom) {
 # Every saved scene from every session, re-derived on the current extractor
 # and deduplicated across the whole set.
 if ($RsRebuildAll) {
+    if ($AllSamples) {
+        Invoke-RsRebuildSamples -Root $RsRebuildAll -OutCsv (Join-Path $RsRebuildAll "all_samples.csv")
+        exit 0
+    }
     $outCsv = Join-Path $RsRebuildAll "all_scenes.csv"
     Invoke-RsRebuildAll -Root $RsRebuildAll -OutCsv $outCsv -Tol $SceneTol
     exit 0
