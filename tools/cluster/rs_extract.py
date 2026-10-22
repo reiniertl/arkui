@@ -346,7 +346,9 @@ def measure(tree, surf, density, disp_area, dw=1316.0, dh=2832.0):
     score = {k: sum(x["visarea"] for x in v) for k, v in grp.items() if len(v) > 1}
     sh["repeat_n"], sh["repeat_size"], sh["repeat_frac"] = 0, "", 0.0
     if score:
-        best = max(score, key=lambda k: score[k])
+        top_score = max(score.values())
+        near = [k for k, v in score.items() if v >= 0.8 * top_score]
+        best = max(near, key=lambda k: (k[1], k[0]))
         sh["repeat_n"] = len(grp[best])
         sh["repeat_size"] = f"{best[0]}x{best[1]}"
         sh["repeat_frac"] = round(score[best] / own, 3)
@@ -364,33 +366,37 @@ def measure(tree, surf, density, disp_area, dw=1316.0, dh=2832.0):
     sh["cols"], sh["rows_n"] = 0, 0
     sh["item_h"], sh["item_aspect"] = 0.0, 1.0
     if score:
-        # Item size and aspect are averaged over EVERY repeat group, weighted
-        # by the area each covers - not read off whichever group happens to
-        # win.
+        # The repeat group, chosen so the choice does not flip.
         #
-        # Reading the winner made them discontinuous. When two groups cover
-        # similar area - a feed's cards against its action rail - the argmax
-        # alternates between samples and the reported item height jumps to a
-        # different group's geometry. One screen flipped between two clusters
-        # sixteen times across 55 samples, and item_h was among the three
-        # features responsible in ten of the eleven split pictures. The
-        # structure never changed; the argmax did.
+        # Taking whichever group covered the most area made these features
+        # discontinuous: when two groups cover similar area - a feed's cards
+        # against its action rail - the argmax alternates between samples and
+        # the reported item height jumps to a different group's geometry. One
+        # screen flipped between two clusters sixteen times across 55
+        # samples, and item_h was among the three features responsible in ten
+        # of the eleven pictures that appeared in more than one cluster.
         #
-        # cols and rows still come from the winner: a column count averaged
-        # over groups of different shapes is not a column count. They move
-        # with the argmax too, but as integers over a coarse grid they are
-        # far less jumpy than a continuous height.
+        # Averaging over all groups fixed the flipping and destroyed the
+        # result: 2 clusters, 565 of 695 points in one of them. The argmax
+        # was producing discrete levels - 41 distinct item heights across the
+        # session - and those gaps are the density valleys the clustering
+        # separates on. Averaging turned 41 levels into 250 and left one
+        # continuum with nothing to cut.
+        #
+        # So: keep the winner, but let a near-rival win only on a stable
+        # rule. Among groups within 20% of the best coverage, take the one
+        # with the tallest item. Small changes in coverage no longer change
+        # the answer, because the tie-break does not depend on them.
+        top_score = max(score.values())
+        near = [k for k, v in score.items() if v >= 0.8 * top_score]
+        best = max(near, key=lambda k: (k[1], k[0]))
         iw, ih = best
         mem = grp[best]
         # positions tolerated to 40px: a grid's columns are not pixel-exact
         sh["cols"] = len({round(n["abs"][0] / 40) for n in mem})
         sh["rows_n"] = len({round(n["abs"][1] / 40) for n in mem})
-        tot = sum(score.values())
-        if tot > 0:
-            sh["item_h"] = round(sum((k[1] * density / dh) * a
-                                     for k, a in score.items()) / tot, 3)
-            sh["item_aspect"] = round(sum((k[0] / max(1, k[1])) * a
-                                          for k, a in score.items()) / tot, 3)
+        sh["item_h"] = round(ih * density / dh, 3)
+        sh["item_aspect"] = round(iw / max(1, ih), 3)
 
     # bars: full width, thin, against an edge. Chrome, and the clearest
     # structural difference between a player and a page.
