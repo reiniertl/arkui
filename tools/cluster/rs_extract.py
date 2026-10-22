@@ -541,6 +541,16 @@ def read_display(path):
         mm = re.search(r'^\s*ScreenPowerState:\s*(\d+)', l)
         if mm:
             d["power"] = int(mm.group(1))
+        # the mode's rate, stated before any section disagrees about it
+        mm = re.search(r'activeModes<[^>]*>:\s*\d+,\s*\d+,\s*\d+,\s*(\d+)', l)
+        if mm:
+            d["refresh_max"] = int(mm.group(1))
+        if sect == "CLIENT":
+            mm = re.match(r'^\s*RefreshRate:\s*(\d+)', l)
+            if mm and d["refresh_max"] <= 0:
+                d["refresh_max"] = int(mm.group(1))
+    if d["refresh"] <= 0:
+        d["refresh"] = d["refresh_max"]
     return d
 
 
