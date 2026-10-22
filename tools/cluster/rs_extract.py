@@ -364,13 +364,33 @@ def measure(tree, surf, density, disp_area, dw=1316.0, dh=2832.0):
     sh["cols"], sh["rows_n"] = 0, 0
     sh["item_h"], sh["item_aspect"] = 0.0, 1.0
     if score:
+        # Item size and aspect are averaged over EVERY repeat group, weighted
+        # by the area each covers - not read off whichever group happens to
+        # win.
+        #
+        # Reading the winner made them discontinuous. When two groups cover
+        # similar area - a feed's cards against its action rail - the argmax
+        # alternates between samples and the reported item height jumps to a
+        # different group's geometry. One screen flipped between two clusters
+        # sixteen times across 55 samples, and item_h was among the three
+        # features responsible in ten of the eleven split pictures. The
+        # structure never changed; the argmax did.
+        #
+        # cols and rows still come from the winner: a column count averaged
+        # over groups of different shapes is not a column count. They move
+        # with the argmax too, but as integers over a coarse grid they are
+        # far less jumpy than a continuous height.
         iw, ih = best
         mem = grp[best]
         # positions tolerated to 40px: a grid's columns are not pixel-exact
         sh["cols"] = len({round(n["abs"][0] / 40) for n in mem})
         sh["rows_n"] = len({round(n["abs"][1] / 40) for n in mem})
-        sh["item_h"] = round(ih * density / dh, 3)
-        sh["item_aspect"] = round(iw / max(1, ih), 3)
+        tot = sum(score.values())
+        if tot > 0:
+            sh["item_h"] = round(sum((k[1] * density / dh) * a
+                                     for k, a in score.items()) / tot, 3)
+            sh["item_aspect"] = round(sum((k[0] / max(1, k[1])) * a
+                                          for k, a in score.items()) / tot, 3)
 
     # bars: full width, thin, against an edge. Chrome, and the clearest
     # structural difference between a player and a page.
