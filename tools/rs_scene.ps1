@@ -642,8 +642,9 @@ function Measure-RsShape {
             ([int][math]::Round(($n.Abs.X + $n.Abs.W) / $gq, [System.MidpointRounding]::AwayFromZero)),
             ([int][math]::Round(($n.Abs.Y + $n.Abs.H) / $gq, [System.MidpointRounding]::AwayFromZero))
         [void]$ka.Add($k)
-        if ($DispArea -gt 1 -and (1000.0 * ($n.Abs.W * $n.Abs.H) / $DispArea) -ge $script:SigBigArea) {
-            [void]$kb.Add($k)
+        if ($DispArea -gt 1) {
+            $shr = 1000.0 * ($n.Abs.W * $n.Abs.H) / $DispArea
+            if ($shr -ge $script:SigBigArea -and $shr -le 600.0) { [void]$kb.Add($k) }
         }
     }
     # Set on the dictionary, not with Add-Member: $sh is still an ordered
@@ -1173,7 +1174,17 @@ function Get-RsQuickSig {
                     ([int][math]::Round(($x + $w) / $g, [System.MidpointRounding]::AwayFromZero)),
                     ([int][math]::Round(($y + $h) / $g, [System.MidpointRounding]::AwayFromZero))
                 [void]$all.Add($k)
-                if ($dispArea -gt 1 -and (1000.0 * $w * $h / $dispArea) -ge $floor) { [void]$big.Add($k) }
+                # Big, but not nearly the whole display. A rect over 60% of
+                # the panel is a root, a content area or a bar, and every
+                # full-screen app has the same handful - so a set built from
+                # size alone held ten rects that were identical across apps,
+                # and a two-hour session merged the launcher, filemanager,
+                # notepad, settings, tips and calculator into one scene.
+                # Identity lives between the containers and the noise.
+                if ($dispArea -gt 1) {
+                    $share = 1000.0 * $w * $h / $dispArea
+                    if ($share -ge $floor -and $share -le 600.0) { [void]$big.Add($k) }
+                }
             }
         }
         if ($l.Contains('SURFACE_NODE[')) {
