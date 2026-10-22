@@ -340,10 +340,27 @@ def measure(tree, surf, density, disp_area, dw=1316.0, dh=2832.0):
         wv, hv = n["abs"][2] / density, n["abs"][3] / density
         if wv < 12.0 or hv < 12.0:
             continue
-        if n["visarea"] > 0.6 * own:
+        # Judged on the node OWN rect, not on how much of it is visible.
+        #
+        # The visible area moves as the screen scrolls and the rule is a
+        # hard line, so a full-height card slipped under it when scrolled
+        # and sat above it when settled. Two samples of one feed, one pixel
+        # apart in card height - 1316x2563 against 1316x2562 - took
+        # opposite sides: the settled card excluded at 90% visible, the
+        # scrolled one kept at 56%. Whichever way it fell decided which
+        # group won, so item_h alternated between 0.061 and 0.905 and one
+        # screen flipped between two clusters sixteen times without
+        # changing. A card is the same card either way, and its own rect
+        # does not move.
+        if (n["abs"][2] * n["abs"][3]) > 0.6 * disp_area:
             continue
         grp[(round(wv), round(hv))].append(n)
-    score = {k: sum(x["visarea"] for x in v) for k, v in grp.items() if len(v) > 1}
+    # Union, not sum: members overlap, and summing their areas counted the
+    # overlaps again and again - repeat_frac reported 2.551 of a
+    # contributor, which is not a fraction of anything.
+    score = {k: region_area([(x["abs"][0], x["abs"][1], x["abs"][2], x["abs"][3])
+                             for x in v])
+             for k, v in grp.items() if len(v) > 1}
     sh["repeat_n"], sh["repeat_size"], sh["repeat_frac"] = 0, "", 0.0
     if score:
         top_score = max(score.values())
@@ -351,7 +368,7 @@ def measure(tree, surf, density, disp_area, dw=1316.0, dh=2832.0):
         best = max(near, key=lambda k: (k[1], k[0]))
         sh["repeat_n"] = len(grp[best])
         sh["repeat_size"] = f"{best[0]}x{best[1]}"
-        sh["repeat_frac"] = round(score[best] / own, 3)
+        sh["repeat_frac"] = round(min(1.0, score[best] / own), 3)
 
     # ---- arrangement -----------------------------------------------------
     #
