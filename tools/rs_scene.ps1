@@ -1389,6 +1389,20 @@ function Invoke-RsFastCapture {
     $devDir = "/data/local/tmp/arkshots"
     Invoke-HdcRaw "shell `"rm -rf $devDir; mkdir -p $devDir`"" | Out-Null
 
+    # Every sample's render tree, kept.
+    #
+    # In a raw subfolder, not beside the scenes: the rebuild walks
+    # *.rstree.txt in the session root at about a second each, so putting
+    # 13,000 sample dumps there would turn a three-minute rebuild into a
+    # four-hour one. The scenes stay where the rebuild expects them; this is
+    # the full stream, for whatever a later extractor wants to ask of it.
+    #
+    # The dump is already in hand - it is fetched every sample to compute the
+    # signature and was simply discarded on repeats - so this costs a disk
+    # write and nothing on the device.
+    $rawDir = Join-Path $session "raw"
+    [void](New-Item -ItemType Directory -Force -Path $rawDir)
+
     Write-Host ""
     Write-Host ("capturing to {0} for {1}s - Ctrl+C to stop early" -f $session, $Seconds) -ForegroundColor Cyan
     Write-Host  "one render-tree read per sample. Nothing is computed from it here:" -ForegroundColor DarkGray
@@ -1412,6 +1426,8 @@ function Invoke-RsFastCapture {
         $sig = Get-RsQuickSig -Lines $rs
         if ($sig.Hash -eq "") { $failed++; continue }
         $n++
+        $raw = "s{0:D6}" -f $n
+        $rs | Set-Content (Join-Path $rawDir "$raw.rstree.txt")
 
         $hit = $null
         foreach ($p in $index) {
@@ -1445,6 +1461,8 @@ function Invoke-RsFastCapture {
             sig   = $key
             stem  = $stem
             shot  = $shot
+            raw   = $raw
+            nsig  = $sig.All.Count
             ms    = [int]$sw.ElapsedMilliseconds
         }
         if (Test-Path $csv) { $row | Export-Csv -Path $csv -NoTypeInformation -Append }
@@ -1484,8 +1502,13 @@ function Invoke-RsFastCapture {
     $dw = Join-Path $session "dwell.csv"
     $index | Select-Object Sig, Dwell | Export-Csv -Path $dw -NoTypeInformation
     $el = ((Get-Date) - $t0).TotalSeconds
+    $rawMB = 0
+    if (Test-Path $rawDir) {
+        $rawMB = [math]::Round((Get-ChildItem $rawDir -File | Measure-Object Length -Sum).Sum / 1MB, 0)
+    }
     Write-Host ""
     Write-Host ("captured {0:N0}s: {1} samples, {2} distinct scenes, {3} failed" -f $el, $n, $idx, $failed) -ForegroundColor Green
+    Write-Host ("  raw stream: {0} dumps, {1:N0} MB in {2}" -f $n, $rawMB, $rawDir) -ForegroundColor DarkGray
     if ($n -gt 0) { Write-Host ("  {0:N2} s per sample" -f ($el / $n)) -ForegroundColor Green }
     Write-Host ("  -> {0}" -f $session)
     Write-Host ""
