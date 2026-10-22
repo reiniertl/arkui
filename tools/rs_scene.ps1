@@ -1284,6 +1284,13 @@ function Invoke-RsRebuildAll {
     foreach ($s in $sessions) {
         $trees = @(Get-ChildItem -Path $s.FullName -Filter "*.rstree.txt" -ErrorAction SilentlyContinue | Sort-Object Name)
         if ($trees.Count -eq 0) { continue }
+        # A fast capture saves one dump per distinct scene and counts the
+        # repeats separately, so dwell cannot be recovered by counting files.
+        $dwellBy = @{}
+        $dwf = Join-Path $s.FullName "dwell.csv"
+        if (Test-Path $dwf) {
+            foreach ($d in (Import-Csv $dwf)) { $dwellBy[$d.Sig] = [int]$d.Dwell }
+        }
         foreach ($t in $trees) {
             $stem = $t.Name -replace '\.rstree\.txt$',''
             $clf  = Join-Path $s.FullName ($stem + ".client.txt")
@@ -1304,20 +1311,29 @@ function Invoke-RsRebuildAll {
             foreach ($p in $index) {
                 if ((Get-SetHold $sig.All $p.All) -ge $Tol) { $hit = $p; break }
             }
-            if ($hit) { $key = $hit.Sig; $hit.Dwell++ ; continue }
-            $index += [PSCustomObject]@{ Sig = $key; All = $sig.All; Dwell = 1 }
+            if ($hit) {
+                $add = 1
+                if ($dwellBy.ContainsKey($sig.Hash)) { $add = $dwellBy[$sig.Hash] }
+                $hit.Dwell += $add
+                continue
+            }
 
             $row = Get-RsRow -Scene $scene -Win $null -Mono 0
+            $ownDwell = 1
+            if ($dwellBy.ContainsKey($sig.Hash)) { $ownDwell = $dwellBy[$sig.Hash] }
+            $index += [PSCustomObject]@{ Sig = $key; All = $sig.All; Dwell = $ownDwell }
             Add-Member -InputObject $row -NotePropertyName session -NotePropertyValue $s.Name -Force
             Add-Member -InputObject $row -NotePropertyName stem    -NotePropertyValue $stem -Force
             Add-Member -InputObject $row -NotePropertyName sig     -NotePropertyValue $key -Force
             Add-Member -InputObject $row -NotePropertyName win_sig -NotePropertyValue "" -Force
             Add-Member -InputObject $row -NotePropertyName jitter  -NotePropertyValue "" -Force
             Add-Member -InputObject $row -NotePropertyName still   -NotePropertyValue "" -Force
-            Add-Member -InputObject $row -NotePropertyName dwell   -NotePropertyValue 1 -Force
-            $png = Join-Path $s.FullName ($stem + ".png")
-            Add-Member -InputObject $row -NotePropertyName shot -NotePropertyValue `
-                $(if (Test-Path $png) { $s.Name + "/" + $stem + ".png" } else { "" }) -Force
+            Add-Member -InputObject $row -NotePropertyName dwell   -NotePropertyValue $ownDwell -Force
+            $pic = ""
+            foreach ($ext in @(".jpeg", ".png", ".jpg")) {
+                if (Test-Path (Join-Path $s.FullName ($stem + $ext))) { $pic = $s.Name + "/" + $stem + $ext; break }
+            }
+            Add-Member -InputObject $row -NotePropertyName shot -NotePropertyValue $pic -Force
             $rows += $row
         }
         Write-Host ("  {0,-20} {1,4} dumps   running total {2} distinct" -f $s.Name, $trees.Count, $index.Count)
