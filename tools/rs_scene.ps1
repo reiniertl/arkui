@@ -1216,3 +1216,30 @@ function Get-RsQuickSig {
 function Get-RsTreeText {
     return @(Invoke-RsDump -Arg 'RSTree')
 }
+
+# The complete capture row, built from the render tree alone.
+#
+# It used to be assembled by taking a uitest row from Invoke-Classify and
+# bolting the rs_ fields onto it, which meant every sample paid 1.4s for
+# columns the scene is not built from. The schema is stated here instead, so
+# a capture needs no uitest read at all.
+#
+# The baseline columns remain, empty: the clusterer holds them out anyway,
+# and keeping them means a session captured this way can still be read beside
+# one captured before the change.
+function Get-RsRow {
+    param($Scene, $Win, [long] $Mono)
+    $o = [ordered]@{
+        dev_mono = $Mono
+        window   = $(if ($Win) { $Win.WinId } else { 0 })
+        name     = $(if ($Win) { $Win.Name }  else { "" })
+        pid      = $(if ($Win) { $Win.Pid }   else { "" })
+        shape    = ""      # the uitest-era classifier's reading of the window
+        scene    = ""      # and its class. Both empty without a uitest read.
+        described = ""
+        truth    = ""
+        truth_src = ""
+    }
+    foreach ($kv in (Get-RsRowFields -R $Scene).GetEnumerator()) { $o[$kv.Key] = $kv.Value }
+    return [PSCustomObject]$o
+}

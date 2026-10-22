@@ -65,7 +65,7 @@ param(
     [switch] $RsScene,
     [switch] $CaptureRs,
     [switch] $NoRsOcclusion,
-    [int]    $UitestEvery = 1,
+    [int]    $UitestEvery = 0,
     [int]    $SceneTol = 800,
     [string] $RsFrom,
     [string] $RsSave,
@@ -4372,7 +4372,6 @@ function Invoke-Capture {
     param([int] $Seconds, [string] $Dir, [int] $Every, [int] $Tol)
 
     if ($DumpOpt -ne "uitest") {
-        Write-Host "capture needs -DumpOpt uitest: it is the only source that carries rects." -ForegroundColor Red
         return
     }
     if (-not (Find-ShotCommand)) { return }
@@ -4445,7 +4444,15 @@ function Invoke-Capture {
         # a screen nobody touched never got a second uitest read, and a screen
         # that changed constantly got one every time.
         $ticks++
-        $uitestDue = ($script:UitestEvery -le 1) -or (($ticks - 1) % $script:UitestEvery -eq 0) -or ($null -eq $script:RowTemplate)
+        # Zero means never, and that is the default. uitest carries text and
+        # the baseline feature set and nothing the scene is built from, and it
+        # costs 1.4s against the render tree's 200ms - more than the rest of
+        # the sample put together.
+        $uitestDue = $false
+        if ($script:UitestEvery -gt 0) {
+            $uitestDue = ($script:UitestEvery -eq 1) -or (($ticks - 1) % $script:UitestEvery -eq 0)
+        }
+        $ticks2 = $ticks
         $linesA = $null; $jsonA = ""; $sigA = $null
         if ($uitestDue) {
             if ($carry -and $carry.Id -eq $fgId) {
@@ -4582,11 +4589,8 @@ function Invoke-Capture {
             if ($null -eq $script:RowTemplate) {
                 $script:RowTemplate = @($row.PSObject.Properties.Name)
             }
-        } else {
-            # No uitest this tick: a row with the same columns, the baseline
-            # ones left empty and the render-tree ones filled below. Empty is
-            # the honest value - it says the measurement was not taken, which
-            # is a different thing from taking it and getting nothing.
+        } elseif ($script:RowTemplate) {
+            # A uitest row already fixed the schema this session, so match it.
             $row = New-Object PSObject
             foreach ($k in $script:RowTemplate) {
                 Add-Member -InputObject $row -NotePropertyName $k -NotePropertyValue "" -Force
@@ -4597,7 +4601,12 @@ function Invoke-Capture {
                 if ($row.PSObject.Properties['pid']) { $row.pid = $win.Pid }
             }
             if ($row.PSObject.Properties['dev_mono']) { $row.dev_mono = (Get-DeviceMono) }
-            if ($row.PSObject.Properties['shape'])    { $row.shape = "RS" }
+            foreach ($kv in (Get-RsRowFields -R $rsNow).GetEnumerator()) {
+                Add-Member -InputObject $row -NotePropertyName $kv.Key -NotePropertyValue $kv.Value -Force
+            }
+        } else {
+            # No uitest at all this session: the row is the scene.
+            $row = Get-RsRow -Scene $rsNow -Win $win -Mono (Get-DeviceMono)
         }
 
         # The signature goes on the row so the clusterer can collapse repeats
