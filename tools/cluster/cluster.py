@@ -58,9 +58,22 @@ FEATURES = [
     # column            transform   weight  what it separates
     ("rs_repeat_frac", "unit",    1.0),   # how much of the display repeats
     ("rs_repeat_n",    "log1p",   0.7),
-    ("rs_text_frac",   "unit",    1.0),   # a form and a player differ here most
-    ("rs_image_frac",  "unit",    1.0),
-    ("rs_sym_frac",    "unit",    0.5),   # glyph chrome: bars, tool rows
+    # The content fractions sit below the structural ones on purpose.
+    #
+    # At parity they split three sets of screens that a person reading the
+    # thumbnails called alike, separating them on text_frac alone - 2.2
+    # standard deviations - while repeat count, fan-out and depth barely
+    # moved. Three screens built the same way carrying different amounts of
+    # text were being filed as three kinds.
+    #
+    # They are not noise, though, and cannot go much lower: at 0.5 the trio
+    # does merge, but a cluster of six screens the same reader called
+    # homogeneous breaks in two, and at 0.35 into three. 0.75 is the whole
+    # free move - it halves the over-splitting and costs nothing that was
+    # already right.
+    ("rs_text_frac",   "unit",    0.75),  # a form and a player differ here most
+    ("rs_image_frac",  "unit",    0.75),
+    ("rs_sym_frac",    "unit",    0.375), # glyph chrome: bars, tool rows
     ("rs_surface_tag", "clip4",   1.0),   # a video or web surface in the scene
     ("rs_scroller",    "clip4",   0.7),   # List, Grid, Swiper, Scroll, Tabs
     ("rs_leaf_frac",   "unit",    0.7),   # deep and sparse vs shallow and dense
@@ -71,7 +84,7 @@ FEATURES = [
     ("rs_top_weight",  "unit",    0.7),   # does one of them own the scene
     ("rs_cover_opaque","unit",    0.5),
     ("rs_uncovered",   "unit",    0.5),
-    ("rs_paint_frac",  "unit",    1.0),   # how much of it carries content, not boxes
+    ("rs_paint_frac",  "unit",    0.75),  # how much of it carries content, not boxes
 ]
 
 # Read, reported, never clustered on.
