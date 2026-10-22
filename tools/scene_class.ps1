@@ -4407,9 +4407,9 @@ function Invoke-Capture {
     Write-Host ""
     Write-Host ("capturing to {0} for {1}s - Ctrl+C to stop early" -f $session, $Seconds) -ForegroundColor Cyan
     Write-Host  "use the phone normally. Open things, scroll them, leave them alone." -ForegroundColor DarkGray
-    Write-Host ("a sample is dump - screenshot - dump. It is kept when the structural" ) -ForegroundColor DarkGray
-    Write-Host ("rects still agree to {0} permille; small churn - a barrage, a counter," -f (1000 - $Tol)) -ForegroundColor DarkGray
-    Write-Host  "a caret - is recorded as jitter instead of discarded." -ForegroundColor DarkGray
+    Write-Host  "a sample is one render-tree read, processed once. Every sample is kept;" -ForegroundColor DarkGray
+    Write-Host  "a scene already seen adds to its dwell and takes no new picture." -ForegroundColor DarkGray
+    Write-Host ("two scenes are the same scene when their rects agree to {0} permille." -f $script:SceneTol) -ForegroundColor DarkGray
     Write-Host ""
     Write-Host ("{0,5}  {1,-8} {2,-10} {3,-22} {4}" -f "n","result","shape","window","note")
 
@@ -4680,7 +4680,10 @@ function Invoke-Capture {
                 $shot = ""
                 Write-Host ("{0,5}  {1,-8} {2,-10} {3,-22} {4}" -f $idx, "noshot", $row.shape, $name, "recv produced nothing") -ForegroundColor Yellow
             }
-            [void](Save-DumpFile -Json $jsonA -Stem $stem -Dir $session)
+            # Only when there is one. Without a uitest read this wrote an
+            # empty gzip beside every scene - a file whose whole purpose is
+            # to hold a layout dump that was never taken.
+            if ($jsonA) { [void](Save-DumpFile -Json $jsonA -Stem $stem -Dir $session) }
             Write-CaptureMeta -Path (Join-Path $session "$stem.meta") -Win $win -Extra @{
                 sig = $keySig; shot = $shot; jitter = $jitter; still = $holdBig }
             $kept++
