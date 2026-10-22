@@ -93,7 +93,11 @@
 <script src="clusters.js"></script>
 <script>
 (function () {
-  var D = window.CLUSTERS || {};
+  // clusters.js declares `const DATA`, and a top-level const is NOT a
+  // property of window - it lives in the script's lexical scope. Reading
+  // window.CLUSTERS found undefined every time, which is why the page came
+  // up with every count at zero and no tiles at all.
+  var D = (typeof DATA !== "undefined" && DATA) ? DATA : {};
   var clusters = (D.clusters || []).slice().sort(function (a, b) {
     if (a.id === -1) return 1; if (b.id === -1) return -1; return a.id - b.id;
   });

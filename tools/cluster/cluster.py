@@ -411,13 +411,16 @@ def main():
         for name, kind, _ in FEATURES:
             # Raw, not transformed. log1p of a repeat count is for the
             # distance metric; a person reading the table wants the count.
-            raw = []
+            # Named vals, not raw: `raw` is the undeduplicated row list in
+            # this same scope, and shadowing it made the payload report the
+            # sample count as the length of the last feature's median list.
+            vals = []
             for m in members:
                 try:
-                    raw.append(float(m.get(name) or 0))
+                    vals.append(float(m.get(name) or 0))
                 except ValueError:
-                    raw.append(0.0)
-            med[name] = round(float(np.median(raw)), 3)
+                    vals.append(0.0)
+            med[name] = round(float(np.median(vals)), 3)
 
         jit = [int(float(m["jitter"])) for m in members
                if str(m.get("jitter", "")).strip() not in ("", "None")]
