@@ -696,6 +696,7 @@ def session_rows(sdir, per_sample):
             return out
         with open(samp, newline="", encoding="utf-8-sig") as fh:
             rows = list(csv.DictReader(fh))
+        prev = None
         for r in rows:
             if not r.get("raw"):
                 continue
@@ -707,10 +708,32 @@ def session_rows(sdir, per_sample):
                 continue
             tree = parse_tree(lines)
             sc = build_scene(tree, cmap_of.get(r["sig"], {}), disp)
+
+            # The delta against the previous read.
+            #
+            # A scene is THIS read; the delta modifies it and never defines
+            # it, and the old pipeline used it to hold changing scenes out of
+            # the clustering - 718 captures became 584 before deduplication.
+            # The fast capture path dropped the stillness guard and kept
+            # every sample, so transitions, scroll states and mid-animation
+            # frames went into the clustering as though they were screens
+            # somebody was looking at. The clusterer still asks for this
+            # column and defaults to 800 permille; it was simply never
+            # written.
+            sig = quick_sig(lines, disp["w"] * disp["h"])
+            if prev is None:
+                hold = 1000
+            else:
+                inter = len(sig["all"] & prev)
+                union = len(sig["all"]) + len(prev) - inter
+                hold = int(1000.0 * inter / union) if union else 0
+            prev = sig["all"]
+
             row = row_of(sc)
             row.update(session=name, stem=r["raw"], sig=f'{name}/{r["raw"]}',
-                       scene_sig=r["sig"], dwell=1, win_sig="", jitter="",
-                       still="", shot=shot_of.get(r["sig"], ""))
+                       scene_sig=r["sig"], dwell=1, win_sig="",
+                       jitter=1000 - hold, still=hold,
+                       shot=shot_of.get(r["sig"], ""))
             out.append(row)
         return out
 
