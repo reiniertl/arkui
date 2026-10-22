@@ -4371,9 +4371,10 @@ function Add-CaptureRow {
 function Invoke-Capture {
     param([int] $Seconds, [string] $Dir, [int] $Every, [int] $Tol)
 
-    if ($DumpOpt -ne "uitest") {
-        return
-    }
+    # No source requirement any more: capture reads the render tree, which
+    # answers whatever -DumpOpt says. Dropping the old guard's message left
+    # the bare return behind, and a capture that exits silently and writes
+    # nothing is worse than one that refuses out loud.
     if (-not (Find-ShotCommand)) { return }
 
     $stamp   = (Get-Date).ToString("yyyyMMdd_HHmmss")
