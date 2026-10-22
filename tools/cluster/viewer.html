@@ -76,7 +76,9 @@
     border-radius:3px; }
   .map { border:1px solid var(--line); border-radius:12px; background:var(--card);
     padding:12px 14px; margin:0 0 26px; }
-  .map canvas { width:100%; height:330px; display:block; cursor:crosshair; }
+  .map canvas { width:100%; height:420px; display:block; cursor:grab;
+    touch-action:none; }
+  .map canvas:active { cursor:grabbing; }
   .legend { display:flex; flex-wrap:wrap; gap:10px; }
   .legend span { display:inline-flex; align-items:center; gap:5px; font-size:12px;
     color:var(--dim); }
@@ -93,7 +95,9 @@
   <div class="map">
     <canvas id="scatter"></canvas>
     <div class="tiny" style="padding:0 2px 8px">
-      <b>Drag to rotate.</b> Every scene, projected to three components by PCA
+      <b>Drag to rotate · wheel to zoom · shift-drag to pan · click a point to jump</b>
+      <button id="reset" style="margin-left:8px">reset view</button><br>
+      Every scene, projected to three components by PCA
       over the same weighted vector the clustering used, so distance here is
       distance there. Two components flattened it far enough that separated
       clusters landed on top of each other; turning the cloud shows which
@@ -121,6 +125,7 @@
   var clusters = (D.clusters || []).slice().sort(function (a, b) {
     if (a.id === -1) return 1; if (b.id === -1) return -1; return a.id - b.id;
   });
+  var AXIS = getComputedStyle(document.body).getPropertyValue('--dim').trim() || '#6b7280';
   var labels = {};
   try { labels = JSON.parse(localStorage.getItem("arkui.names." + D.session) || "{}"); }
   catch (e) { labels = {}; }
@@ -222,106 +227,162 @@
 
   // ---- the map ---------------------------------------------------------
   //
-  // Three components, drawn in three dimensions and rotatable by dragging.
+  // Three PCA components, drawn in three dimensions. Two flattened sixteen
+  // far enough that clusters well apart in the clustering landed on top of
+  // each other, which reads as the clustering being wrong when it is the
+  // projection that is lossy.
   //
-  // Two components flattened sixteen far enough that clusters well apart in
-  // the clustering landed on top of each other here, which reads as the
-  // clustering being wrong when it is the projection that is lossy. Turning
-  // the cloud shows which pairs are genuinely adjacent and which only looked
-  // that way down one axis.
-  var yaw = 0.6, pitch = -0.35, drag = null;
+  // The listeners are wired ONCE. They used to be attached inside the draw,
+  // which runs on every drag event, so each move added another handler and
+  // the map got slower the longer it was turned.
+  var view = {yaw: 0.6, pitch: -0.35, zoom: 1, panx: 0, pany: 0};
+  var MAP = {pts: [], mid: {x: 0, y: 0, z: 0}, span: 1, queued: false};
 
-  function drawMap() {
-    var pts = [];
+  (function collect() {
     clusters.forEach(function (c) {
       (c.members || []).forEach(function (m) {
         if (typeof m.x === "number" && typeof m.y === "number") {
-          pts.push({x: m.x, y: m.y, z: (typeof m.z === "number" ? m.z : 0), id: c.id});
+          MAP.pts.push({x: m.x, y: m.y, z: (typeof m.z === "number" ? m.z : 0),
+                        id: c.id, shot: m.shot});
         }
       });
     });
-    var cv = document.getElementById("scatter");
-    if (!cv || !pts.length) { return; }
-    var dpr = window.devicePixelRatio || 1;
-    var w = cv.clientWidth, hgt = cv.clientHeight;
-    cv.width = Math.round(w * dpr); cv.height = Math.round(hgt * dpr);
-    var g = cv.getContext("2d");
-    g.setTransform(dpr, 0, 0, dpr, 0, 0);
-    g.clearRect(0, 0, w, hgt);
-
-    // centre and scale to a unit cube so rotation stays stable whatever the
-    // components' own ranges are
-    var ax = ["x", "y", "z"], mid = {}, span = 1e-9;
-    ax.forEach(function (k) {
-      var v = pts.map(function (p) { return p[k]; });
+    if (!MAP.pts.length) { return; }
+    ["x", "y", "z"].forEach(function (k) {
+      var v = MAP.pts.map(function (p) { return p[k]; });
       var lo = Math.min.apply(null, v), hi = Math.max.apply(null, v);
-      mid[k] = (lo + hi) / 2;
-      span = Math.max(span, hi - lo);
+      MAP.mid[k] = (lo + hi) / 2;
+      MAP.span = Math.max(MAP.span, hi - lo);
     });
-    var scale = Math.min(w, hgt) * 0.74 / span;
-    var cy = Math.cos(yaw), sy2 = Math.sin(yaw);
-    var cp = Math.cos(pitch), sp = Math.sin(pitch);
+  })();
 
-    pts.forEach(function (p) {
-      var X = (p.x - mid.x) * scale, Y = (p.y - mid.y) * scale, Z = (p.z - mid.z) * scale;
-      var x1 = X * cy + Z * sy2;
-      var z1 = -X * sy2 + Z * cy;
+  function project(w, h) {
+    var scale = Math.min(w, h) * 0.66 / MAP.span * view.zoom;
+    var cy = Math.cos(view.yaw), sy = Math.sin(view.yaw);
+    var cp = Math.cos(view.pitch), sp = Math.sin(view.pitch);
+    return function (x, y, z) {
+      var X = (x - MAP.mid.x) * scale, Y = (y - MAP.mid.y) * scale, Z = (z - MAP.mid.z) * scale;
+      var x1 = X * cy + Z * sy;
+      var z1 = -X * sy + Z * cy;
       var y1 = Y * cp - z1 * sp;
       var z2 = Y * sp + z1 * cp;
-      p.px = w / 2 + x1;
-      p.py = hgt / 2 - y1;
-      p.pz = z2;
-    });
+      return {px: w / 2 + x1 + view.panx, py: h / 2 - y1 + view.pany, pz: z2};
+    };
+  }
 
-    // painter's algorithm: far points first, and the grey outlier tray
-    // before anything else so it never covers a cluster
-    pts.sort(function (a2, b2) {
-      if ((a2.id === -1) !== (b2.id === -1)) { return a2.id === -1 ? -1 : 1; }
-      return a2.pz - b2.pz;
-    });
-    var zs = pts.map(function (p) { return p.pz; });
-    var zlo = Math.min.apply(null, zs), zhi = Math.max.apply(null, zs);
-    pts.forEach(function (p) {
-      var t = (zhi === zlo) ? 0.5 : (p.pz - zlo) / (zhi - zlo);
-      g.beginPath();
-      g.arc(p.px, p.py, (p.id === -1 ? 2.4 : 3.4) + t * 2.2, 0, 6.2832);
-      g.fillStyle = palette(p.id);
-      g.globalAlpha = (p.id === -1 ? 0.30 : 0.55) + t * 0.40;
-      g.fill();
+  function render() {
+    MAP.queued = false;
+    var cv = document.getElementById("scatter");
+    if (!cv || !MAP.pts.length) { return; }
+    var dpr = window.devicePixelRatio || 1;
+    var w = cv.clientWidth, h = cv.clientHeight;
+    if (cv.width !== Math.round(w * dpr)) { cv.width = Math.round(w * dpr); }
+    if (cv.height !== Math.round(h * dpr)) { cv.height = Math.round(h * dpr); }
+    var g = cv.getContext("2d");
+    g.setTransform(dpr, 0, 0, dpr, 0, 0);
+    g.clearRect(0, 0, w, h);
+    var pr = project(w, h);
+
+    // axes, through the centre of the cloud, one half-span long each way
+    var L = MAP.span / 2;
+    var axes = [
+      ["PC1", [L, 0, 0]],
+      ["PC2", [0, L, 0]],
+      ["PC3", [0, 0, L]]
+    ];
+    var o = pr(MAP.mid.x, MAP.mid.y, MAP.mid.z);
+    g.font = "11px ui-monospace, Menlo, Consolas, monospace";
+    axes.forEach(function (a2) {
+      var pos = pr(MAP.mid.x + a2[1][0], MAP.mid.y + a2[1][1], MAP.mid.z + a2[1][2]);
+      var neg = pr(MAP.mid.x - a2[1][0], MAP.mid.y - a2[1][1], MAP.mid.z - a2[1][2]);
+      g.strokeStyle = AXIS; g.globalAlpha = 0.65; g.lineWidth = 1;
+      g.beginPath(); g.moveTo(neg.px, neg.py); g.lineTo(pos.px, pos.py); g.stroke();
+      g.globalAlpha = 0.9; g.fillStyle = AXIS;
+      g.fillText(a2[0], pos.px + 5, pos.py - 3);
     });
     g.globalAlpha = 1;
 
-    cv.onmousedown = function (ev) { drag = {x: ev.clientX, y: ev.clientY}; };
-    window.addEventListener("mouseup", function () { drag = null; });
-    window.addEventListener("mousemove", function (ev) {
-      if (!drag) { return; }
-      yaw += (ev.clientX - drag.x) * 0.01;
-      pitch += (ev.clientY - drag.y) * 0.01;
-      pitch = Math.max(-1.45, Math.min(1.45, pitch));
-      drag = {x: ev.clientX, y: ev.clientY};
-      drawMap();
+    MAP.pts.forEach(function (p) {
+      var q = pr(p.x, p.y, p.z);
+      p.px = q.px; p.py = q.py; p.pz = q.pz;
     });
-    cv.onclick = function (ev) {
-      if (drag) { return; }
-      var r = cv.getBoundingClientRect();
-      var mx = ev.clientX - r.left, my = ev.clientY - r.top, best = null, bd = 1e9;
-      pts.forEach(function (p) {
-        var d = Math.pow(p.px - mx, 2) + Math.pow(p.py - my, 2);
-        if (d < bd) { bd = d; best = p; }
-      });
-      if (best && bd < 900) {
-        var el = document.getElementById("c" + best.id);
-        if (el) { el.scrollIntoView({behavior: "smooth", block: "start"}); }
-      }
-    };
-
-    document.getElementById("legend").innerHTML = clusters.map(function (c) {
-      return "<span><i style='background:" + palette(c.id) + "'></i>" +
-        (c.id === -1 ? "fitted none" : "cluster " + c.id) + " \u00b7 " + c.n + "</span>";
-    }).join("");
+    // painter's algorithm, with the grey tray behind everything
+    MAP.pts.sort(function (a2, b2) {
+      if ((a2.id === -1) !== (b2.id === -1)) { return a2.id === -1 ? -1 : 1; }
+      return a2.pz - b2.pz;
+    });
+    var zs = MAP.pts.map(function (p) { return p.pz; });
+    var zlo = Math.min.apply(null, zs), zhi = Math.max.apply(null, zs);
+    MAP.pts.forEach(function (p) {
+      var t = (zhi === zlo) ? 0.5 : (p.pz - zlo) / (zhi - zlo);
+      g.beginPath();
+      g.arc(p.px, p.py, (p.id === -1 ? 2.2 : 3.2) + t * 2.4, 0, 6.2832);
+      g.fillStyle = palette(p.id);
+      g.globalAlpha = (p.id === -1 ? 0.28 : 0.55) + t * 0.42;
+      g.fill();
+    });
+    g.globalAlpha = 1;
   }
-  drawMap();
-  window.addEventListener("resize", drawMap);
+
+  function draw() {
+    if (MAP.queued) { return; }
+    MAP.queued = true;
+    requestAnimationFrame(render);
+  }
+
+  (function wire() {
+    var cv = document.getElementById("scatter");
+    if (!cv) { return; }
+    var drag = null, moved = 0;
+    cv.addEventListener("pointerdown", function (ev) {
+      drag = {x: ev.clientX, y: ev.clientY, shift: ev.shiftKey};
+      moved = 0;
+      cv.setPointerCapture(ev.pointerId);
+    });
+    cv.addEventListener("pointermove", function (ev) {
+      if (!drag) { return; }
+      var dx = ev.clientX - drag.x, dy = ev.clientY - drag.y;
+      moved += Math.abs(dx) + Math.abs(dy);
+      if (drag.shift) { view.panx += dx; view.pany += dy; }
+      else {
+        view.yaw += dx * 0.009;
+        view.pitch = Math.max(-1.45, Math.min(1.45, view.pitch + dy * 0.009));
+      }
+      drag = {x: ev.clientX, y: ev.clientY, shift: drag.shift};
+      draw();
+    });
+    cv.addEventListener("pointerup", function (ev) {
+      if (drag && moved < 6) {
+        var r = cv.getBoundingClientRect();
+        var mx = ev.clientX - r.left, my = ev.clientY - r.top, best = null, bd = 1e9;
+        MAP.pts.forEach(function (p) {
+          var d = Math.pow(p.px - mx, 2) + Math.pow(p.py - my, 2);
+          if (d < bd) { bd = d; best = p; }
+        });
+        if (best && bd < 900) {
+          var el = document.getElementById("c" + best.id);
+          if (el) { el.scrollIntoView({behavior: "smooth", block: "start"}); }
+        }
+      }
+      drag = null;
+    });
+    cv.addEventListener("wheel", function (ev) {
+      ev.preventDefault();
+      view.zoom = Math.max(0.3, Math.min(14, view.zoom * (ev.deltaY < 0 ? 1.12 : 1 / 1.12)));
+      draw();
+    }, {passive: false});
+    document.getElementById("reset").onclick = function () {
+      view = {yaw: 0.6, pitch: -0.35, zoom: 1, panx: 0, pany: 0};
+      draw();
+    };
+    window.addEventListener("resize", draw);
+  })();
+
+  document.getElementById("legend").innerHTML = clusters.map(function (c) {
+    return "<span><i style='background:" + palette(c.id) + "'></i>" +
+      (c.id === -1 ? "fitted none" : "cluster " + c.id) + " · " + c.n + "</span>";
+  }).join("");
+  draw();
 
   document.getElementById("dl").onclick = function () {
     var blob = new Blob([JSON.stringify(labels, null, 2)], {type: "application/json"});
