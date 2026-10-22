@@ -381,7 +381,22 @@ def main():
             sil_per[keep] = silhouette_samples(Z[keep], labels[keep])
             print("  silhouette %.3f %s" % (sil, quality(sil)))
 
-    coords = PCA(n_components=2).fit_transform(Z) if Z.shape[1] >= 2 else np.zeros((len(rows), 2))
+    # Three components, not two. Two flattens the 16 dimensions far enough
+    # that clusters well apart in the clustering can land on top of each
+    # other on the map, which reads as the clustering being wrong when it is
+    # the projection that is lossy. The third axis is carried through and the
+    # viewer rotates it; explained_variance_ ratio says how much of the
+    # spread the three actually account for.
+    ncomp = min(3, Z.shape[1])
+    if ncomp >= 2:
+        pca = PCA(n_components=ncomp)
+        fitted = pca.fit_transform(Z)
+        explained = [round(float(v), 4) for v in pca.explained_variance_ratio_]
+    else:
+        fitted = np.zeros((len(rows), 2))
+        explained = []
+    coords = np.zeros((len(rows), 3))
+    coords[:, :fitted.shape[1]] = fitted
 
     # Nearest centroid, in the same standardised space. Not a claim that a
     # half-scrolled list IS that cluster - a claim about which shape it most
@@ -447,6 +462,7 @@ def main():
                 "dwell": int(rows[i].get("dwell", 1)),
                 "x": round(float(coords[i][0]), 4),
                 "y": round(float(coords[i][1]), 4),
+                "z": round(float(coords[i][2]), 4),
                 "sil": (None if sil_per is None or math.isnan(sil_per[i])
                         else round(float(sil_per[i]), 3)),
                 "feat": {name: rows[i].get(name, "") for name, _, _ in FEATURES},
@@ -464,6 +480,7 @@ def main():
         "samples": len(raw),
         "scenes": len(rows),
         "silhouette": sil,
+        "explained": explained,
         "features": [{"name": n, "transform": k, "weight": w} for n, k, w in FEATURES],
         "held_out": list(HELD_OUT),
         "clusters": out_clusters,

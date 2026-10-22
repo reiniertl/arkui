@@ -93,10 +93,12 @@
   <div class="map">
     <canvas id="scatter"></canvas>
     <div class="tiny" style="padding:0 2px 8px">
-      Every scene, projected to two dimensions by PCA over the same weighted
-      vector the clustering used. Distance here is distance there, flattened -
-      so clusters that touch on this map are the ones whose membership is
-      arguable. Click a point to jump to its cluster.
+      <b>Drag to rotate.</b> Every scene, projected to three components by PCA
+      over the same weighted vector the clustering used, so distance here is
+      distance there. Two components flattened it far enough that separated
+      clusters landed on top of each other; turning the cloud shows which
+      pairs are genuinely adjacent. Click a point to jump to its cluster.
+      <span id="var"></span>
     </div>
     <div id="legend" class="legend"></div>
   </div>
@@ -153,6 +155,13 @@
     ["silhouette", (D.silhouette === undefined || D.silhouette === null)
       ? "–" : D.silhouette]
   ];
+  var ev2 = D.explained || [];
+  if (ev2.length) {
+    document.getElementById("var").textContent =
+      " These three carry " + Math.round(ev2.reduce(function (a, b) { return a + b; }, 0) * 100)
+      + "% of the spread (" + ev2.map(function (v) { return Math.round(v * 100) + "%"; }).join(" / ")
+      + "); the rest is in dimensions this map cannot show.";
+  }
   document.getElementById("sum").innerHTML = sum.map(function (p) {
     return "<div><b>" + esc(p[1]) + "</b><span class='tiny'>" + esc(p[0]) + "</span></div>";
   }).join("");
@@ -212,12 +221,22 @@
   });
 
   // ---- the map ---------------------------------------------------------
+  //
+  // Three components, drawn in three dimensions and rotatable by dragging.
+  //
+  // Two components flattened sixteen far enough that clusters well apart in
+  // the clustering landed on top of each other here, which reads as the
+  // clustering being wrong when it is the projection that is lossy. Turning
+  // the cloud shows which pairs are genuinely adjacent and which only looked
+  // that way down one axis.
+  var yaw = 0.6, pitch = -0.35, drag = null;
+
   function drawMap() {
     var pts = [];
     clusters.forEach(function (c) {
       (c.members || []).forEach(function (m) {
         if (typeof m.x === "number" && typeof m.y === "number") {
-          pts.push({x: m.x, y: m.y, id: c.id});
+          pts.push({x: m.x, y: m.y, z: (typeof m.z === "number" ? m.z : 0), id: c.id});
         }
       });
     });
@@ -230,30 +249,64 @@
     g.setTransform(dpr, 0, 0, dpr, 0, 0);
     g.clearRect(0, 0, w, hgt);
 
-    var xs = pts.map(function (p) { return p.x; });
-    var ys = pts.map(function (p) { return p.y; });
-    var x0 = Math.min.apply(null, xs), x1 = Math.max.apply(null, xs);
-    var y0 = Math.min.apply(null, ys), y1 = Math.max.apply(null, ys);
-    var pad = 16;
-    function sx(v) { return x1 === x0 ? w / 2 : pad + (v - x0) / (x1 - x0) * (w - 2 * pad); }
-    function sy(v) { return y1 === y0 ? hgt / 2 : pad + (y1 - v) / (y1 - y0) * (hgt - 2 * pad); }
+    // centre and scale to a unit cube so rotation stays stable whatever the
+    // components' own ranges are
+    var ax = ["x", "y", "z"], mid = {}, span = 1e-9;
+    ax.forEach(function (k) {
+      var v = pts.map(function (p) { return p[k]; });
+      var lo = Math.min.apply(null, v), hi = Math.max.apply(null, v);
+      mid[k] = (lo + hi) / 2;
+      span = Math.max(span, hi - lo);
+    });
+    var scale = Math.min(w, hgt) * 0.74 / span;
+    var cy = Math.cos(yaw), sy2 = Math.sin(yaw);
+    var cp = Math.cos(pitch), sp = Math.sin(pitch);
 
-    // outliers first, so a real cluster is never hidden under the grey
-    pts.slice().sort(function (a, b) { return (a.id === -1 ? -1 : 0) - (b.id === -1 ? -1 : 0); })
-      .forEach(function (p) {
-        g.beginPath();
-        g.arc(sx(p.x), sy(p.y), p.id === -1 ? 3 : 4.5, 0, 6.2832);
-        g.fillStyle = palette(p.id);
-        g.globalAlpha = p.id === -1 ? 0.5 : 0.9;
-        g.fill();
-      });
+    pts.forEach(function (p) {
+      var X = (p.x - mid.x) * scale, Y = (p.y - mid.y) * scale, Z = (p.z - mid.z) * scale;
+      var x1 = X * cy + Z * sy2;
+      var z1 = -X * sy2 + Z * cy;
+      var y1 = Y * cp - z1 * sp;
+      var z2 = Y * sp + z1 * cp;
+      p.px = w / 2 + x1;
+      p.py = hgt / 2 - y1;
+      p.pz = z2;
+    });
+
+    // painter's algorithm: far points first, and the grey outlier tray
+    // before anything else so it never covers a cluster
+    pts.sort(function (a2, b2) {
+      if ((a2.id === -1) !== (b2.id === -1)) { return a2.id === -1 ? -1 : 1; }
+      return a2.pz - b2.pz;
+    });
+    var zs = pts.map(function (p) { return p.pz; });
+    var zlo = Math.min.apply(null, zs), zhi = Math.max.apply(null, zs);
+    pts.forEach(function (p) {
+      var t = (zhi === zlo) ? 0.5 : (p.pz - zlo) / (zhi - zlo);
+      g.beginPath();
+      g.arc(p.px, p.py, (p.id === -1 ? 2.4 : 3.4) + t * 2.2, 0, 6.2832);
+      g.fillStyle = palette(p.id);
+      g.globalAlpha = (p.id === -1 ? 0.30 : 0.55) + t * 0.40;
+      g.fill();
+    });
     g.globalAlpha = 1;
 
+    cv.onmousedown = function (ev) { drag = {x: ev.clientX, y: ev.clientY}; };
+    window.addEventListener("mouseup", function () { drag = null; });
+    window.addEventListener("mousemove", function (ev) {
+      if (!drag) { return; }
+      yaw += (ev.clientX - drag.x) * 0.01;
+      pitch += (ev.clientY - drag.y) * 0.01;
+      pitch = Math.max(-1.45, Math.min(1.45, pitch));
+      drag = {x: ev.clientX, y: ev.clientY};
+      drawMap();
+    });
     cv.onclick = function (ev) {
+      if (drag) { return; }
       var r = cv.getBoundingClientRect();
       var mx = ev.clientX - r.left, my = ev.clientY - r.top, best = null, bd = 1e9;
       pts.forEach(function (p) {
-        var d = Math.pow(sx(p.x) - mx, 2) + Math.pow(sy(p.y) - my, 2);
+        var d = Math.pow(p.px - mx, 2) + Math.pow(p.py - my, 2);
         if (d < bd) { bd = d; best = p; }
       });
       if (best && bd < 900) {
