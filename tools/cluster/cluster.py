@@ -390,6 +390,39 @@ def main():
         names = [FEATURES[i][0] for i in np.flatnonzero(dead)]
         print("  constant in this session, carrying no information: %s" % ", ".join(names))
 
+    # Collapse measurements that are IDENTICAL, and carry the count as dwell.
+    #
+    # A screen held still produces the same vector sample after sample: 780
+    # samples of one app came to 188 distinct measurements, the largest group
+    # 40 strong. Those points sit at distance zero from each other, so their
+    # density is unbounded and HDBSCAN makes each a cluster whatever surrounds
+    # it - six such groups, and six clusters with a spread of 0.000 that were
+    # not scene kinds at all but single screens somebody sat on. Three of them
+    # had the same medians to three decimals.
+    #
+    # This is deduplication with nothing arbitrary in it. The old kind merged
+    # scenes whose rects agreed to a chosen permille, and a sweep showed that
+    # number sliding the scene count from 13 to 178 with no plateau anywhere.
+    # Identical is identical.
+    keys = np.round(Z, 6)
+    _, first, inverse = np.unique(keys, axis=0, return_index=True, return_inverse=True)
+    if len(first) < len(rows):
+        # unique ids, ordered by where each was first seen, so the output
+        # follows the session rather than numpy's sort
+        order = list(np.argsort(first))
+        upos = {int(u): i for i, u in enumerate(order)}
+        merged = []
+        for u in order:
+            r = dict(rows[int(first[int(u)])])
+            r["dwell"] = 0
+            merged.append(r)
+        for i, u in enumerate(inverse):
+            merged[upos[int(u)]]["dwell"] += max(1, int(float(rows[i].get("dwell") or 1)))
+        print("  %d samples -> %d distinct measurements (identical ones carry a dwell)"
+              % (len(rows), len(merged)))
+        rows = merged
+        Z, dead, fit = build_matrix(rows)
+
     mcs = args.min_cluster or max(5, int(round(0.02 * len(rows))))
     print("  HDBSCAN, min_cluster_size=%d over %d features" % (mcs, Z.shape[1]))
     model = HDBSCAN(min_cluster_size=mcs, min_samples=None,
