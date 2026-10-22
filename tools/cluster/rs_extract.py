@@ -497,12 +497,11 @@ def build_scene(tree, cmap, disp):
     for fld in ("node_den", "depth_mean", "leaf_frac", "fanout", "repeat_frac",
                 "text_frac", "image_frac", "sym_frac", "blur_frac", "shadow_frac",
                 "corner_frac", "blend_frac", "dirty_frac", "draw_slots",
-                "paint_frac", "hwc_frac", "item_h", "item_aspect",
-                "bar_top", "bar_bot"):
+                "paint_frac", "hwc_frac"):
         sc[fld] = round(sum(float(c.get(fld, 0)) * c["weight"] for c in contrib) / wsum, 3)
     for fld in ("nodes", "dropped", "drop_skip", "drop_odd", "paints", "redrawn",
                 "repeat_n", "scroller", "surface_tag", "hwc", "hdr", "anim_n",
-                "anim_forever", "skipped", "cols", "rows_n", "split_n"):
+                "anim_forever", "skipped"):
         sc[fld] = sum(int(c.get(fld, 0)) for c in contrib)
     seen_n = sc["nodes"] + sc["dropped"]
     sc["admit_frac"] = round(sc["nodes"] / seen_n, 3) if seen_n else 1.0
@@ -518,6 +517,14 @@ def build_scene(tree, cmap, disp):
     real = [c for c in contrib if c["weight"] >= 0.2]
     top = min(real, key=lambda c: c["z"]) if real else (
         max(contrib, key=lambda c: c["weight"]) if contrib else None)
+    # Arrangement comes from the contributor that owns the scene, not summed
+    # across them and not averaged with them: columns counted over a grid, a
+    # status bar and a nav bar add up to six columns of nothing. A status bar
+    # has a layout, but it is not the screen's layout.
+    for fld in ("cols", "rows_n", "split_n", "item_h", "item_aspect",
+                "bar_top", "bar_bot"):
+        sc[fld] = (top.get(fld, 0) if top else 0)
+
     if top:
         sc["top_win"] = top["win"]; sc["top_name"] = top["name"]
         sc["top_weight"] = top["weight"]; sc["top_z"] = top["z"]
