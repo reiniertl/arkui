@@ -1,6 +1,7 @@
 <!doctype html>
 <!--
-  Cluster viewer. Opens straight off the disk - no server, no network, no CDN.
+  Scene cluster viewer. Opens straight off the disk - no server, no network,
+  no CDN.
 
   That is not a style choice. These are screenshots of a real phone in real
   use, they live on the machine that drives the device, and they must never
@@ -9,343 +10,187 @@
 
   clusters.js is a SCRIPT and not a JSON file for the same reason: over
   file:// a browser blocks fetch() but not <script src>.
+
+  Two things this page deliberately does not show.
+
+  It shows no hand-written class. There used to be a shape and a scene name
+  on every tile and a purity bar on every cluster, all of it scored against a
+  class list written before any data existed. That list did not survive the
+  data and capture no longer produces it.
+
+  It shows no app name. Nothing identifying the app enters the vector,
+  because nothing about the app predicts the scene - and showing it here
+  would invite exactly the reasoning the vector was built to avoid.
+
+  What is left is the geometry, the screenshots, and a box to write a name in
+  after looking. That is the whole point: the clustering sets up the looking.
 -->
 <html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Screen Clusters</title>
+<title>Scene Clusters</title>
 <style>
   :root {
-    --bg: #ffffff; --fg: #16181d; --dim: #6b7280; --line: #e3e6eb;
-    --card: #f7f8fa; --accent: #2563eb; --warn: #b45309; --bad: #b91c1c;
-    --ok: #15803d;
+    --bg:#ffffff; --fg:#16181d; --dim:#6b7280; --line:#e3e6eb;
+    --card:#f7f8fa; --accent:#2563eb;
   }
   @media (prefers-color-scheme: dark) {
     :root:not([data-theme="light"]) {
-      --bg: #0f1115; --fg: #e6e8ec; --dim: #9aa1ad; --line: #272b33;
-      --card: #171a20; --accent: #60a5fa; --warn: #fbbf24; --bad: #f87171;
-      --ok: #4ade80;
+      --bg:#0f1115; --fg:#e6e8ec; --dim:#9aa1ad; --line:#272b33;
+      --card:#171a20; --accent:#60a5fa;
     }
   }
-  :root[data-theme="dark"] {
-    --bg: #0f1115; --fg: #e6e8ec; --dim: #9aa1ad; --line: #272b33;
-    --card: #171a20; --accent: #60a5fa; --warn: #fbbf24; --bad: #f87171;
-    --ok: #4ade80;
-  }
   * { box-sizing: border-box; }
-  body {
-    margin: 0; background: var(--bg); color: var(--fg);
-    font: 14px/1.5 ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
-  }
-  header { padding: 20px 16px 12px; border-bottom: 1px solid var(--line); }
-  h1 { margin: 0 0 4px; font-size: 18px; font-weight: 600; }
-  .sub { color: var(--dim); font-size: 13px; }
-  .wrap { display: flex; gap: 16px; padding: 16px; align-items: flex-start; }
-  @media (max-width: 900px) { .wrap { flex-direction: column; padding: 16px; } }
-  .left { width: 300px; flex: none; max-height: 82vh; overflow-y: auto; }
-  @media (max-width: 900px) { .left { width: 100%; max-height: none; } }
-  .right { flex: 1; min-width: 0; }
-  .card {
-    background: var(--card); border: 1px solid var(--line); border-radius: 10px;
-    padding: 10px; margin-bottom: 8px; cursor: pointer; display: flex; gap: 10px;
-  }
-  .card:hover { border-color: var(--accent); }
-  .card.sel { border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); }
-  .card img { width: 54px; height: 108px; object-fit: cover; border-radius: 4px;
-              background: var(--line); flex: none; }
-  .card .meta { min-width: 0; }
-  .cname { font-weight: 600; margin-bottom: 2px; }
-  .tiny { font-size: 12px; color: var(--dim); }
-  .bar { height: 4px; background: var(--line); border-radius: 2px; margin-top: 5px; overflow: hidden; }
-  .bar i { display: block; height: 100%; background: var(--accent); }
-  .bar.alarm i { background: var(--bad); }
-  .panel { background: var(--card); border: 1px solid var(--line);
-           border-radius: 10px; padding: 14px; margin-bottom: 12px; }
-  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(110px, 1fr)); gap: 8px; }
-  .shot { position: relative; }
-  .shot img { width: 100%; border-radius: 6px; display: block; background: var(--line);
-              border: 1px solid var(--line); }
-  .shot span { position: absolute; left: 4px; bottom: 4px; font-size: 10px;
-               background: rgba(0,0,0,.72); color: #fff; padding: 1px 5px; border-radius: 3px; }
-  table { border-collapse: collapse; width: 100%; font-size: 13px; }
-  td, th { text-align: left; padding: 3px 10px 3px 0; border-bottom: 1px solid var(--line); }
-  th { color: var(--dim); font-weight: 500; }
-  .pill { display: inline-block; padding: 1px 7px; border-radius: 999px;
-          border: 1px solid var(--line); font-size: 12px; margin: 0 4px 4px 0; }
-  .alarm { color: var(--bad); }
-  .warn { color: var(--warn); }
-  .ok { color: var(--ok); }
-  canvas { width: 100%; height: 230px; display: block; }
-  input[type=text] {
-    width: 100%; padding: 7px 9px; border-radius: 7px; font: inherit;
-    border: 1px solid var(--line); background: var(--bg); color: var(--fg);
-  }
-  button { font: inherit; padding: 7px 13px; border-radius: 7px; cursor: pointer;
-           border: 1px solid var(--line); background: var(--bg); color: var(--fg); }
-  button:hover { border-color: var(--accent); }
-  h2 { font-size: 14px; margin: 0 0 8px; font-weight: 600; }
-  .cols2 { display: flex; gap: 20px; flex-wrap: wrap; }
-  .cols2 > div { flex: 1; min-width: 230px; }
+  body { margin:0; background:var(--bg); color:var(--fg); font:14px/1.5
+    -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
+  .wrap { max-width:1280px; margin:0 auto; padding:24px 16px 72px; }
+  h1 { font-size:22px; margin:0 0 4px; }
+  h2 { font-size:15px; margin:0; }
+  .tiny { font-size:12px; color:var(--dim); }
+  .sum { display:flex; flex-wrap:wrap; gap:18px; margin:14px 0 26px;
+    padding:14px 16px; background:var(--card); border:1px solid var(--line);
+    border-radius:10px; }
+  .sum div b { display:block; font-size:19px; }
+  .cl { border:1px solid var(--line); border-radius:12px; margin:0 0 22px;
+    overflow:hidden; background:var(--card); }
+  .hd { display:flex; flex-wrap:wrap; align-items:center; gap:14px;
+    padding:12px 16px; border-bottom:1px solid var(--line); }
+  .id { font-size:17px; font-weight:700; }
+  .geo { font-size:12px; color:var(--dim); font-family:ui-monospace,
+    "SF Mono", Menlo, Consolas, monospace; }
+  .nm { margin-left:auto; display:flex; gap:6px; }
+  .nm input { font:inherit; padding:5px 9px; border:1px solid var(--line);
+    border-radius:7px; background:var(--bg); color:var(--fg); width:190px; }
+  .nm button { font:inherit; padding:5px 11px; border:1px solid var(--line);
+    border-radius:7px; background:var(--bg); color:var(--fg); cursor:pointer; }
+  .grid { display:grid; gap:8px; padding:14px 16px;
+    grid-template-columns:repeat(auto-fill, minmax(104px, 1fr)); }
+  .shot img { width:100%; display:block; border-radius:6px;
+    background:var(--line); aspect-ratio:1316/2832; object-fit:cover; }
+  .shot .cap { font-size:10px; color:var(--dim); text-align:center;
+    padding-top:3px; font-family:ui-monospace, Menlo, Consolas, monospace; }
+  .none { opacity:.72; }
+  .bar { height:4px; background:var(--line); border-radius:3px; width:90px; }
+  .bar i { display:block; height:100%; background:var(--accent);
+    border-radius:3px; }
+  footer { margin-top:30px; }
 </style>
 </head>
 <body>
-<header>
-  <h1>Screen clusters <span class="tiny" id="sess"></span></h1>
-  <div class="sub" id="head"></div>
-  <div class="sub" id="blind" style="margin-top:6px"></div>
-</header>
-
 <div class="wrap">
-  <div class="left" id="list"></div>
-  <div class="right">
-    <div class="panel">
-      <h2>All screens, projected to two dimensions</h2>
-      <canvas id="scatter"></canvas>
-      <div class="tiny">PCA of the clustering vector. Click a point to jump to its cluster.
-        Proximity here is suggestive, not the clustering itself — HDBSCAN ran on all
-        <span id="nfeat"></span> dimensions.</div>
-    </div>
-    <div id="detail"></div>
-  </div>
+  <h1>Scene clusters</h1>
+  <div class="tiny" id="sub"></div>
+  <div class="sum" id="sum"></div>
+  <div id="out"></div>
+  <footer class="tiny">
+    Every scene is shown. Ordered from the centre of its cluster outwards, so
+    the last tiles are where it frays. Write a name once the pictures agree on
+    one, then Download to keep them.
+    <button id="dl" style="margin-left:10px">Download names</button>
+  </footer>
 </div>
-
 <script src="clusters.js"></script>
 <script>
 (function () {
-  if (typeof DATA === "undefined") {
-    document.body.innerHTML = "<p style='padding:24px'>clusters.js not found beside this page. " +
-      "Run <code>cluster.cmd &lt;capture-dir&gt;</code> first.</p>";
-    return;
-  }
+  var D = window.CLUSTERS || {};
+  var clusters = (D.clusters || []).slice().sort(function (a, b) {
+    if (a.id === -1) return 1; if (b.id === -1) return -1; return a.id - b.id;
+  });
   var labels = {};
-  try { labels = JSON.parse(localStorage.getItem("arkui.labels." + DATA.session) || "{}"); }
+  try { labels = JSON.parse(localStorage.getItem("arkui.names." + D.session) || "{}"); }
   catch (e) { labels = {}; }
 
-  var clusters = DATA.clusters.slice().sort(function (a, b) {
-    if (a.id === -1) return 1;
-    if (b.id === -1) return -1;
-    return b.n - a.n;
-  });
-  var sel = clusters.length ? clusters[0].id : null;
-
-  // Must match thumb_name() in cluster.py. A merged view sits beside the
-  // sessions, so a shot is "<session>/0007.png" and its thumbnail is
-  // flattened into one folder rather than mirroring the tree.
-  function thumb(shot) {
-    return shot
-      ? "thumbs/" + shot.replace(/\.\.\//g, "").replace(/\//g, "__").replace(".png", ".jpg")
-      : "";
-  }
-  function full(shot) { return shot || ""; }
   function esc(s) {
-    return String(s === null || s === undefined ? "" : s)
-      .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+    return String(s === undefined || s === null ? "" : s)
+      .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;");
   }
-  function name(c) {
-    if (labels[c.id]) return labels[c.id];
-    if (c.id === -1) return "outliers";
-    var s = c.shapes && c.shapes.length ? c.shapes[0][0] : "?";
-    return "cluster " + c.id + " · " + s;
-  }
-
-  // ---- header -----------------------------------------------------------
-  document.getElementById("sess").textContent = DATA.session;
-  document.getElementById("nfeat").textContent = DATA.features.length;
-  var sil = DATA.silhouette;
-  var silTxt = sil === null || sil === undefined ? "silhouette not computable"
-    : "silhouette " + sil.toFixed(3) +
-      (sil >= 0.5 ? " — well separated" : sil >= 0.25
-        ? " — real but overlapping" : " — WEAK, the vector may be missing something");
-  document.getElementById("head").textContent =
-    DATA.n_samples + " samples → " + DATA.n_screens + " distinct screens · " +
-    (clusters.filter(function (c) { return c.id !== -1; }).length) + " clusters · " + silTxt;
-
-  var b = DATA.blind;
-  var pct = function (x) { return Math.round(100 * x / Math.max(1, b.n)) + "%"; };
-  document.getElementById("blind").innerHTML =
-    "<b>" + pct(b.describable) + "</b> of real screens are describable from the ArkUI tree alone · " +
-    "<span class='warn'>" + b.mostly_web + "</span> behind Web (recoverable in-process) · " +
-    "<span class='alarm'>" + b.mostly_xcomponent + "</span> behind an XComponent (outside ArkUI permanently) · " +
-    "<span class='warn'>" + b.mostly_embedded + "</span> behind an embedded UI (closed by routing)";
-
-  // ---- cluster list -----------------------------------------------------
-  function drawList() {
-    var el = document.getElementById("list");
-    el.innerHTML = "";
-    clusters.forEach(function (c) {
-      var d = document.createElement("div");
-      d.className = "card" + (c.id === sel ? " sel" : "");
-      var alarm = c.purity >= 0.9 && c.id !== -1;
-      d.innerHTML =
-        (c.medoid ? "<img loading='lazy' src='" + esc(thumb(c.medoid)) +
-          "' onerror=\"this.onerror=null;this.src='" + esc(full(c.medoid)) + "'\">"
-          : "<img alt=''>") +
-        "<div class='meta'><div class='cname'>" + esc(name(c)) + "</div>" +
-        "<div class='tiny'>" + c.n + " screens · " + c.dwell + " samples" +
-        (c.jitter == null ? "" : " · jitter " + c.jitter) +
-        (c.moving ? " · " + c.moving + " moving" : "") + "</div>" +
-        "<div class='tiny" + (alarm ? " alarm" : "") + "'>" +
-        (c.id === -1 ? "fit no cluster" :
-          Math.round(c.purity * 100) + "% " + esc(c.top_app)) + "</div>" +
-        (c.id === -1 ? "" : "<div class='bar" + (alarm ? " alarm" : "") +
-          "'><i style='width:" + Math.round(c.purity * 100) + "%'></i></div>") +
-        "</div>";
-      d.onclick = function () { sel = c.id; drawList(); drawDetail(); };
-      el.appendChild(d);
-    });
+  // Must match thumb_name() in cluster.py.
+  function thumb(shot) {
+    return shot ? "thumbs/" + shot.replace(/\.\.\//g, "").replace(/\//g, "__")
+      .replace(".png", ".jpg") : "";
   }
 
-  // ---- detail -----------------------------------------------------------
-  function drawDetail() {
-    var c = clusters.filter(function (x) { return x.id === sel; })[0];
-    var el = document.getElementById("detail");
-    if (!c) { el.innerHTML = ""; return; }
-    var alarm = c.purity >= 0.9 && c.id !== -1;
-    var topShape = c.shapes.length ? c.shapes[0] : ["?", 0];
-    var mixed = c.id !== -1 && c.n >= 5 && topShape[1] / c.n < 0.6;
+  document.getElementById("sub").textContent =
+    (D.session || "") + " · " + (D.scenes || 0) + " distinct scenes · "
+    + (D.samples || 0) + " samples";
 
-    var h = "";
-    h += "<div class='panel'>";
-    h += "<h2>" + esc(name(c)) + " — " + c.n + " screens</h2>";
-    if (c.jitter != null) {
-      h += "<p class='tiny'>Median jitter <b>" + c.jitter + "</b> of 1000 — the share of " +
-        "the tree that changed between the two dumps bracketing the screenshot. " +
-        "High means the screen was animating while standing still, which is a " +
-        "power question, not a shape question: it is held out of the vector.</p>";
+  var real = clusters.filter(function (c) { return c.id !== -1; });
+  var noise = clusters.filter(function (c) { return c.id === -1; });
+  var nOut = noise.length ? noise[0].n : 0;
+  var sum = [
+    ["clusters", real.length],
+    ["scenes clustered", real.reduce(function (a, c) { return a + c.n; }, 0)],
+    ["fitted none", nOut],
+    ["silhouette", (D.silhouette === undefined || D.silhouette === null)
+      ? "–" : D.silhouette]
+  ];
+  document.getElementById("sum").innerHTML = sum.map(function (p) {
+    return "<div><b>" + esc(p[1]) + "</b><span class='tiny'>" + esc(p[0]) + "</span></div>";
+  }).join("");
+
+  var KEY = [["rs_node_den","den"], ["rs_depth_mean","depth"], ["rs_leaf_frac","leaf"],
+             ["rs_repeat_n","rep"], ["rs_text_frac","text"], ["rs_image_frac","img"],
+             ["rs_paint_frac","paint"], ["rs_scroller","scroll"],
+             ["rs_surface_tag","surface"]];
+
+  function block(c) {
+    var isNone = c.id === -1;
+    var geo = KEY.map(function (k) {
+      var v = (c.medians || {})[k[0]];
+      return k[1] + " " + (v === undefined ? "–" : v);
+    }).join("   ");
+    var h = "<div class='cl" + (isNone ? " none" : "") + "'><div class='hd'>" +
+      "<span class='id'>" + (isNone ? "fitted no cluster" : "cluster " + c.id) + "</span>" +
+      "<span class='tiny'>" + c.n + " scenes · " + c.dwell + " samples" +
+      (c.cohesion === null || c.cohesion === undefined ? "" :
+        " · cohesion " + c.cohesion) + "</span>";
+    if (!isNone && c.cohesion !== null && c.cohesion !== undefined) {
+      var w = Math.max(0, Math.min(100, Math.round(c.cohesion * 100)));
+      h += "<span class='bar'><i style='width:" + w + "%'></i></span>";
     }
-    if (c.moving) {
-      h += "<p class='tiny'><b>" + c.moving + "</b> further samples were taken while the " +
-        "screen was moving and resemble this cluster most closely. They have no " +
-        "screenshot — the picture and the tree would describe different screens — " +
-        "but their trees are real, and they are how much of the session was spent " +
-        "scrolling through this shape rather than sitting on it.</p>";
+    if (!isNone) {
+      h += "<span class='nm'><input id='n" + c.id + "' placeholder='name this cluster' value='" +
+        esc(labels[c.id] || "") + "'><button data-id='" + c.id + "'>Save</button></span>";
     }
-
-    if (alarm) {
-      h += "<p class='alarm'><b>Purity alarm.</b> " + Math.round(c.purity * 100) +
-        "% of this cluster is <code>" + esc(c.top_app) + "</code>. " +
-        "This probably found one app's design language rather than a shape. " +
-        "Treat it as suspect, and check whether it survives when that app is held out.</p>";
-    }
-    if (mixed) {
-      h += "<p class='warn'><b>Mixed against the hand taxonomy.</b> These screens group " +
-        "tightly on geometry but the hand-written <code>shape</code> calls them " +
-        c.shapes.map(function (s) { return esc(s[0]) + " (" + s[1] + ")"; }).join(", ") +
-        ". Either those names are really one shape, or the vector is missing what " +
-        "separates them — and the screenshots below settle which.</p>";
-    }
-
-    h += "<div style='display:flex;gap:8px;align-items:center;margin:10px 0'>" +
-      "<input type='text' id='lbl' placeholder='name this cluster from the pictures…' value='" +
-      esc(labels[c.id] || "") + "'>" +
-      "<button id='save'>Save</button><button id='dl'>Export labels.json</button></div>";
-    h += "</div>";
-
-    h += "<div class='panel'><div class='cols2'>";
-    h += "<div><h2>Held out — scored, never clustered on</h2><table><tr><th>shape</th><th>n</th></tr>" +
-      c.shapes.map(function (s) {
-        return "<tr><td>" + esc(s[0]) + "</td><td>" + s[1] + "</td></tr>";
-      }).join("") + "</table></div>";
-    h += "<div><h2>Scorer's class — also held out</h2><table><tr><th>scene</th><th>n</th></tr>" +
-      (c.scenes || []).map(function (s) {
-        return "<tr><td>" + esc(s[0]) + "</td><td>" + s[1] + "</td></tr>";
-      }).join("") +
-      "</table>" +
-      ((c.scenes || []).length >= 3
-        ? "<div class='tiny warn' style='margin-top:6px'>Several names for one " +
-          "geometry. Nothing the scorer produces enters the vector, so this is a " +
-          "test of the class list, not a restatement of it.</div>"
-        : "") + "</div>";
-    h += "<div><h2>Apps in this cluster</h2><table><tr><th>app</th><th>n</th></tr>" +
-      c.apps.map(function (a) {
-        return "<tr><td>" + esc(a[0]) + "</td><td>" + a[1] + "</td></tr>";
-      }).join("") + "</table></div>";
-    h += "<div><h2>Median geometry</h2><table>" +
-      DATA.features.map(function (f) {
-        return "<tr><td>" + esc(f.name) + "</td><td>" + c.medians[f.name] + "</td></tr>";
-      }).join("") + "</table></div>";
-    h += "</div></div>";
-
-    h += "<div class='panel'><h2>Every screen in this cluster</h2>" +
-      "<div class='tiny' style='margin-bottom:8px'>Ordered from the centre outwards. " +
-      "The last ones are where the cluster frays.</div><div class='grid'>";
-    c.members.forEach(function (m) {
+    h += "</div><div class='geo' style='padding:8px 16px 0'>" + esc(geo) + "</div>";
+    h += "<div class='grid'>";
+    (c.members || []).forEach(function (m) {
       var t = thumb(m.shot);
-      h += "<div class='shot' title='" + esc(m.window) + " · " + esc(m.scene) +
-        "\nshape " + esc(m.shape) + (m.sil !== null ? "\nsilhouette " + m.sil : "") + "'>" +
+      h += "<div class='shot'>" +
         (t ? "<img loading='lazy' src='" + esc(t) + "' onerror=\"this.onerror=null;this.src='" +
-          esc(full(m.shot)) + "'\">" : "<img alt='no screenshot'>") +
-        "<span>" + esc(m.shape || "?") + "</span></div>";
+             esc(m.shot || "") + "'\">" : "<img alt='no screenshot'>") +
+        "<div class='cap'>" + esc(m.shot || "") +
+        (m.sil === null || m.sil === undefined ? "" : " · " + m.sil) +
+        "</div></div>";
     });
     h += "</div></div>";
-    el.innerHTML = h;
-
-    document.getElementById("save").onclick = function () {
-      var v = document.getElementById("lbl").value.trim();
-      if (v) { labels[c.id] = v; } else { delete labels[c.id]; }
-      try { localStorage.setItem("arkui.labels." + DATA.session, JSON.stringify(labels)); }
-      catch (e) { /* private window: the download below is the real save */ }
-      drawList(); drawDetail();
-    };
-    document.getElementById("dl").onclick = function () {
-      var blob = new Blob([JSON.stringify(labels, null, 2)], {type: "application/json"});
-      var a = document.createElement("a");
-      a.href = URL.createObjectURL(blob);
-      a.download = "labels.json";
-      a.click();
-      setTimeout(function () { URL.revokeObjectURL(a.href); }, 1000);
-    };
+    return h;
   }
 
-  // ---- scatter ----------------------------------------------------------
-  var pts = [];
-  clusters.forEach(function (c) {
-    c.members.forEach(function (m) { pts.push({x: m.x, y: m.y, c: c.id}); });
+  document.getElementById("out").innerHTML = clusters.map(block).join("");
+
+  document.getElementById("out").addEventListener("click", function (e) {
+    var id = e.target && e.target.getAttribute && e.target.getAttribute("data-id");
+    if (id === null || id === undefined) { return; }
+    var box = document.getElementById("n" + id);
+    var v = box ? box.value.trim() : "";
+    if (v) { labels[id] = v; } else { delete labels[id]; }
+    try { localStorage.setItem("arkui.names." + D.session, JSON.stringify(labels)); }
+    catch (err) { /* private window: the download is the real save */ }
+    e.target.textContent = "Saved";
+    setTimeout(function () { e.target.textContent = "Save"; }, 900);
   });
-  var cv = document.getElementById("scatter");
-  function palette(id) {
-    if (id === -1) return "#9aa1ad";
-    var hues = [210, 28, 142, 320, 48, 260, 0, 175, 95, 300];
-    return "hsl(" + hues[((id % hues.length) + hues.length) % hues.length] + " 70% 52%)";
-  }
-  function drawScatter() {
-    var dpr = window.devicePixelRatio || 1;
-    var w = cv.clientWidth, hgt = cv.clientHeight;
-    cv.width = w * dpr; cv.height = hgt * dpr;
-    var g = cv.getContext("2d");
-    g.setTransform(dpr, 0, 0, dpr, 0, 0);
-    g.clearRect(0, 0, w, hgt);
-    if (!pts.length) return;
-    var xs = pts.map(function (p) { return p.x; }), ys = pts.map(function (p) { return p.y; });
-    var x0 = Math.min.apply(null, xs), x1 = Math.max.apply(null, xs);
-    var y0 = Math.min.apply(null, ys), y1 = Math.max.apply(null, ys);
-    var pad = 14;
-    var sx = function (x) { return pad + (x - x0) / ((x1 - x0) || 1) * (w - 2 * pad); };
-    var sy = function (y) { return pad + (y - y0) / ((y1 - y0) || 1) * (hgt - 2 * pad); };
-    pts.forEach(function (p) {
-      g.beginPath();
-      g.arc(sx(p.x), sy(p.y), p.c === sel ? 4.2 : 2.6, 0, 6.2832);
-      g.fillStyle = palette(p.c);
-      g.globalAlpha = p.c === sel ? 1 : (p.c === -1 ? 0.45 : 0.62);
-      g.fill();
-    });
-    g.globalAlpha = 1;
-    cv._sx = sx; cv._sy = sy;
-  }
-  cv.onclick = function (ev) {
-    if (!cv._sx || !pts.length) return;
-    var r = cv.getBoundingClientRect();
-    var mx = ev.clientX - r.left, my = ev.clientY - r.top, best = null, bd = 1e9;
-    pts.forEach(function (p) {
-      var d = Math.pow(cv._sx(p.x) - mx, 2) + Math.pow(cv._sy(p.y) - my, 2);
-      if (d < bd) { bd = d; best = p; }
-    });
-    if (best && bd < 400) { sel = best.c; drawList(); drawDetail(); drawScatter(); }
-  };
-  window.addEventListener("resize", drawScatter);
 
-  drawList(); drawDetail(); drawScatter();
+  document.getElementById("dl").onclick = function () {
+    var blob = new Blob([JSON.stringify(labels, null, 2)], {type: "application/json"});
+    var a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = "names.json";
+    a.click();
+    setTimeout(function () { URL.revokeObjectURL(a.href); }, 1000);
+  };
 })();
 </script>
 </body>

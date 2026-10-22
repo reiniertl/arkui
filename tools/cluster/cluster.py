@@ -8,18 +8,19 @@ alone, and let the class set fall out of the groups.
 
 Two rules it is built around:
 
-  Cluster SCREENS, not apps.  One app shows a video player, a chat, a
+  Cluster SCENES, not apps.  One app shows a video player, a chat, a
   settings page and a feed, often from one window.  Nothing about the app
-  predicts the screen, so nothing identifying the app goes into the vector.
-  The package name appears exactly once, in the purity alarm, AFTER the
-  clustering - if a cluster turns out to be 90% one app, that cluster found
-  a design language instead of a shape, and it should be thrown out.
+  predicts the scene, so nothing identifying the app enters the vector -
+  and, since the design-language alarm was removed with the rest of the
+  label machinery, nothing identifying it leaves the report either.
 
-  The hand-written taxonomy is HELD OUT.  `shape` is my guess at the answer.
-  Feeding the guess in and reading it back out proves nothing, so it is
-  scored against the clusters instead: a cluster that is cleanly one shape
-  confirms it, a cluster split between two says those two are really one,
-  and one shape spread over four clusters says it is too coarse.
+  No hand-written class, anywhere.  There used to be one: `shape`, a guess
+  written before any data existed, scored against the clusters to see
+  whether it held. It did not - SPLIT was the only name that mapped to a
+  single cluster - and the reading it came from was window-scoped, which is
+  the wrong object. Capture no longer produces it. A cluster is described
+  by what it measures and by how well it holds together, and the names are
+  written in the viewer, by a person, after looking.
 
 Usage:  cluster.cmd <capture-dir> [--min-cluster N] [--no-thumbs]
 """
@@ -48,29 +49,13 @@ from sklearn.metrics import silhouette_score, silhouette_samples
 # its z-score swings by 4.5 while `rep_frac` swings by 1.
 # ---------------------------------------------------------------------------
 FEATURES = [
-    # column          transform   weight  what it separates
-    ("rep_frac",      "permille", 1.0),   # how much of the band repeats
-    ("rep_n",         "log1p",    0.7),   # 8 rows vs 40 rows: a ratio, not a gap
-    ("cols",          "clip6",    1.2),   # gallery vs feed. The single best axis.
-    ("item_h",        "permille", 1.0),   # a 70-permille row vs a 400-permille card
-    ("item_aspect",   "logratio", 1.0),   # log, so 0.5 and 2.0 sit equally from square
-    ("split_n",       "clip4",    0.7),
-    ("split_ratio",   "permille", 0.7),
-    ("overlay",       "permille", 0.7),   # a sheet, a dialog, a snackbar
-    ("bar_top",       "permille", 0.5),
-    ("bar_bot",       "permille", 0.5),
-    ("bar_edit",      "flag",     0.5),
-    ("pager",         "flag",     0.5),
-    ("surf_frac",     "permille", 1.0),
-    ("surf_visible",  "permille", 1.0),   # surface the user can actually see
-    ("cover_web",     "permille", 0.7),
-    ("cover_xc",      "permille", 0.7),
-    ("cover_emb",     "permille", 0.7),
-
-    # ---- from the render tree -------------------------------------------
-    # Structure only. What a scene costs and how it moves are read off the
-    # same dump and reported beside the cluster, not folded into what makes
-    # two screens the same kind of screen.
+    # The vector is the render tree, and nothing else. The seventeen uitest
+    # columns that used to lead this list described ONE window's layout -
+    # cols, item_h, split_n, bar_top - while these describe the display. They
+    # measured a different object, and capture no longer reads uitest at all,
+    # so on a current session they were seventeen columns of zero.
+    #
+    # column            transform   weight  what it separates
     ("rs_repeat_frac", "unit",    1.0),   # how much of the display repeats
     ("rs_repeat_n",    "log1p",   0.7),
     ("rs_text_frac",   "unit",    1.0),   # a form and a player differ here most
@@ -198,18 +183,6 @@ def thumb_name(shot):
     hidden on anything unix-shaped and confusing everywhere else.
     """
     return shot.replace("../", "").replace("/", "__").replace(".png", ".jpg")
-
-
-def app_of(row):
-    """Which app this screen belongs to.
-
-    `window` is the numeric window id; `name` is the app. They were read the
-    wrong way round, which made every purity figure a count of window ids -
-    stable while an app stays up, and silently splitting it in two the moment
-    it is killed and relaunched. That is exactly the shape of evidence the
-    design-language alarm keys on, so it had to be wrong in the alarm's favour.
-    """
-    return row.get("name") or row.get("window") or "?"
 
 
 def dedupe(rows):
@@ -433,15 +406,18 @@ def main():
         centre = sub.mean(axis=0)
         order = sorted(idx, key=lambda i: float(np.linalg.norm(Z[i] - centre)))
 
-        apps = Counter(app_of(m) for m in members)
-        top_app, top_n = apps.most_common(1)[0]
-        purity = top_n / len(members)
-        shapes = Counter(m.get("shape", "?") for m in members)
-        scenes = Counter(m.get("scene", "?") for m in members)
 
         med = {}
         for name, kind, _ in FEATURES:
-            med[name] = round(float(np.median([transform(kind, m.get(name)) for m in members])), 3)
+            # Raw, not transformed. log1p of a repeat count is for the
+            # distance metric; a person reading the table wants the count.
+            raw = []
+            for m in members:
+                try:
+                    raw.append(float(m.get(name) or 0))
+                except ValueError:
+                    raw.append(0.0)
+            med[name] = round(float(np.median(raw)), 3)
 
         jit = [int(float(m["jitter"])) for m in members
                if str(m.get("jitter", "")).strip() not in ("", "None")]
@@ -452,31 +428,29 @@ def main():
             "n": len(members),
             "dwell": sum(int(m.get("dwell", 1)) for m in members),
             "medoid": rows[order[0]].get("shot", ""),
-            "apps": apps.most_common(8),
-            "purity": round(purity, 3),
-            "top_app": top_app,
-            "shapes": shapes.most_common(),
-            "scenes": scenes.most_common(),
             "medians": med,
             "jitter": jitter,
             "moving": int(moved_to.get(int(cid), 0)),
+            # Cohesion in place of purity. Purity measured agreement with the
+            # hand-written shape, which was a guess written before any data
+            # existed and is no longer captured at all. The mean silhouette
+            # of a cluster's own members says how well it holds together
+            # without reference to any name.
+            # The outlier tray has no silhouette - its members fit no
+            # cluster by definition - so it gets None rather than a nan.
+            "cohesion": _cohesion(sil_per, idx),
             "members": [{
                 "shot": rows[i].get("shot", ""),
-                "shape": rows[i].get("shape", ""),
-                "scene": rows[i].get("scene", ""),
-                "window": app_of(rows[i]),
                 "dwell": int(rows[i].get("dwell", 1)),
                 "x": round(float(coords[i][0]), 4),
                 "y": round(float(coords[i][1]), 4),
                 "sil": (None if sil_per is None or math.isnan(sil_per[i])
                         else round(float(sil_per[i]), 3)),
                 "feat": {name: rows[i].get(name, "") for name, _, _ in FEATURES},
-                "held": {name: rows[i].get(name, "") for name in HELD_OUT},
             } for i in order],
         })
 
-    flagged = verdicts(out_clusters)
-    report(out_clusters, rows, sil, flagged)
+    report(out_clusters, rows, sil)
 
     if not args.no_thumbs:
         thumbs(out, rows)
@@ -484,8 +458,8 @@ def main():
     payload = {
         "session": " + ".join(os.path.basename(d) for d in dirs),
         "sessions": [os.path.basename(d) for d in dirs],
-        "n_samples": len(raw),
-        "n_screens": len(rows),
+        "samples": len(raw),
+        "scenes": len(rows),
         "silhouette": sil,
         "features": [{"name": n, "transform": k, "weight": w} for n, k, w in FEATURES],
         "held_out": list(HELD_OUT),
@@ -509,64 +483,6 @@ def main():
         print("\nopen this in a browser (no server needed):\n  %s" % viewer_dst)
 
 
-def verdicts(clusters):
-    """Which apps are being separated by their house style rather than shape.
-
-    Purity on its own flags two very different things, and loudly flagging
-    both made it useless: in test it fired on eight clusters of twelve when
-    exactly one app was the planted trap.
-
-    A cluster can be one app because nobody else in the session showed that
-    shape - a gap in the capture, not a fault in the clustering.  Or it can
-    be one app because that app's design language separates ALL of its
-    screens from everyone else's.  The second is the failure this guards
-    against, and the signature is not one cluster: it is one app carved out
-    ACROSS SEVERAL SHAPES AT ONCE, while other apps produce those same
-    shapes together elsewhere.  So the test is per app, not per cluster.
-    """
-    own = defaultdict(list)          # app -> clusters where it is >=90%
-    total = Counter()                # app -> screens anywhere
-    shape_apps = defaultdict(set)    # hand shape -> apps producing it
-    for c in clusters:
-        if c["id"] == -1:
-            continue
-        for app, k in c["apps"]:
-            total[app] += k
-        if c["purity"] >= 0.9 and c["shapes"]:
-            own[c["top_app"]].append(c)
-        for shp, _ in c["shapes"]:
-            for app, _k in c["apps"]:
-                shape_apps[shp].add(app)
-
-    for c in clusters:
-        c["verdict"] = ""
-        c["rival_apps"] = []
-
-    flagged = []
-    for app, cs in own.items():
-        shapes = {c["shapes"][0][0] for c in cs}
-        held = sum(c["n"] for c in cs)
-        if len(shapes) < 2:
-            continue                       # one shape: a real geometric split
-        if held < 0.8 * max(1, total[app]):
-            continue                       # it mixes with others elsewhere
-        rivals = set()
-        for shp in shapes:
-            rivals |= (shape_apps.get(shp, set()) - {app})
-        if not rivals:
-            continue                       # nothing to compare against
-        for c in cs:
-            c["verdict"] = "design-language"
-            c["rival_apps"] = sorted(rivals)[:6]
-        flagged.append((app, sorted(shapes), [c["id"] for c in cs], held, sorted(rivals)[:6]))
-
-    for app, cs in own.items():
-        for c in cs:
-            if not c["verdict"]:
-                c["verdict"] = "sole-app"
-    return flagged
-
-
 def quality(s):
     if s >= 0.5:
         return "- clusters are well separated"
@@ -576,180 +492,68 @@ def quality(s):
 
 
 def blind_spots(rows, clusters):
-    """Where the tree cannot describe what the screenshot shows.
+    """How much of the scene set sits behind a surface the tree cannot read.
 
-    This is the number the power team needs: it decides whether an ArkWeb
-    producer is worth building, and nothing else in this pipeline produces it.
+    It used to split this three ways - Web, XComponent, embedded - from the
+    uitest coverage columns. Those are gone with the rest of the uitest
+    reading, and the render-tree path reports only that a surface component
+    is present, not which kind. Splitting it by kind on this path is not
+    written yet, so the honest number is the one we have.
     """
-    def pm(r, k):
+    def num(r, k):
         try:
             return float(r.get(k) or 0)
         except ValueError:
             return 0.0
 
     n = len(rows)
-    web = [r for r in rows if pm(r, "cover_web") >= 500]
-    xc = [r for r in rows if pm(r, "cover_xc") >= 500]
-    emb = [r for r in rows if pm(r, "cover_emb") >= 500]
-    opaque = [r for r in rows if pm(r, "cover_web") + pm(r, "cover_xc") + pm(r, "cover_emb") >= 500]
-    # `total` is a uitest measurement and uitest now runs on a cadence, so on
-    # a render-tree-only row it is empty - and an empty string read as 0 made
-    # every such row look like a dump with no nodes in it. Five of ten scenes
-    # were reported that way on a session where the thinnest carried 151.
-    # Count a row only when the measurement that decides it was actually
-    # taken, and prefer the render tree's own count when it is there.
-    def _nodes(r):
-        v = r.get("rs_nodes")
-        if v not in (None, ""):
-            return float(v)
-        v = r.get("total")
-        if v in (None, ""):
-            return None
-        return float(v)
-
-    thin = [r for r in rows if (_nodes(r) is not None and _nodes(r) < 15)]
-
-    # A cluster tight in feature space but mixed in hand-label is the worse
-    # failure: ArkUI cannot tell apart screens that look different.
-    mixed = []
-    for c in clusters:
-        if c["id"] == -1 or c["n"] < 5:
-            continue
-        shapes = dict(c["shapes"])
-        top = max(shapes.values())
-        if top / c["n"] < 0.6:
-            mixed.append({"id": c["id"], "n": c["n"], "shapes": c["shapes"]})
-
+    surf = [r for r in rows if num(r, "rs_surface_tag") >= 1]
+    thin = [r for r in rows if num(r, "rs_nodes") and num(r, "rs_nodes") < 15]
     return {
         "n": n,
-        "describable": n - len(opaque),
-        "mostly_web": len(web),
-        "mostly_xcomponent": len(xc),
-        "mostly_embedded": len(emb),
-        "mostly_opaque": len(opaque),
+        "with_surface": len(surf),
+        "describable": n - len(surf),
         "almost_no_nodes": len(thin),
-        "mixed_clusters": mixed,
     }
 
+def _cohesion(sil_per, idx):
+    if sil_per is None:
+        return None
+    vals = [float(sil_per[i]) for i in idx if not math.isnan(float(sil_per[i]))]
+    return round(sum(vals) / len(vals), 3) if vals else None
 
-def report(clusters, rows, sil, flagged):
-    print("\n%-5s %-6s %-7s %-7s %-22s %-7s %-7s %s"
-          % ("id", "n", "dwell", "moving", "dominant shape", "purity", "jitter", "top app"))
+
+def report(clusters, rows, sil):
+    """What the geometry found, with nothing of what we expected it to find.
+
+    There used to be a purity column, a design-language alarm, and two tables
+    scoring the hand-written taxonomy against the clusters. All three read
+    `shape` and `scene` - a class list written before any data existed, and a
+    rule set firing on a window-scoped reading. Capture no longer produces
+    either, and the approach they belonged to was the wrong one. A cluster is
+    reported by what it measures and by how well it holds together.
+    """
+    print()
+    print("%-5s %-5s %-7s %-7s %-9s %s"
+          % ("id", "n", "dwell", "moving", "cohesion", "median geometry"))
+    key = ["rs_node_den", "rs_depth_mean", "rs_leaf_frac", "rs_repeat_n",
+           "rs_image_frac", "rs_paint_frac", "rs_scroller"]
+    short = {"rs_node_den": "den", "rs_depth_mean": "depth", "rs_leaf_frac": "leaf",
+             "rs_repeat_n": "rep", "rs_image_frac": "img", "rs_paint_frac": "paint",
+             "rs_scroller": "scroll"}
     for c in clusters:
-        if c["id"] == -1:
-            continue
-        shp = ", ".join("%s %d" % (k, v) for k, v in c["shapes"][:3])
-        flag = {"design-language": "  <-- SUSPECT, see below",
-                "sole-app": "  <-- only app showing this"}.get(c.get("verdict"), "")
-        jit = "-" if c.get("jitter") is None else str(c["jitter"])
-        print("%-5d %-6d %-7d %-7d %-22s %-7.2f %-7s %s%s"
-              % (c["id"], c["n"], c["dwell"], c.get("moving", 0), shp[:22], c["purity"],
-                 jit, c["top_app"][:18], flag))
-    out = [c for c in clusters if c["id"] == -1]
-    if out:
-        print("%-5s %-6d %-7d %-7s %-22s %-7s %-7s %s"
-              % ("none", out[0]["n"], out[0]["dwell"], "-", "(outliers)", "-", "-",
-                 "worth looking at by eye"))
+        geo = "  ".join("%s %s" % (short[k], c["medians"].get(k, "-")) for k in key)
+        coh = "-" if c.get("cohesion") is None else "%.2f" % c["cohesion"]
+        name = str(c["id"]) if c["id"] != -1 else "none"
+        print("%-5s %-5d %-7d %-7d %-9s %s"
+              % (name, c["n"], c["dwell"], c.get("moving", 0), coh, geo))
+    if any(c["id"] == -1 for c in clusters):
+        print("  none = fitted no cluster. Worth looking at by eye;")
+        print("  a scene that fits nothing is reported, not forced into the nearest group.")
 
-    if flagged:
-        print("\nSUSPECT - these apps are being separated by house style, not shape.")
-        print("Each is carved out across several shapes at once while other apps")
-        print("produce those same shapes together:")
-        for app, shapes, ids, held, rivals in flagged:
-            print("  %s: %d screens, alone in clusters %s, spanning %s"
-                  % (app, held, ",".join(str(i) for i in ids), ", ".join(shapes)))
-            print("     the same shapes are produced by %s" % ", ".join(rivals))
-        print("  -> look at the screenshots. If they look like everyone else's, the")
-        print("     vector is splitting on decoration and these clusters should go.")
-
-    sole = [c for c in clusters if c.get("verdict") == "sole-app"]
-    if sole:
-        print("\none app only, nothing yet to compare against. A gap in the capture,")
-        print("not necessarily a fault in the clustering:")
-        for c in sole:
-            print("  cluster %d: all %s, %s" % (c["id"], c["top_app"], c["shapes"][0][0]))
-
-    # The headline: how the measured groups line up against the hand taxonomy.
-    hand = {}
-    for c in clusters:
-        if c["id"] == -1:
-            continue
-        for shp, k in c["shapes"]:
-            hand.setdefault(shp, {"screens": 0, "clusters": set()})
-            hand[shp]["screens"] += k
-            hand[shp]["clusters"].add(c["id"])
-    print("\nthe hand-written taxonomy against the measured clusters:")
-    print("  %-10s %-8s %s" % ("shape", "screens", "clusters it is spread over"))
-    for shp in sorted(hand, key=lambda k: -hand[k]["screens"]):
-        ids = sorted(hand[shp]["clusters"])
-        note = ""
-        if len(ids) >= 3:
-            note = "  <- too coarse: the data wants this split"
-        print("  %-10s %-8d %s%s" % (shp, hand[shp]["screens"],
-                                     ",".join(str(i) for i in ids), note))
-
-    # The same question asked of the scorer's own answer. `scene` is one of
-    # twenty-three class names written by hand before any data existed, and
-    # nothing it produces - not the class, not the score, not the confidence -
-    # enters the vector. So this table is a genuine test of it rather than a
-    # restatement: where it agrees with a cluster it earned that, and where it
-    # does not, the cluster is the measurement and the name is the guess.
-    scen = {}
-    for c in clusters:
-        if c["id"] == -1:
-            continue
-        for sc, k in c.get("scenes", []):
-            scen.setdefault(sc, {"screens": 0, "clusters": set()})
-            scen[sc]["screens"] += k
-            scen[sc]["clusters"].add(c["id"])
-    if scen:
-        split = sum(1 for v in scen.values() if len(v["clusters"]) >= 3)
-        print("\nthe scorer's class against the measured clusters")
-        print("  (held out of the vector entirely - this is a test, not a restatement):")
-        print("  %-16s %-8s %s" % ("scene", "screens", "clusters it is spread over"))
-        for sc in sorted(scen, key=lambda k: -scen[k]["screens"]):
-            ids = sorted(scen[sc]["clusters"])
-            note = ""
-            if len(ids) == 1:
-                note = "  <- clean"
-            elif len(ids) >= 3:
-                note = "  <- too coarse, or firing on the wrong evidence"
-            print("  %-16s %-8d %s%s" % (sc, scen[sc]["screens"],
-                                         ",".join(str(i) for i in ids), note))
-
-        # And the other direction, which is the more damning one: a cluster is
-        # ONE kind of screen by construction, so several class names inside it
-        # are several names for the same thing.
-        muddled = [c for c in clusters
-                   if c["id"] != -1 and len(c.get("scenes", [])) >= 3]
-        if muddled:
-            print("\n  clusters the scorer could not keep to one name:")
-            for c in muddled:
-                names = ", ".join("%s %d" % (k, v) for k, v in c["scenes"][:5])
-                print("    cluster %-3d %s" % (c["id"], names))
-            print("    these screens group tightly on geometry, so either those")
-            print("    names are one class, or the rule firing is the wrong one.")
-        if split:
-            print("\n  %d of %d class names are spread over 3+ clusters. The class"
-                  % (split, len(scen)))
-            print("  list was written before any data existed; this is the data.")
-
-    b = blind_spots(rows, clusters)
-    print("\nwhere ArkUI is blind, over %d distinct scenes:" % b["n"])
-    print("  %d (%.0f%%) describable from the tree alone"
-          % (b["describable"], 100.0 * b["describable"] / max(1, b["n"])))
-    print("  %d mostly behind a Web region      - recoverable in-process by an ArkWeb producer"
-          % b["mostly_web"])
-    print("  %d mostly behind an XComponent     - a buffer queue, outside ArkUI permanently"
-          % b["mostly_xcomponent"])
-    print("  %d mostly behind an embedded UI    - another ArkUI instance; closed by routing, not a new producer"
-          % b["mostly_embedded"])
-    if b["almost_no_nodes"]:
-        print("  %d dumps with almost no nodes at all" % b["almost_no_nodes"])
-    for m in b["mixed_clusters"]:
-        print("  cluster %d groups %d screens that the hand taxonomy calls %s"
-              % (m["id"], m["n"], ", ".join("%s(%d)" % (k, v) for k, v in m["shapes"])))
-        print("    -> either those names are one shape, or the vector is missing what splits them")
+    print()
+    print("  Every scene in every cluster is in viewer.html. The names are")
+    print("  yours to write there - that is the step the clustering exists to set up.")
 
 
 if __name__ == "__main__":
