@@ -1243,3 +1243,93 @@ function Get-RsRow {
     foreach ($kv in (Get-RsRowFields -R $Scene).GetEnumerator()) { $o[$kv.Key] = $kv.Value }
     return [PSCustomObject]$o
 }
+
+# Rebuild every saved scene in every session into one dataset.
+#
+# Sessions captured across a day of fixes are not comparable: the early ones
+# predate the contributor-is-a-window merge, the paint weighting, the clamped
+# fractions and the opaque-region occlusion, so their rs_ columns mean
+# different things under the same names. Averaging them would be averaging
+# four different measurements.
+#
+# But every session saved the raw dumps beside each scene, which is the whole
+# reason for saving them. Re-deriving from those puts every scene on the
+# current extractor at once, and the comparison becomes honest.
+#
+# Deduplication runs across the WHOLE set, not per session: the same screen
+# captured in three sessions is one scene with a dwell of three, not three
+# scenes. That is the same tolerant match the capture loop uses.
+function Invoke-RsRebuildAll {
+    param([string] $Root, [string] $OutCsv, [int] $Tol = 650)
+
+    $sessions = @(Get-ChildItem -Path $Root -Directory | Sort-Object Name)
+    if ($sessions.Count -eq 0) { Write-Host "no sessions under $Root" -ForegroundColor Red; return }
+
+    $disp = Get-RsDisplay
+    if ($disp.W -le 0) {
+        Write-Host "no display read; using the panel the sessions were captured on" -ForegroundColor Yellow
+        $disp = [PSCustomObject]@{ Id=0; W=1316.0; H=2832.0; Density=3.5; Rotation=0
+                                   Refresh=0; RefreshMax=0; Power=-1; Internal=$true
+                                   Extend=$false; Cutout=$null; Avail=$null }
+    }
+    Write-Host ""
+    Write-Host ("REBUILD  {0} sessions under {1}" -f $sessions.Count, $Root) -ForegroundColor Cyan
+    Write-Host ("  display {0}x{1} @{2}   tolerance {3} permille" -f $disp.W, $disp.H, $disp.Density, $Tol) -ForegroundColor DarkGray
+    Write-Host ""
+
+    $index = @()      # one entry per distinct scene, with its rect set
+    $rows  = @()
+    $seen = 0; $skipped = 0
+
+    foreach ($s in $sessions) {
+        $trees = @(Get-ChildItem -Path $s.FullName -Filter "*.rstree.txt" -ErrorAction SilentlyContinue | Sort-Object Name)
+        if ($trees.Count -eq 0) { continue }
+        foreach ($t in $trees) {
+            $stem = $t.Name -replace '\.rstree\.txt$',''
+            $clf  = Join-Path $s.FullName ($stem + ".client.txt")
+            $raw  = @(Get-Content -Path $t.FullName)
+            if ($raw.Count -lt 5) { $skipped++; continue }
+            $cl = @()
+            if (Test-Path $clf) { $cl = @(Get-Content -Path $clf) }
+
+            $tree = ConvertFrom-RsTree -Lines $raw
+            $map  = ConvertFrom-RsClient -Lines $cl
+            $scene = Get-RsScene -Tree $tree -ClientMap $map -Display $disp
+            $sig = Get-RsQuickSig -Lines $raw
+            if ($sig.Hash -eq "") { $skipped++; continue }
+            $seen++
+
+            $key = $sig.Hash
+            $hit = $null
+            foreach ($p in $index) {
+                if ((Get-SetHold $sig.All $p.All) -ge $Tol) { $hit = $p; break }
+            }
+            if ($hit) { $key = $hit.Sig; $hit.Dwell++ ; continue }
+            $index += [PSCustomObject]@{ Sig = $key; All = $sig.All; Dwell = 1 }
+
+            $row = Get-RsRow -Scene $scene -Win $null -Mono 0
+            Add-Member -InputObject $row -NotePropertyName session -NotePropertyValue $s.Name -Force
+            Add-Member -InputObject $row -NotePropertyName stem    -NotePropertyValue $stem -Force
+            Add-Member -InputObject $row -NotePropertyName sig     -NotePropertyValue $key -Force
+            Add-Member -InputObject $row -NotePropertyName win_sig -NotePropertyValue "" -Force
+            Add-Member -InputObject $row -NotePropertyName jitter  -NotePropertyValue "" -Force
+            Add-Member -InputObject $row -NotePropertyName still   -NotePropertyValue "" -Force
+            Add-Member -InputObject $row -NotePropertyName dwell   -NotePropertyValue 1 -Force
+            $png = Join-Path $s.FullName ($stem + ".png")
+            Add-Member -InputObject $row -NotePropertyName shot -NotePropertyValue `
+                $(if (Test-Path $png) { $s.Name + "/" + $stem + ".png" } else { "" }) -Force
+            $rows += $row
+        }
+        Write-Host ("  {0,-20} {1,4} dumps   running total {2} distinct" -f $s.Name, $trees.Count, $index.Count)
+    }
+
+    # dwell is how many saved dumps landed on each scene, across every session
+    $byKey = @{}
+    foreach ($p in $index) { $byKey[$p.Sig] = $p.Dwell }
+    foreach ($r in $rows) { if ($byKey.ContainsKey($r.sig)) { $r.dwell = $byKey[$r.sig] } }
+
+    $rows | Export-Csv -Path $OutCsv -NoTypeInformation
+    Write-Host ""
+    Write-Host ("  {0} dumps read, {1} skipped, {2} distinct scenes" -f $seen, $skipped, $rows.Count) -ForegroundColor Green
+    Write-Host ("  -> {0}" -f $OutCsv)
+}

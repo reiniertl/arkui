@@ -68,6 +68,7 @@ param(
     [int]    $UitestEvery = 0,
     [int]    $SceneTol = 800,
     [string] $RsFrom,
+    [string] $RsRebuildAll,
     [string] $RsSave,
     [string] $RsFps,
     [int]    $Capture = 0,
@@ -4914,7 +4915,7 @@ if ($Version) {
     Write-Host "  classify     -Watch  -Out  -Label  -Fit  -Apply  -Calib"
     Write-Host "  validate     -Separation"
     Write-Host "  discovery    -FindRects  -RsProbe  -RsFps  -Deep  -Services"
-    Write-Host "  render tree  -RsScene [-RsSave <dir>]   -RsFrom <dir>"
+    Write-Host "  render tree  -RsScene [-RsSave <dir>]   -RsFrom <dir>   -RsRebuildAll <captures>"
     Write-Host "  diagnostics  -DumpOpt  -Explain  -Raw  -ShowCmd  -WindowId  -Attrs"
     Write-Host ""
     Write-Host "  repo  https://github.com/reiniertl/arkui" -ForegroundColor DarkGray
@@ -4968,6 +4969,14 @@ if ($RsFrom) {
     $disp = [PSCustomObject]@{ Id=0; W=1316.0; H=2832.0; Density=3.5; Rotation=0; Refresh=0; Power=-1; Internal=$true; Cutout=$null }
     if (Test-Path $dj) { $disp = Read-RsDisplay -Lines (Get-Content $dj) }
     Show-RsScene -R (Get-RsScene -Tree $tree -ClientMap $map -Display $disp)
+    exit 0
+}
+
+# Every saved scene from every session, re-derived on the current extractor
+# and deduplicated across the whole set.
+if ($RsRebuildAll) {
+    $outCsv = Join-Path $RsRebuildAll "all_scenes.csv"
+    Invoke-RsRebuildAll -Root $RsRebuildAll -OutCsv $outCsv -Tol $SceneTol
     exit 0
 }
 
