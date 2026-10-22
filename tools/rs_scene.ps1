@@ -1333,3 +1333,100 @@ function Invoke-RsRebuildAll {
     Write-Host ("  {0} dumps read, {1} skipped, {2} distinct scenes" -f $seen, $skipped, $rows.Count) -ForegroundColor Green
     Write-Host ("  -> {0}" -f $OutCsv)
 }
+
+# Capture at the rate the device will answer, and work out what it meant
+# later.
+#
+# The full loop spends about 3 seconds a sample, and only 0.6 of that is the
+# device: the rest is parsing the tree, building the scene, reading the window
+# table and resolving occlusion - every one of which can be redone from the
+# saved dumps, offline, as many times as we like. Doing it live buys nothing
+# and costs most of the sampling rate.
+#
+# So this loop does the irreducible minimum: pull both dumps, decide from the
+# raw text whether this is a scene already seen, and if it is not, write the
+# dumps and take a picture. Features come from -RsRebuildAll afterwards.
+#
+# Repeats cost two dumps and a regex pass. Only a new scene pays for storage
+# and a screenshot, which on a phone held on one screen is almost never.
+function Invoke-RsFastCapture {
+    param([int] $Seconds, [string] $Dir, [int] $Tol = 650)
+
+    if (-not (Find-ShotCommand)) { return }
+    $stamp   = (Get-Date).ToString("yyyyMMdd_HHmmss")
+    $session = Join-Path $Dir $stamp
+    [void](New-Item -ItemType Directory -Force -Path $session)
+    $csv = Join-Path $session "samples.csv"
+    $dev = $script:ShotDev
+
+    Write-Host ""
+    Write-Host ("capturing to {0} for {1}s - Ctrl+C to stop early" -f $session, $Seconds) -ForegroundColor Cyan
+    Write-Host  "one render-tree read per sample. Nothing is computed from it here:" -ForegroundColor DarkGray
+    Write-Host  "the dumps are kept and the features derived afterwards, offline." -ForegroundColor DarkGray
+    Write-Host ""
+    Write-Host ("{0,6}  {1,-7} {2,-9} {3}" -f "n", "scenes", "ms", "note")
+
+    $t0 = Get-Date
+    $index = @(); $idx = 0; $n = 0; $failed = 0
+    $sw = New-Object System.Diagnostics.Stopwatch
+
+    while (((Get-Date) - $t0).TotalSeconds -lt $Seconds) {
+        $sw.Restart()
+        $rs = @(Invoke-RsDump -Arg 'RSTree')
+        if ($rs.Count -lt 5) { $failed++; continue }
+        $cl = @(Invoke-RsDump -Arg 'client')
+        $sig = Get-RsQuickSig -Lines $rs
+        if ($sig.Hash -eq "") { $failed++; continue }
+        $n++
+
+        $hit = $null
+        foreach ($p in $index) {
+            if ((Get-SetHold $sig.All $p.All) -ge $Tol) { $hit = $p; break }
+        }
+        $shot = ""; $stem = ""
+        if ($hit) {
+            $hit.Dwell++
+            $key = $hit.Sig
+        } else {
+            $idx++
+            $stem = "{0:D4}" -f $idx
+            $key  = $sig.Hash
+            $index += [PSCustomObject]@{ Sig = $key; All = $sig.All; Dwell = 1 }
+            $rs | Set-Content (Join-Path $session "$stem.rstree.txt")
+            $cl | Set-Content (Join-Path $session "$stem.client.txt")
+            Invoke-HdcRaw "shell `"rm -f $dev`"" | Out-Null
+            Invoke-HdcRaw $script:ShotCmd | Out-Null
+            $local = Join-Path $session ($stem + $script:ShotExt)
+            Invoke-HdcRaw ("file recv {0} `"{1}`"" -f $dev, $local) | Out-Null
+            if (Test-Path $local) { $shot = $stem + $script:ShotExt }
+        }
+
+        $row = [PSCustomObject]@{
+            ts    = (Get-Date).ToString("HH:mm:ss.fff")
+            sig   = $key
+            stem  = $stem
+            shot  = $shot
+            ms    = [int]$sw.ElapsedMilliseconds
+        }
+        if (Test-Path $csv) { $row | Export-Csv -Path $csv -NoTypeInformation -Append }
+        else                { $row | Export-Csv -Path $csv -NoTypeInformation }
+
+        if (-not $hit) {
+            Write-Host ("{0,6}  {1,-7} {2,-9} {3}" -f $n, $idx, $row.ms, "new scene -> $stem") -ForegroundColor Green
+        } elseif ($n % 25 -eq 0) {
+            Write-Host ("{0,6}  {1,-7} {2,-9} {3}" -f $n, $idx, $row.ms, "same scene") -ForegroundColor DarkGray
+        }
+    }
+
+    # dwell per scene, written where the rebuild can find it
+    $dw = Join-Path $session "dwell.csv"
+    $index | Select-Object Sig, Dwell | Export-Csv -Path $dw -NoTypeInformation
+    $el = ((Get-Date) - $t0).TotalSeconds
+    Write-Host ""
+    Write-Host ("captured {0:N0}s: {1} samples, {2} distinct scenes, {3} failed" -f $el, $n, $idx, $failed) -ForegroundColor Green
+    if ($n -gt 0) { Write-Host ("  {0:N2} s per sample" -f ($el / $n)) -ForegroundColor Green }
+    Write-Host ("  -> {0}" -f $session)
+    Write-Host ""
+    Write-Host "  derive the features when you are done:" -ForegroundColor DarkCyan
+    Write-Host ("  scene_class.cmd -RsRebuildAll {0}" -f $Dir) -ForegroundColor DarkCyan
+}

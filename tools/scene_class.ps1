@@ -64,6 +64,7 @@ param(
     [switch] $RsProbe,
     [switch] $RsScene,
     [switch] $CaptureRs,
+    [switch] $Fast,
     [switch] $NoRsOcclusion,
     [int]    $UitestEvery = 0,
     [int]    $SceneTol = 800,
@@ -4973,6 +4974,9 @@ if ($Attrs) {
     if ($id -le 0) { $fgw = Resolve-Scene -Table $table -Quiet; if ($fgw) { $id = $fgw.WinId } }
     Set-WinRect -Row ($table | Where-Object { $_.WinId -eq $id } | Select-Object -First 1)
     Show-Attrs -Id $id; exit 0
+}
+if ($Capture -gt 0 -and $Fast) {
+    Invoke-RsFastCapture -Seconds $Capture -Dir $CaptureDir -Tol $SceneTol; exit 0
 }
 if ($Capture -gt 0) { Invoke-Capture -Seconds $Capture -Dir $CaptureDir -Every $Every -Tol $MoveTol; exit 0 }
 if ($Services) { Show-Services; exit 0 }
