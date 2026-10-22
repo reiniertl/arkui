@@ -4615,12 +4615,19 @@ function Invoke-Capture {
         $dup = $false
         if ($keySig -ne "" -and $sceneSigA.Hash -ne "") {
             foreach ($prev in $script:SceneIndex) {
-                if ((Get-SetHold $sceneSigA.Big $prev.Big) -ge $script:SceneTol) {
+                # Compared on the FULL rect set, not the big one. The big set
+                # holds about ten rects - only so much of a display is between
+                # 2% and 60% of it - and ten full-width bands look alike from
+                # one app to the next, so fourteen apps collapsed into seven
+                # scenes and then four into one. The full set carries 180 to
+                # 300 rects and actually describes the screen; the threshold
+                # is what absorbs the churn.
+                if ((Get-SetHold $sceneSigA.All $prev.All) -ge $script:SceneTol) {
                     $dup = $true; $keySig = $prev.Sig; break
                 }
             }
             if (-not $dup) {
-                $script:SceneIndex += [PSCustomObject]@{ Sig = $keySig; Big = $sceneSigA.Big }
+                $script:SceneIndex += [PSCustomObject]@{ Sig = $keySig; Big = $sceneSigA.Big; All = $sceneSigA.All }
             }
         } else {
             $dup = ($keySig -ne "" -and $keySig -eq $lastSig)
