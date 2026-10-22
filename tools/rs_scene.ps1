@@ -1388,9 +1388,13 @@ function Invoke-RsFastCapture {
 
     while (((Get-Date) - $t0).TotalSeconds -lt $Seconds) {
         $sw.Restart()
+        # The render tree first, and nothing else until we know whether this
+        # sample is worth anything. The client dump costs 193ms and is only
+        # ever WRITTEN for a scene we have not seen - it used to be fetched
+        # every sample and discarded on every repeat, which on a phone held
+        # on one screen is almost all of them.
         $rs = @(Invoke-RsDump -Arg 'RSTree')
         if ($rs.Count -lt 5) { $failed++; continue }
-        $cl = @(Invoke-RsDump -Arg 'client')
         $sig = Get-RsQuickSig -Lines $rs
         if ($sig.Hash -eq "") { $failed++; continue }
         $n++
@@ -1408,6 +1412,11 @@ function Invoke-RsFastCapture {
             $stem = "{0:D4}" -f $idx
             $key  = $sig.Hash
             $index += [PSCustomObject]@{ Sig = $key; All = $sig.All; Dwell = 1 }
+            # Fetched here, a signature's width after the tree rather than
+            # beside it. The two join by node id and that join is exact only
+            # because little moves between them; 60ms is the price of not
+            # paying 193 on every repeat.
+            $cl = @(Invoke-RsDump -Arg 'client')
             $rs | Set-Content (Join-Path $session "$stem.rstree.txt")
             $cl | Set-Content (Join-Path $session "$stem.client.txt")
             Invoke-HdcRaw "shell `"rm -f $dev`"" | Out-Null
