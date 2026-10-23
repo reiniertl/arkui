@@ -61,7 +61,14 @@ row (band 1) is a settings list, a 400-permille card (band 3) is a feed, an 850-
   → log-interpolated between band 3 (0.40) and band 4 (0.85): 0.53 / 0.47
   → with a second group of 1268 × 92 rows contributing to band 0
   → item_h0 0.31   item_h1 0.00   item_h2 0.00   item_h3 0.36   item_h4 0.33""",
-  extra="The sixteen layouts below are rectangle lists run through this exact code, so the numbers under each picture are computed, not illustrative. Highest SHAP attribution of any feature group. Dropping the block entirely costs real structure — silhouette 0.476 → 0.405 — so it is signal, it was just badly measured before.")
+  extra="""The sixteen layouts below are rectangle lists run through this exact code, so the numbers
+under each picture are computed, not illustrative. Highest SHAP attribution of any feature group, and
+dropping the block entirely costs real structure — silhouette 0.476 → 0.405 — so it is signal.
+<br><br><b>But see the observed section underneath.</b> Checked against the capture, the layouts are
+worked cases rather than motifs that occur: six of fourteen never appear, and half of all samples emit
+a band profile while their repeating structure covers under 5% of the window. Because the bands are
+shares they look equally confident either way, which is a defect in the feature as designed, not in
+the measurement.""")
 
 f(name="rs_item_ar0 … rs_item_ar2", group="Repeat shape", status="live",
   weight="0.58 each", rng="0 – 1, the three sum to 1",

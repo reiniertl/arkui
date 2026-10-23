@@ -47,3 +47,4 @@ rows.rebuilt.csv
 # copied elsewhere must not become a public upload of somebody using a phone.
 *.json.gz
 tools/cluster/feature_reference.html
+tools/cluster/reps_payload.json

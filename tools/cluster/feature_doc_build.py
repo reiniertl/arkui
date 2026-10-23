@@ -3,7 +3,8 @@ import feature_doc as data
 
 import json as _j
 SHAPES = _j.load(open("shapes.json", encoding="utf-8"))
-payload = {"features": data.F, "common": data.COMMON, "shapes": SHAPES}
+REPS = _j.load(open("reps_payload.json", encoding="utf-8"))
+payload = {"features": data.F, "common": data.COMMON, "shapes": SHAPES, "reps": REPS}
 
 HTML = """<!doctype html>
 <html lang="en">
@@ -82,6 +83,22 @@ HTML = """<!doctype html>
     padding-top:7px; }
   .sh .lg span.d { display:inline-block; width:8px; height:8px; border-radius:2px;
     margin-right:5px; vertical-align:middle; }
+  .warn { border-left:3px solid var(--amber); background:var(--card);
+    border-radius:0 8px 8px 0; padding:11px 14px; margin:10px 0 4px; font-size:13.5px; }
+  .warn b { color:var(--amber); }
+  .rgrp { border:1px solid var(--line); border-radius:9px; margin:14px 0;
+    overflow:hidden; }
+  .rgrp .hd { padding:10px 13px; background:var(--card);
+    border-bottom:1px solid var(--line); }
+  .rgrp .hd .t { font-size:13.5px; font-weight:650; }
+  .rgrp .hd .s { font-size:11.5px; color:var(--dim); margin-top:2px; }
+  .rgrp .pics { display:flex; gap:10px; padding:12px 13px; overflow-x:auto; }
+  .rgrp .pic { flex:0 0 150px; }
+  .rgrp .pic img { width:100%; border-radius:6px; border:1px solid var(--line);
+    display:block; }
+  .rgrp .pic .cap { font-size:10px; color:var(--dim); margin-top:4px;
+    font-family:ui-monospace,"SF Mono",Menlo,Consolas,monospace; line-height:1.5; }
+  .flag { color:var(--amber); font-weight:650; }
   .none { font-size:11px; color:var(--amber); padding:0 11px 9px; font-weight:600; }
   table { border-collapse:collapse; width:100%; font-size:13px; margin:8px 0 0; }
   td, th { text-align:left; padding:6px 9px; border-bottom:1px solid var(--line); }
@@ -176,6 +193,45 @@ var DATA = __DATA__;
     h += "</div></div></div>";
     return h;
   }
+  // What the capture actually contains, against what the layouts predicted.
+  function observed() {
+    var R = DATA.reps, h = "<div class='fld'><div class='k'>"
+      + t("What the capture actually holds") + "</div><div class='v'>";
+    h += "<div class='warn'>" + t("The layouts above are worked cases, not observed "
+      + "motifs. Matching all 2,648 settled samples against them, six of the fourteen "
+      + "never occur, and the median distance to the NEAREST one is 0.275 on a vector "
+      + "whose parts sum to 1. The pictures below are what each group really contains.")
+      + "</div>";
+    h += "<div class='warn'><b>" + t("The defect this exposes.") + "</b> "
+      + t("The bands are shares, so they sum to 1 whether the repeating content covers "
+        + "87% of the window or 0.4% of it. ") + R.note_lowrep + " " + t("of the")
+      + " " + R.note_total + " " + t("samples that emit a profile have repeat_frac below "
+        + "0.05 — a repeating structure covering under a twentieth of the window — "
+        + "and a quarter of those still put 80% of their mass in a single band. That is a "
+        + "confident statement about a shape that is barely there, and it is why the "
+        + "largest group below mixes video players with settings pages: neither has "
+        + "repeating structure, so both are described by their leftovers.") + "</div>";
+    R.groups.forEach(function (g) {
+      var bad = g.lowrep >= 0.5;
+      h += "<div class='rgrp'><div class='hd'><div class='t'>"
+        + t("nearest to") + " “" + esc(g.name) + "” · " + g.n + " " + t("samples")
+        + "</div><div class='s'>" + t("motif profile") + " "
+        + g.profile.map(function (v) { return v.toFixed(2); }).join("  ")
+        + " · " + t("median repeat_frac") + " "
+        + "<span class='" + (bad ? "flag" : "") + "'>" + g.medrep.toFixed(3) + "</span>"
+        + (bad ? " · <span class='flag'>" + Math.round(g.lowrep * 100) + "% "
+                 + t("of these have almost no repeating structure at all") + "</span>" : "")
+        + "</div></div><div class='pics'>";
+      g.reps.forEach(function (r) {
+        h += "<div class='pic'><img loading='lazy' src='" + r.img + "'>"
+           + "<div class='cap'>" + r.h.map(function (v) { return v.toFixed(2); }).join(" ")
+           + "<br>repeat " + r.rep + " · cols " + r.cols + "</div></div>";
+      });
+      h += "</div></div>";
+    });
+    h += "</div></div>";
+    return h;
+  }
   function overview() {
     mark(document.getElementById("nav-overview"));
     var c = DATA.common, h = "<h2>" + t("How it fits together") + "</h2>"
@@ -222,7 +278,7 @@ var DATA = __DATA__;
        + fld("Cost — inside ArkUI or RenderService", "<p>" + t(f.cost_tree) + "</p>") + "</div>";
     h += fld("Normalisation", "<p>" + t(f.norm) + "</p>");
     h += fld("Worked example, raw to result", pre(f.example));
-    if (f.name.indexOf("rs_item_h0") === 0) { h += gallery(); }
+    if (f.name.indexOf("rs_item_h0") === 0) { h += gallery() + observed(); }
     h += fld("Worth knowing", "<p>" + t(f.extra) + "</p>");
     document.getElementById("pane").innerHTML = h;
   }
