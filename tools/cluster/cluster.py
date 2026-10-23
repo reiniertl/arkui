@@ -289,6 +289,79 @@ def dedupe(rows):
     return out
 
 
+# ---- the deduplication metric ------------------------------------------
+#
+# Frozen on purpose, and separate from FEATURES.
+#
+# The collapse used to measure distance in the very space being tuned: the
+# same weighted z-scores, the same weights, the same column list. That made
+# a filter depend on the thing it was feeding, so every change to the
+# feature set quietly redrew the dataset entering the clustering - swapping
+# the argmax columns for the band distribution moved it from 296 rows to
+# 299 and exchanged one screenshot. Small here, but a filter that moves when
+# the features move cannot be used to compare two feature sets, which is
+# most of what this tool is for.
+#
+# It was also not the balanced geometric test it appeared to be. Measured on
+# the pairs close enough for the filter to act on, three features carried
+# 77% of the distance where an even share would have been 12%, because the
+# discrete columns cannot express a small difference: one step of
+# rs_has_repeat costs 1.79, rs_surface_tag 1.26, rs_scroller 0.43 and
+# rs_split_n 0.41, all above the 0.25 threshold. Two measurements differing
+# by a single step in any of them could never merge whatever the other
+# twenty-two said, and the continuous features barely participated -
+# rs_item_cols carried 11.5% of the overall geometry and 1.4% of the
+# decision.
+#
+# That also explains the "plateau" this threshold was chosen on. The answer
+# did not move between 0.10 and 0.25 because no discrete step fits inside
+# that range: the filter is identical anywhere below about 0.41. A dead
+# zone, not a plateau.
+#
+# So the rule is now stated instead of emerging: the categorical fields must
+# match exactly, and the continuous ones must agree to a tolerance. The
+# tolerance is the root-mean-square difference per feature, in standard
+# deviations, so it means the same thing whether the list below has fifteen
+# entries or thirty, and adding a feature cannot shift the dataset.
+DEDUP_EXACT = ("rs_surface_tag", "rs_scroller", "rs_split_n", "rs_has_repeat")
+
+DEDUP_CONT = (
+    ("rs_repeat_frac", "unit"), ("rs_repeat_n", "log1p"),
+    ("rs_text_frac", "unit"), ("rs_image_frac", "unit"),
+    ("rs_sym_frac", "unit"), ("rs_leaf_frac", "unit"),
+    ("rs_fanout", "log1p"), ("rs_depth_mean", "log1p"),
+    ("rs_node_den", "log1p"), ("rs_top_weight", "unit"),
+    ("rs_paint_frac", "unit"), ("rs_bar_top", "unit"),
+    ("rs_bar_bot", "unit"), ("rs_item_cols", "clip6"),
+    ("rs_item_h0", "unit"), ("rs_item_h1", "unit"), ("rs_item_h2", "unit"),
+    ("rs_item_h3", "unit"), ("rs_item_h4", "unit"),
+    ("rs_item_ar0", "unit"), ("rs_item_ar1", "unit"), ("rs_item_ar2", "unit"),
+)
+
+
+def dedup_space(rows):
+    """The frozen vector the collapse measures in, and the exact-match key.
+
+    Every column carries weight one. The weights in FEATURES are a statement
+    about what should separate CLASSES; they have no business deciding what
+    counts as the same measurement twice.
+    """
+    X = np.array([[transform(k, r.get(n)) for n, k in DEDUP_CONT]
+                  for r in rows], dtype=float)
+    for j in range(X.shape[1]):
+        m = np.isnan(X[:, j])
+        if m.any():
+            X[m, j] = np.nanmean(X[:, j]) if not m.all() else 0.0
+    std = X.std(axis=0)
+    live = std > 1e-9
+    std[~live] = 1.0
+    Z = (X - X.mean(axis=0)) / std
+    Z[:, ~live] = 0.0
+    keys = [tuple(str(r.get(n, "")).strip() for n in DEDUP_EXACT) for r in rows]
+    return Z, keys, int(live.sum())
+
+
+
 def decorrelate(Z, dead, threshold):
     """Drop features that repeat what another feature already says.
 
@@ -430,12 +503,14 @@ def main():
     ap.add_argument("--include-moving", action="store_true",
                     help="cluster the moving samples too, instead of attributing them")
     ap.add_argument("--no-thumbs", action="store_true")
-    ap.add_argument("--min-dist", type=float, default=0.25,
-                    help="collapse measurements closer than this in the "
-                         "clustering space, carrying the count as dwell. "
-                         "0 keeps every sample, which lets identical points "
-                         "form clusters of their own out of sheer density. "
-                         "Default 0.25, from the plateau in the sweep.")
+    ap.add_argument("--min-dist", type=float, default=0.05,
+                    help="how close two measurements must be to count as "
+                         "the same one, as root-mean-square standard "
+                         "deviations per feature over DEDUP_CONT, on top of "
+                         "an exact match on DEDUP_EXACT. The count is "
+                         "carried as dwell. 0 keeps every sample, which lets "
+                         "identical points form clusters of their own out of "
+                         "sheer density.")
     ap.add_argument("--decorrelate", type=float, default=0.0,
                     metavar="R",
                     help="drop features correlating above |r| = R with "
@@ -528,8 +603,8 @@ def main():
         names = [FEATURES[i][0] for i in np.flatnonzero(dead)]
         print("  constant in this session, carrying no information: %s" % ", ".join(names))
 
-    # Collapse measurements that sit within --min-dist of each other, and
-    # carry the count as dwell.
+    # Collapse measurements that are the same measurement twice, and carry
+    # the count as dwell.
     #
     # A screen held still produces nearly the same vector sample after
     # sample: of 780 samples from one app, 674 had a nearest neighbour at
@@ -539,31 +614,31 @@ def main():
     # same thing, one step quieter. Three clusters came back with medians
     # agreeing to three decimals.
     #
-    # Unlike the signature tolerance this radius has a plateau. Sweeping it
-    # over the same session: 15 clusters at 0, then 10 at both 0.10 and 0.25
-    # with the silhouette unchanged to three decimals, then a steady slide to
-    # 7, 6, 5, 4 as it over-merges. The flat stretch is where the number
-    # stops deciding the answer.
-    #
-    # For scale, in the same space: 90% of consecutive samples the capture
-    # called the same scene lie within 0.68 of each other, and only 5% of
-    # consecutive samples it called different lie within 0.52.
+    # The rule is in DEDUP_EXACT and DEDUP_CONT, deliberately apart from the
+    # clustering features: the categorical fields must agree exactly, and the
+    # rest must agree to --min-dist standard deviations per feature.
     eps = args.min_dist
     if eps > 0 and len(rows) > 1:
-        keep, weight, members, lead = [], [], [], np.zeros((0, Z.shape[1]))
-        for i in range(len(Z)):
-            if len(keep) == 0:
-                keep.append(i); weight.append(0); members.append([]); lead = Z[[i]]
-                j = 0
-            else:
-                d = np.linalg.norm(lead - Z[i], axis=1)
-                j = int(np.argmin(d))
-                if d[j] > eps:
-                    keep.append(i); weight.append(0); members.append([])
-                    lead = np.vstack([lead, Z[i]])
-                    j = len(keep) - 1
-            weight[j] += max(1, int(float(rows[i].get("dwell") or 1)))
-            members[j].append(i)
+        Zd, dkeys, dlive = dedup_space(rows)
+        scale = math.sqrt(max(1, dlive))
+        bucket, slot_of = {}, {}
+        keep, weight, members = [], [], []
+        for i in range(len(Zd)):
+            cand = bucket.setdefault(dkeys[i], [])
+            j = -1
+            if cand:
+                d = np.linalg.norm(Zd[cand] - Zd[i], axis=1) / scale
+                b = int(np.argmin(d))
+                if d[b] <= eps:
+                    j = cand[b]
+            if j < 0:
+                slot_of[i] = len(keep)
+                keep.append(i); weight.append(0); members.append([])
+                cand.append(i)
+                j = i
+            slot = slot_of[j]
+            weight[slot] += max(1, int(float(rows[i].get("dwell") or 1)))
+            members[slot].append(i)
         if len(keep) < len(rows):
             # Represent a group by a member that has a PICTURE.
             #
