@@ -1,0 +1,96 @@
+// Four slides, two languages. Keys are structural, not English, so neither
+// language is the "real" one and a missing string is a visible key rather
+// than a silent fallback to the wrong language.
+const EN = {
+  font: "Calibri", head: "Arial", mono: "Courier New",
+
+  s1title: "Where the data comes from",
+  s1sub: "One dump per sample, from RenderService's own tree. The accessibility tree is not read.",
+  p1h: "Device", p1b: "HarmonyOS NEXT\nphone in real use",
+  p2h: "One dump", p2b: "hidumper RSTree\n~740 KB of text",
+  p3h: "A scene", p3b: "nodes that survive\nocclusion, at an instant",
+  p4h: "A vector", p4b: "29 measurements\nper scene",
+  k1: "4,673", k1l: "samples captured",
+  k2: "0.26 s", k2l: "per sample",
+  k3: "1", k3l: "dump per sample",
+  k4: "0", k4l: "accessibility reads",
+  s1note: "Joining the render tree to the component tree succeeds on 100% of nodes. The accessibility route reached 38%, and cost a second dump.",
+
+  s2title: "What a scene is, and what is measured from it",
+  s2def: "A scene is the set of rendered nodes, from any window on a display, whose clipped rectangle survives occlusion, in that display's coordinates.",
+  s2defb: "Defined at an instant. The change against the previous reading is a modifier, never part of the class.",
+  g1h: "Repeat shape", g1n: "12", g1b: "Height and aspect of what repeats, as a distribution over bands — not the single largest group.",
+  g2h: "Composition", g2n: "5", g2b: "Video or web surface, scroller kind, top and bottom bars, split panes.",
+  g3h: "Topology", g3n: "4", g3b: "Node density, mean depth, leaf fraction, fan-out.",
+  g4h: "Content", g4n: "4", g4b: "Text, image, glyph and painted fractions of the display.",
+  g5h: "Occlusion", g5n: "4", g5b: "Contributing windows, opaque cover, uncovered area, owner weight.",
+  s2note: "26 of the 29 varied in this session; 20 carry the distance after near-duplicate features are removed.",
+
+  s3title: "From samples to the clustering input",
+  f1n: "4,673", f1h: "samples", f1b: "every dump kept, nothing discarded at capture",
+  f2n: "3,263", f2h: "settled scenes", f2b: "taken while the screen was not moving",
+  f3n: "324", f3h: "distinct measurements", f3b: "what actually enters the clustering",
+  s3rule: "What counts as the same measurement twice",
+  s3r1: "Four categorical fields must match exactly — surface kind, scroller, split count, whether anything repeats.",
+  s3r2: "The remaining 22 must agree within 0.05 standard deviations, averaged per feature.",
+  s3note: "The rule is frozen and separate from the clustering features, so changing features cannot change the dataset. Three different feature sets produce the same 324 measurements.",
+
+  s4title: "Results",
+  s4sub: "Six classes, at the setting where the answer stops depending on the setting.",
+  th1: "Minimum cluster size", th2: "Classes", th3: "Unassigned", th4: "Separation",
+  r1a: "6", r1b: "15", r1c: "37%", r1d: "0.483",
+  r2a: "8", r2b: "7", r2c: "40%", r2d: "0.456",
+  r3a: "9 to 13", r3b: "6", r3c: "43%", r3d: "0.466",
+  r4a: "15", r4b: "3", r4c: "30%", r4d: "0.270",
+  c1h: "The six are real", c1b: "Five consecutive settings give the same six. The fifteen-class view nests cleanly inside them — not one class straddles two.",
+  c2h: "A third fits nothing", c2b: "92 of 324 measurements are unassigned at every setting tried. Not noise, not members — they sit between classes.",
+  c3h: "Next step", c3b: "Train a classifier on the confident members. Clustering discovers the classes; it should not be asked to serve them.",
+};
+
+const ZH = {
+  font: "Noto Sans CJK SC", head: "Noto Sans CJK SC", mono: "Noto Sans Mono CJK SC",
+
+  s1title: "数据从何而来",
+  s1sub: "每个样本一次 dump，全部取自 RenderService 自身的渲染树，不读取无障碍树。",
+  p1h: "设备", p1b: "HarmonyOS NEXT\n真实使用中的手机",
+  p2h: "一次 dump", p2b: "hidumper RSTree\n约 740 KB 文本",
+  p3h: "一个场景", p3b: "某一瞬间遮挡后\n仍可见的节点",
+  p4h: "一个向量", p4b: "每个场景\n29 项测量",
+  k1: "4,673", k1l: "采集样本",
+  k2: "0.26 秒", k2l: "每样本耗时",
+  k3: "1", k3l: "次 dump / 样本",
+  k4: "0", k4l: "次无障碍读取",
+  s1note: "渲染树与组件树的关联在 100% 的节点上成功。无障碍路径只达到 38%，且需要多一次 dump。",
+
+  s2title: "场景是什么，又从中测量什么",
+  s2def: "场景定义为：某一显示屏上任意窗口中，裁剪后矩形在遮挡之后仍然可见的渲染节点集合，并以该显示屏的坐标系表示。",
+  s2defb: "场景定义在某一瞬间。与上一次读数之间的变化只作为修饰量，绝不计入类别本身。",
+  g1h: "重复形状", g1n: "12", g1b: "重复元素的高度与长宽比，以区间分布表示，而非只取面积最大的一组。",
+  g2h: "合成构成", g2n: "5", g2b: "视频或网页合成面、滚动容器类型、顶部与底部栏、分栏数。",
+  g3h: "拓扑结构", g3n: "4", g3b: "节点密度、平均深度、叶节点比例、平均分支数。",
+  g4h: "内容构成", g4n: "4", g4b: "文本、图像、字形与实际绘制在显示屏上的占比。",
+  g5h: "遮挡关系", g5n: "4", g5b: "参与窗口数、不透明覆盖、未覆盖面积、主窗口权重。",
+  s2note: "29 项中有 26 项在本次会话中发生变化；剔除近似重复的特征后，由 20 项承担距离计算。",
+
+  s3title: "从采样到聚类输入",
+  f1n: "4,673", f1h: "个采样", f1b: "全部 dump 保留，采集阶段不丢弃任何数据",
+  f2n: "3,263", f2h: "个稳定场景", f2b: "在画面未发生移动时采集",
+  f3n: "324", f3h: "个独立测量点", f3b: "真正进入聚类的数据",
+  s3rule: "何为“同一个测量点被采了两次”",
+  s3r1: "四个类别字段必须完全相同——合成面类型、滚动容器、分栏数、是否存在重复元素。",
+  s3r2: "其余 22 项的逐特征均方差须在 0.05 个标准差以内。",
+  s3note: "该规则已固定，且与聚类特征相互独立，因此改动特征不会改变数据集。三种不同的特征集合给出同样的 324 个测量点。",
+
+  s4title: "结果",
+  s4sub: "六个类别，取自结果不再随参数变化的那一段。",
+  th1: "最小簇规模", th2: "类别数", th3: "未归类", th4: "可分性",
+  r1a: "6", r1b: "15", r1c: "37%", r1d: "0.483",
+  r2a: "8", r2b: "7", r2c: "40%", r2d: "0.456",
+  r3a: "9 至 13", r3b: "6", r3c: "43%", r3d: "0.466",
+  r4a: "15", r4b: "3", r4c: "30%", r4d: "0.270",
+  c1h: "这六个类别是真实的", c1b: "连续五个参数取值给出同样的六个类别。十五类的细分视图干净地嵌套其中——没有任何一类跨越两者。",
+  c2h: "三分之一无法归类", c2b: "在尝试过的所有参数下，324 个测量点中都有 92 个未被归类。它们既非噪声也非成员，而是位于类别之间。",
+  c3h: "下一步", c3b: "用高置信度的成员训练分类器。聚类用于发现类别，不应被要求在线提供类别。",
+};
+
+module.exports = { EN, ZH };

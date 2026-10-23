@@ -116,8 +116,15 @@ def build(src, out):
       if (!orig.has(node)) { orig.set(node, node.nodeValue); }
       var en = orig.get(node), key = en.replace(/\\s+/g, " ").trim();
       if (!key) { return; }
-      if (lang === "zh" && ZH[key]) { node.nodeValue = en.replace(key, ZH[key]); }
-      else { node.nodeValue = en; }
+      // Replace the node's text outright, keeping only its surrounding
+      // whitespace. en.replace(key, ...) looked right and silently did
+      // nothing on every wrapped paragraph: key is collapsed to single
+      // spaces, en still carries the source's line breaks, so the search
+      // string was never present and the English stayed put.
+      if (lang === "zh" && ZH[key]) {
+        var pad = en.match(/^(\\s*)[\\s\\S]*?(\\s*)$/);
+        node.nodeValue = pad[1] + ZH[key] + pad[2];
+      } else { node.nodeValue = en; }
       return;
     }
     if (node.nodeType !== 1) { return; }
