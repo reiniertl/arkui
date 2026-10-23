@@ -743,7 +743,10 @@ def session_rows(sdir, per_sample):
                        # geometry matched. The capture had recorded it
                        # correctly against the sample that took it; the
                        # lookup threw that away.
-                       shot=r.get("shot", "") or "",
+                       # samples.csv stores the bare filename; the picture
+                       # lives in the session directory and the viewer sits
+                       # beside it, so the session has to be on the path.
+                       shot=(f'{name}/{r["shot"]}' if r.get("shot") else ""),
                        shot_gap=0 if r.get("shot") else "")
             out.append(row)
 
