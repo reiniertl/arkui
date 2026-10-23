@@ -474,42 +474,36 @@ The pattern features need the <code>client</code> dump, which the fast capture w
 distinct scene rather than once per sample, so 3,263 samples yield only 250 usable scenes. Settling
 this needs that capture change first.""")
 
-f(name="rs_surf_* (media surface)", group="Composition", status="prototype",
-  weight="not yet in the vector", rng="kind 0–3, the rest 0–1",
-  origin="RSTree pass 1 for rects, pass 2 for paint state, <code>client</code> for the tag",
-  raw="""| CANVAS_NODE[...] innerAbsDrawRect: [0, 112, 1316, 2560]  DrawableVec:[24, 28, 31]
-client: frameNodeId[3021], frameNodeTag[XComponent]""",
-  extract="""The thing that does NOT repeat. Among nodes of the owning window that paint, or carry a
-surface tag, and cover at least a quarter of the window once clipped to it, the largest is taken — with
-a stated kind outranking a plain painted box of the same size, because an XComponent IS the scene
-while a background merely fills it.
-
-Nodes already claimed by a pattern slot are excluded, so the two blocks never describe the same
-pixels. A full-bleed repeating page — the short-form feed, an item taller than 80% of the display
-repeating in one column — is handed to this block rather than to the pattern slots, since it is a
-media surface wearing a repeat's clothes.
-
-Emits the kind (0 none, 1 painted box, 2 image, 3 external surface), its coverage, aspect, height,
-how much of it is drawn over, and whether it fills the window.""",
-  why="""Half the captured scenes have no dominant repeat, and the vector described them only by what
-they lacked: 91 such scenes split into two or three groups with half of them left over, collapsing
-entirely at a larger minimum cluster size. A player is not an absence of a grid.""",
-  tells="""Whether the scene is one large surface and what kind. External surfaces matter most — their
-frame cost is not predictable from node count, which is exactly the case where a scene class must
-carry the information instead.""",
-  cost_script="O(N) over the owner's nodes, one clip and one area each. Negligible beside the parse.",
-  cost_tree="Free: ArkUI knows which node is an XComponent or a Web without a dump or an id join.",
-  norm="Intended: <code>surf_kind</code> as <code>clip4</code>, the rest <code>unit</code>, aspect as <code>logratio</code>.",
-  example="""a full-screen player with a HUD over it
-  largest painting node 1316 x 2560 px, tag XComponent
-  clipped area 3 368 960 of 3 726 912  -> surf_cover 0.904
-  surf_kind 3   surf_aspect 0.514   surf_h 0.904   surf_full 1
-  overlays inside it cover 412 000 px -> surf_over 0.122""",
-  extra="""Found on 207 of 250 scenes — 40 external surfaces, 90 image surfaces, 77 painted boxes —
-with a median coverage of 0.83 and 70 filling the window. Scenes the pipeline can say something about
-rose from 48% to 93%.
-<br><br><b>But it does not improve the clustering.</b> Added to slot 1 it raises the share fitting no
-cluster from 8–20% to 20–41%; at full weight it gives the highest silhouette measured, 0.636 at eight
-clusters, and the worst outlier rate of the new options. No weight between 0.25 and 1.0 resolves the
-trade. It is a good descriptor on evidence and an unproven feature, and it is written to the CSV
-rather than into the vector until there are enough scenes to tell which.""")
+f(name="rs_surf_* (external surface)", group="Composition", status="prototype",
+  weight="not in the vector; it did not earn a place", rng="kind 0 or 3, the rest 0–1",
+  origin="<code>client</code> tag for the kind, RSTree pass 1 for the geometry",
+  raw="""client: frameNodeId[3021], frameNodeTag[XComponent]
+RSTree: | CANVAS_NODE[...] innerAbsDrawRect: [0, 112, 1316, 740]""",
+  extract="""The largest node carrying an externally-rendered surface tag - XComponent, Web, Video,
+UIExtension, Embedded, Plugin - clipped to the window. Emits its coverage, aspect, height, how much
+is drawn over it, and whether it fills the window. Nodes already claimed by a pattern slot are
+excluded, and a full-bleed repeating page is handed to this block only when such a surface exists.""",
+  why="""Half the captured scenes have no dominant repeat and the vector described them only by what
+they lacked. The intent was to describe them positively, by the surface holding them.""",
+  tells="How much of the window an externally-rendered surface fills: a quarter, or all of it.",
+  cost_script="O(N) over the owner's nodes, one clip each. Negligible.",
+  cost_tree="Free; ArkUI knows which node is an XComponent without a dump or an id join.",
+  norm="Intended: <code>surf_cover</code> and <code>surf_over</code> as <code>unit</code>, aspect as <code>logratio</code>, <code>surf_full</code> as a flag.",
+  example="""largest XComponent 1316 x 740 px on a 1316 x 2832 window
+  surf_cover 0.26   surf_aspect 1.78   surf_h 0.26   surf_full 0   surf_over 0.03""",
+  extra="""<b>This block was cut back after it failed inspection, and the remainder still does not pay.</b>
+<br><br>It first accepted any large painting node, ranked image over plain box. The screenshots showed
+that was wrong: 77 "painted box" and 90 "image surface" scenes all reported cover 1.00 - comment pages,
+shopping pages and list screens alike - because what it found was the window's background fill, or a
+blurred backdrop drawn as one full-window Image leaf. A backdrop paints, covers everything, and says
+nothing.
+<br><br>Two rules were tried to separate a backdrop from content and neither worked. Counting painting
+descendants catches a container backdrop - a Scroll holding 53 of them - but not a leaf Image.
+Measuring how much is painted on top catches the backdrops and also condemns the real surfaces: in a
+short-form feed the next page overlaps the current one, so the XComponent itself reads 83% and 100%
+covered.
+<br><br>So the kind now comes from the tag alone, which is stated and reliable. That is correct but
+thin: 88 of 250 scenes, twelve distinct coverage values, and adding it to the pattern slot raises the
+share of scenes fitting no cluster from 8–20% to 16–26%. <code>rs_surface_tag</code>, already in the
+vector, does the same job at the same cost. The columns are written to the CSV; nothing is in the
+vector.""")

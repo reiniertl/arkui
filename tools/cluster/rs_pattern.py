@@ -73,14 +73,29 @@ FULLBLEED_H = 0.80     # a repeating page this tall is a media page, not a cell
 
 
 def surface_kind(n):
+    """Only an externally rendered surface counts.
+
+    This block first accepted any large painting node, ranked image over
+    plain box. Checked against the screenshots that was wrong: 77 'painted
+    box' and 90 'image surface' scenes all reported cover 1.00, on comment
+    pages, shopping pages and list screens alike, because what it found was
+    the window's background fill or a blurred backdrop drawn as one
+    full-window Image leaf. A backdrop paints, covers everything, and says
+    nothing.
+
+    Two rules were tried to tell a backdrop from content and neither worked.
+    Counting painting descendants catches a container backdrop - a Scroll
+    holding 53 of them - but not a leaf Image. Measuring how much is painted
+    on top catches the backdrops and also condemns the real surfaces: in a
+    short-form feed the next page overlaps the current one, so the
+    XComponent reads 83% and 100% covered.
+
+    So the kind is taken from the tag alone, where it is stated and
+    reliable, and the geometry of THAT is what this block contributes -
+    rs_surface_tag already counts these, but not how much of the window one
+    fills, which was 0.26 on one scene and 0.89 on another."""
     t = n["tag"] or ""
-    if any(k in t for k in SURF_TAGS):
-        return 3                      # an externally rendered surface
-    if t == "Image":
-        return 2                      # a decoded image
-    if n["paints"]:
-        return 1                      # a painted box of no stated kind
-    return 0
+    return 3 if any(k in t for k in SURF_TAGS) else 0
 
 
 def leaf_kind(n, density):
@@ -380,8 +395,16 @@ def analyse(tree, owner, density, dw, dh):
                 and g["area"] / own_area >= 0.5
                 and g["cols"] <= 1
                 and any(c in g["pat"] for c in "IiVW"))
+    # Only hand the page over if there is a surface to hand it to. With the
+    # image and painted-box kinds gone, a feed with no tagged surface would
+    # otherwise lose its page from the pattern slots and gain nothing.
     pages = [g for g in groups if fullbleed(g)]
-    groups = [g for g in groups if not fullbleed(g)]
+    has_surface = any(surface_kind(n) == 3 for nid, n in sc.N.items()
+                      if sc._mine(nid) and n["abs"] and n["abs"][2] > 0)
+    if has_surface:
+        groups = [g for g in groups if not fullbleed(g)]
+    else:
+        pages = []
 
     # Ordered by coverage, but ties broken on vertical position rather than
     # on the quantity that is nearly tied. Two groups of similar size would
@@ -418,7 +441,7 @@ def analyse(tree, owner, density, dw, dh):
     out["has_slot2"] = 1 if len(groups) >= 2 else 0
 
     out.update(media_surface(sc, dw, dh, own_area, used))
-    if pages and not out["surf_cover"]:
+    if False:
         # the feed page itself, when nothing else qualified as a surface
         g = max(pages, key=lambda g: g["area"])
         out.update(surf_kind=3 if "V" in g["pat"] else 2,
