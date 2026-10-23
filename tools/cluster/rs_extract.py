@@ -733,8 +733,41 @@ def session_rows(sdir, per_sample):
             row.update(session=name, stem=r["raw"], sig=f'{name}/{r["raw"]}',
                        scene_sig=r["sig"], dwell=1, win_sig="",
                        jitter=1000 - hold, still=hold,
-                       shot=shot_of.get(r["sig"], ""))
+                       # The picture this sample actually took, by timestamp.
+                       #
+                       # This used to look the picture up by signature, so
+                       # every sample of a scene got whichever frame that
+                       # signature was eventually photographed at - binding a
+                       # dump from 12:34 to a picture from 12:42, two
+                       # separate visits 1,523 samples apart, because the
+                       # geometry matched. The capture had recorded it
+                       # correctly against the sample that took it; the
+                       # lookup threw that away.
+                       shot=r.get("shot", "") or "",
+                       shot_gap=0 if r.get("shot") else "")
             out.append(row)
+
+        # A sample without its own picture borrows the nearest one in TIME,
+        # within three samples - about a second at this rate - and records
+        # how far it reached. Anything further away is left without a
+        # picture, because a frame from another moment is not evidence about
+        # this one however well its geometry matches.
+        shot_idx = [i for i, r in enumerate(out) if r["shot"]]
+        if shot_idx:
+            import bisect
+            for i, r in enumerate(out):
+                if r["shot"]:
+                    continue
+                j = bisect.bisect_left(shot_idx, i)
+                best, bd = None, 10 ** 9
+                for k in (j - 1, j):
+                    if 0 <= k < len(shot_idx):
+                        d = abs(shot_idx[k] - i)
+                        if d < bd:
+                            bd, best = d, shot_idx[k]
+                if best is not None and bd <= 3:
+                    r["shot"] = out[best]["shot"]
+                    r["shot_gap"] = bd
         return out
 
     for f in sorted(glob.glob(os.path.join(sdir, "*.rstree.txt"))):
