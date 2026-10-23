@@ -470,23 +470,42 @@ def main():
     # consecutive samples it called different lie within 0.52.
     eps = args.min_dist
     if eps > 0 and len(rows) > 1:
-        keep, weight, lead = [], [], np.zeros((0, Z.shape[1]))
+        keep, weight, members, lead = [], [], [], np.zeros((0, Z.shape[1]))
         for i in range(len(Z)):
             if len(keep) == 0:
-                keep.append(i); weight.append(0); lead = Z[[i]]
+                keep.append(i); weight.append(0); members.append([]); lead = Z[[i]]
                 j = 0
             else:
                 d = np.linalg.norm(lead - Z[i], axis=1)
                 j = int(np.argmin(d))
                 if d[j] > eps:
-                    keep.append(i); weight.append(0)
+                    keep.append(i); weight.append(0); members.append([])
                     lead = np.vstack([lead, Z[i]])
                     j = len(keep) - 1
             weight[j] += max(1, int(float(rows[i].get("dwell") or 1)))
+            members[j].append(i)
         if len(keep) < len(rows):
+            # Represent a group by a member that has a PICTURE.
+            #
+            # It used to be whichever came first, which threw evidence away:
+            # 115 of 292 representatives showed no picture while 255 of those
+            # groups held one in a member that had been discarded. Every
+            # member sits within min-dist of every other, so any of them is
+            # as good a representative numerically - and one you can look at
+            # is worth more than one you cannot.
+            def rank(i):
+                r = rows[i]
+                if not r.get("shot"):
+                    return (2, 0, i)
+                try:
+                    gap = int(float(r.get("shot_gap") or 0))
+                except ValueError:
+                    gap = 99
+                return (0 if gap == 0 else 1, gap, i)
             merged = []
             for k, i in enumerate(keep):
-                r = dict(rows[i]); r["dwell"] = weight[k]; merged.append(r)
+                pick = min(members[k], key=rank) if members[k] else i
+                r = dict(rows[pick]); r["dwell"] = weight[k]; merged.append(r)
             print("  %d samples -> %d distinct measurements at min-dist %.2f"
                   % (len(rows), len(merged), eps))
             rows = merged
