@@ -44,6 +44,9 @@ SCROLLERS = {"List", "Grid", "Swiper", "Scroll", "Tabs", "WaterFlow", "Navigatio
 RX_SURFTAG = re.compile(r'XComponent|Web|UIExtension|Embedded|Plugin')
 
 
+RX_POSZ = re.compile(r'PositionZ\[(-?[\d.]+)\]')
+RX_SHOULD = re.compile(r'shouldPaint_\[([01])\]')
+
 RX_LOCAL = re.compile(r'Properties:\s*Bounds\[\s*(-?[\d.]+)\s+(-?[\d.]+)\s+(-?[\d.]+)\s+(-?[\d.]+)\s*\]')
 
 
@@ -166,6 +169,16 @@ def parse_tree(lines):
             "border": "BorderWidth" in l,
             "blend": "blendType" in l or "skblendmode" in l,
             "skipped": "IsSubTreeSkipped: 1" in l,
+            # Paint order is NOT dump order. A parent may be marked
+            # ReverseChildren, which inverts the order of its sortedChildren,
+            # and PositionZ re-sorts siblings on top of that - one dump
+            # carries 34 reversed parents and PositionZ values from 1 to
+            # 2200. Approximating "painted after" by position in the file put
+            # a video's blurred backdrop on TOP of the video, and reported a
+            # plainly visible player as entirely covered.
+            "reverse": "ReverseChildren: 1" in l,
+            "posz": float(RX_POSZ.search(l).group(1)) if RX_POSZ.search(l) else 0.0,
+            "should": True,
             "redrawn": "hasDrawContent: 1" in l,
             "headroom": float(RX_HEAD.search(l).group(1)) if RX_HEAD.search(l) else 1.0,
             "tag": "", "surf": 0, "win": 0, "slots": 0, "paints": False,
@@ -220,8 +233,53 @@ def parse_tree(lines):
         slots = [int(x) for x in dv.group(1).split(",") if x.strip()]
         nodes[nid]["slots"] = len(slots)
         nodes[nid]["paints"] = 28 in slots
+        sp = RX_SHOULD.search(l)
+        if sp:
+            # the renderer's own verdict on whether it will draw this node
+            nodes[nid]["should"] = sp.group(1) == "1"
     return {"nodes": nodes, "order": order, "surfaces": surfaces,
             "vsync": vsync, "animating": animating}
+
+
+def paint_order(tree):
+    """Index every node by when it is actually painted.
+
+    Children are drawn in sortedChildren order, reversed where the parent
+    says ReverseChildren, and re-sorted by PositionZ where that is set -
+    a higher PositionZ paints later, so it lands on top. A node is painted
+    before its children.
+
+    The whole point is the comparison "is B painted over A", which the rest
+    of the code was answering with position in the dump file. That is only
+    correct when no parent reverses and no sibling carries a PositionZ, and
+    both occur.
+    """
+    nodes = tree["nodes"]
+    kids_of = {nid: list(n["kids"]) for nid, n in nodes.items()}
+    child = set()
+    for ks in kids_of.values():
+        child.update(ks)
+    roots = [nid for nid in tree["order"] if nid not in child]
+    idx, seen, i = {}, set(), 0
+    stack = list(reversed(roots))
+    while stack:
+        nid = stack.pop()
+        if nid in seen or nid not in nodes:
+            continue
+        seen.add(nid)
+        idx[nid] = i; i += 1
+        n = nodes[nid]
+        ks = [k for k in kids_of.get(nid, ()) if k in nodes]
+        if n.get("reverse"):
+            ks = list(reversed(ks))
+        # stable: PositionZ decides, order within a z keeps the list order
+        ks.sort(key=lambda k: nodes[k].get("posz", 0.0))
+        stack.extend(reversed(ks))
+    # anything unreachable keeps a late index rather than none
+    for nid in tree["order"]:
+        if nid not in idx:
+            idx[nid] = i; i += 1
+    return idx
 
 
 def parse_client(lines):

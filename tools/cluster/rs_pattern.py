@@ -119,14 +119,14 @@ def leaf_kind(n, density):
 
 
 class Scene:
-    def __init__(self, nodes, owner, density):
+    def __init__(self, nodes, owner, density, order=None):
         self.N = nodes
         self.own = owner
         self.d = density
         self.kids = {}
         self.overlay = set()
         self._collapse()
-        self._split()
+        self._split(order)
 
     def _mine(self, nid):
         n = self.N.get(nid)
@@ -165,9 +165,17 @@ class Scene:
                     out.append(e)
             self.kids[nid] = out
 
-    def _split(self):
-        """Mark every child that is an overlay on an earlier sibling."""
+    def _split(self, order=None):
+        """Mark every child that is an overlay on an earlier sibling.
+
+        'Earlier' means earlier in PAINT order. The sibling list is the
+        declared order, which ReverseChildren inverts and PositionZ
+        re-sorts, so on a reversed parent this had the relationship exactly
+        backwards and called the background an overlay on the content.
+        """
         for nid, ks in self.kids.items():
+            if order:
+                ks = sorted(ks, key=lambda k: order.get(k, 0))
             for i, b in enumerate(ks):
                 nb = self.N[b]
                 ab = _area(nb["abs"])
@@ -249,7 +257,7 @@ def media_surface(sc, dw, dh, own_area, used, order):
     tag against.
     """
     empty = {"surf_kind": 0, "surf_cover": "", "surf_vis": "", "surf_aspect": "",
-             "surf_h": "", "surf_over": "", "surf_full": 0}
+             "surf_h": "", "surf_over": "", "surf_full": 0, "_surf_id": None}
     for i in range(len(SURF_BANDS)):
         empty["surf_b%d" % i] = ""
     best = None
@@ -314,7 +322,7 @@ def media_surface(sc, dw, dh, own_area, used, order):
     hidden = R.region_area(on_top)
     visible = max(0.0, area - hidden)
 
-    out = {"surf_kind": 3,
+    out = {"surf_kind": 3, "_surf_id": nid,
            "surf_cover": round(min(1.0, area / own_area), 3),
            "surf_vis": round(min(1.0, visible / own_area), 3),
            "surf_aspect": round(c[2] / max(1.0, c[3]), 3),
@@ -337,6 +345,44 @@ def media_surface(sc, dw, dh, own_area, used, order):
                 break
     for i, x in enumerate(w):
         out["surf_b%d" % i] = round(x, 3)
+    return out
+
+
+def draw_state(sc, dw, dh, own_area, surf_id):
+    """What RenderService says it is going to draw.
+
+    Everything else here reasons about the scene geometrically and infers
+    what is visible. This asks instead. shouldPaint_ is the renderer's own
+    verdict on a node, and IsSubTreeSkipped says a whole subtree was passed
+    over. Both are already in the dump and neither was used.
+
+    It answers a different question from coverage, and the one that bears
+    most directly on cost: a surface the renderer has skipped is not being
+    composed, whatever its rectangle says, and a scene where a third of the
+    tree is skipped is not the same workload as one where none of it is.
+    """
+    n_all = n_skip = n_nopaint = 0
+    skip_rects = []
+    for nid, n in sc.N.items():
+        if not sc._mine(nid):
+            continue
+        n_all += 1
+        if n["skipped"]:
+            n_skip += 1
+            q = clipped(n["abs"], dw, dh) if n["abs"] and n["abs"][2] > 0 else None
+            if q:
+                skip_rects.append(q)
+        if not n.get("should", True):
+            n_nopaint += 1
+    out = {"draw_skip_frac": round(n_skip / n_all, 3) if n_all else "",
+           "draw_nopaint_frac": round(n_nopaint / n_all, 3) if n_all else "",
+           "draw_skip_area": round(min(1.0, R.region_area(skip_rects) / own_area), 3)
+                             if skip_rects else 0.0,
+           "surf_painting": "", "surf_skipped": ""}
+    if surf_id is not None and surf_id in sc.N:
+        n = sc.N[surf_id]
+        out["surf_painting"] = 1 if n.get("should", True) and not n["skipped"] else 0
+        out["surf_skipped"] = 1 if n["skipped"] else 0
     return out
 
 
@@ -392,7 +438,8 @@ def describe(pat, arr, cols, rows, cover):
 
 
 def analyse(tree, owner, density, dw, dh):
-    sc = Scene(tree["nodes"], owner, density)
+    order = R.paint_order(tree)
+    sc = Scene(tree["nodes"], owner, density, order)
     own_area = R.region_area(owner["vis"]) or 1.0
 
     groups = []
@@ -506,8 +553,10 @@ def analyse(tree, owner, density, dw, dh):
                                             "cover", "h", "aspect", "top", "motif")})
     out["has_slot2"] = 1 if len(groups) >= 2 else 0
 
-    order = {k: i for i, k in enumerate(sc.N)}
-    out.update(media_surface(sc, dw, dh, own_area, used, order))
+    ms = media_surface(sc, dw, dh, own_area, used, order)
+    surf_id = ms.pop("_surf_id", None)
+    out.update(ms)
+    out.update(draw_state(sc, dw, dh, own_area, surf_id))
     if False:
         # the feed page itself, when nothing else qualified as a surface
         g = max(pages, key=lambda g: g["area"])
