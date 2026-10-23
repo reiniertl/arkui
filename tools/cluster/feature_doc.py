@@ -35,7 +35,16 @@ A group with two or more members is a repeating group. Each group's covered area
 members' rects (a sweep-line, not a sum — members overlap and summing counted the overlaps twice).
 Each group's item height, in display heights, is spread over five band centres — 0.03, 0.08, 0.18,
 0.40, 0.85 — by linear interpolation in log space, weighted by that group's area. The five are then
-divided by the total so they are shares.""",
+divided by the total so they are shares.
+
+Two ramps decide how much each group counts. An item fades in between 8 and 16 vp on its shorter
+side, so a row of indicator dots contributes nothing; and it fades out between 45% and 75% of the
+display, so a full-bleed item is a pane rather than a repeating unit. Both were hard cuts once, and
+a card crossing one left the set entirely rather than getting smaller.
+
+A group is sized by its OWN rectangle, never by how much of it is on screen. An item running off the
+bottom or the right is the same item it would be if it fitted, and its height is read unchanged —
+which is the point: a feed scrolled halfway must report the same shape it reports when settled.""",
   why="""These five replaced a single <code>item_h</code> that came from whichever group covered the most area.
 A screen normally has several repeating things at once — a feed has cards and an action rail — and
 the winner-take-all read discarded the rest. Worse, when two groups covered similar area the pick
@@ -52,7 +61,7 @@ row (band 1) is a settings list, a 400-permille card (band 3) is a feed, an 850-
   → log-interpolated between band 3 (0.40) and band 4 (0.85): 0.53 / 0.47
   → with a second group of 1268 × 92 rows contributing to band 0
   → item_h0 0.31   item_h1 0.00   item_h2 0.00   item_h3 0.36   item_h4 0.33""",
-  extra="Highest SHAP attribution of any feature group. Dropping the block entirely costs real structure — silhouette 0.476 → 0.405 — so it is signal, it was just badly measured before.")
+  extra="The sixteen layouts below are rectangle lists run through this exact code, so the numbers under each picture are computed, not illustrative. Highest SHAP attribution of any feature group. Dropping the block entirely costs real structure — silhouette 0.476 → 0.405 — so it is signal, it was just badly measured before.")
 
 f(name="rs_item_ar0 … rs_item_ar2", group="Repeat shape", status="live",
   weight="0.58 each", rng="0 – 1, the three sum to 1",

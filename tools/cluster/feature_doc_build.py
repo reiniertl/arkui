@@ -1,7 +1,9 @@
 import json, html
 import feature_doc as data
 
-payload = {"features": data.F, "common": data.COMMON}
+import json as _j
+SHAPES = _j.load(open("shapes.json", encoding="utf-8"))
+payload = {"features": data.F, "common": data.COMMON, "shapes": SHAPES}
 
 HTML = """<!doctype html>
 <html lang="en">
@@ -58,6 +60,29 @@ HTML = """<!doctype html>
   @media (max-width:780px) { .shell { display:block; } nav { width:auto;
     max-height:none; position:static; border-right:0; border-bottom:1px solid var(--line); }
     main { padding:20px 16px 60px; } .two { grid-template-columns:1fr; } }
+  .gal { display:grid; grid-template-columns:repeat(auto-fill,minmax(228px,1fr));
+    gap:16px; margin-top:10px; }
+  .sh { border:1px solid var(--line); border-radius:9px; overflow:hidden;
+    background:var(--card); }
+  .sh svg { display:block; width:100%; height:190px; background:var(--bg);
+    border-bottom:1px solid var(--line); padding:7px 0; }
+  .sh .nm { font-size:12.5px; font-weight:650; padding:9px 11px 2px; }
+  .sh .nt { font-size:11px; color:var(--dim); padding:0 11px 8px; line-height:1.45; }
+  .sh .bands { padding:0 11px 9px; }
+  .bar { display:flex; align-items:center; gap:7px; font-size:10.5px;
+    color:var(--dim); margin:2px 0; font-variant-numeric:tabular-nums; }
+  .bar i { font-style:normal; width:16px; color:var(--dim); }
+  .bar u { text-decoration:none; flex:1; height:7px; border-radius:4px;
+    background:var(--line); overflow:hidden; display:block; }
+  .bar u b { display:block; height:100%; background:var(--accent); }
+  .bar s { text-decoration:none; width:30px; text-align:right; }
+  .bar.z s, .bar.z i { opacity:.42; }
+  .sh .lg { font-size:10.5px; color:var(--dim); padding:0 11px 10px;
+    line-height:1.5; border-top:1px dashed var(--line); margin-top:3px;
+    padding-top:7px; }
+  .sh .lg span.d { display:inline-block; width:8px; height:8px; border-radius:2px;
+    margin-right:5px; vertical-align:middle; }
+  .none { font-size:11px; color:var(--amber); padding:0 11px 9px; font-weight:600; }
   table { border-collapse:collapse; width:100%; font-size:13px; margin:8px 0 0; }
   td, th { text-align:left; padding:6px 9px; border-bottom:1px solid var(--line); }
   th { font-size:10.5px; text-transform:uppercase; letter-spacing:.05em;
@@ -114,6 +139,43 @@ var DATA = __DATA__;
       a.classList.remove("on"); });
     if (el) { el.classList.add("on"); }
   }
+  // Every number under every diagram is produced by the same soft_bins and
+  // ramps the extractor runs; the layouts are rect lists fed through it.
+  function gallery() {
+    var S = DATA.shapes, h = "<div class='fld'><div class='k'>"
+      + t("Sixteen layouts and what they report") + "</div><div class='v'>"
+      + "<p style='font-size:13px;color:var(--dim);margin:0 0 4px'>"
+      + t("Each layout is a list of leaf rectangles passed through the real "
+        + "grouping, ramps and soft bins. Colour marks the repeating group; "
+        + "hatched items were excluded and the card says why. Dashed edges and "
+        + "the grey surround mark what falls outside the display — an item "
+        + "is measured by its OWN rectangle, so running off the screen does not "
+        + "shrink it.") + "</p><div class='gal'>";
+    S.shapes.forEach(function (sp) {
+      h += "<div class='sh'>" + sp.svg + "<div class='nm'>" + esc(sp.name) + "</div>"
+         + "<div class='nt'>" + esc(sp.note) + "</div>";
+      if (!sp.res) {
+        h += "<div class='none'>" + t("no repeating group — all five written empty")
+           + "</div>";
+      } else {
+        h += "<div class='bands'>";
+        sp.res.h.forEach(function (v, i) {
+          h += "<div class='bar" + (v < 0.005 ? " z" : "") + "'><i>h" + i + "</i>"
+             + "<u><b style='width:" + (v * 100).toFixed(1) + "%'></b></u>"
+             + "<s>" + v.toFixed(2) + "</s></div>";
+        });
+        h += "</div>";
+      }
+      h += "<div class='lg'>";
+      sp.legend.forEach(function (l) {
+        h += "<div><span class='d' style='background:" + l.c + "'></span>"
+           + esc(l.k) + " ×" + l.n + " — " + esc(l.why) + "</div>";
+      });
+      h += "</div></div>";
+    });
+    h += "</div></div></div>";
+    return h;
+  }
   function overview() {
     mark(document.getElementById("nav-overview"));
     var c = DATA.common, h = "<h2>" + t("How it fits together") + "</h2>"
@@ -160,6 +222,7 @@ var DATA = __DATA__;
        + fld("Cost — inside ArkUI or RenderService", "<p>" + t(f.cost_tree) + "</p>") + "</div>";
     h += fld("Normalisation", "<p>" + t(f.norm) + "</p>");
     h += fld("Worked example, raw to result", pre(f.example));
+    if (f.name.indexOf("rs_item_h0") === 0) { h += gallery(); }
     h += fld("Worth knowing", "<p>" + t(f.extra) + "</p>");
     document.getElementById("pane").innerHTML = h;
   }
