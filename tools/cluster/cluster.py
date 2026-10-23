@@ -93,10 +93,37 @@ FEATURES = [
     # leaf 0.30, scroll 8 and separated only on content. cols was called the
     # single best axis on the uitest vector, and it is geometry, not
     # accessibility - innerAbsDrawRect carries it.
-    ("rs_cols",        "clip6",   1.2),   # gallery vs feed
-    ("rs_rows_n",      "clip6",   0.7),
-    ("rs_item_h",      "unit",    1.0),   # a 70-permille row vs a 400-permille card
-    ("rs_item_aspect", "logratio",1.0),   # log, so 0.5 and 2.0 sit equally from square
+    # The shape of what repeats, as a distribution rather than a winner.
+    #
+    # cols, rows_n, item_h and item_aspect used to come from ONE repeating
+    # group - whichever covered the most area. A screen normally has several
+    # at once, a feed's cards beside its action rail, and reporting only the
+    # winner threw the rest away and made the descriptor jump whenever the
+    # two traded places. Ablation and SHAP both put item_h, item_aspect and
+    # cols at the top of what the partition rests on, and a correlation
+    # audit found them to be one axis wearing three names, so the flip moved
+    # half the geometry of the scene at once. One screen crossed between two
+    # clusters sixteen times across 55 samples without changing.
+    #
+    # item_h0..4 and item_ar0..2 are the area-weighted share of repeating
+    # content in each of five height bands and three aspect bands, soft
+    # edged, so a near-tie shifts mass instead of swapping descriptors. They
+    # replaced the four argmax columns and bought three more clusters at a
+    # better silhouette (11 at 0.426 -> 14 at 0.476 over the same session).
+    #
+    # Their weights divide the weight the columns they replace used to
+    # carry: five height bands at 0.45 and three aspect bands at 0.58 sum in
+    # square to the 1.0 that item_h and item_aspect each had, so the block
+    # did not quietly gain influence by being split into more columns.
+    ("rs_item_h0",     "unit",    0.45),  # item height, five bands, 3% to 85%
+    ("rs_item_h1",     "unit",    0.45),  # of the display
+    ("rs_item_h2",     "unit",    0.45),
+    ("rs_item_h3",     "unit",    0.45),
+    ("rs_item_h4",     "unit",    0.45),
+    ("rs_item_ar0",    "unit",    0.58),  # tall, square, wide
+    ("rs_item_ar1",    "unit",    0.58),
+    ("rs_item_ar2",    "unit",    0.58),
+    ("rs_item_cols",   "clip6",   1.2),   # gallery vs feed, averaged over groups
     ("rs_bar_top",     "unit",    0.5),
     ("rs_bar_bot",     "unit",    0.5),
     ("rs_split_n",     "clip6",   0.7),
@@ -137,7 +164,12 @@ HELD_OUT = ("shape", "split_main", "scene", "name", "window", "pid", "described"
             "rs_refresh", "rs_refresh_max", "rs_protected", "rs_skipped", "rs_nodes", "rs_z_span",
             "rs_dropped", "rs_admit_frac", "rs_drop_skip", "rs_drop_odd", "shot_gap",
             "rs_paints", "rs_redrawn", "rs_same_win", "rs_top_win", "rs_top_z", "rs_top_pid", "win_sig",
-            "rs_transition")
+            "rs_transition",
+            # the argmax columns the band distribution replaced: kept in the
+            # CSV and on the tiles so a scene can still be read as "the
+            # winning group was a 400-permille card", but out of the vector
+            "rs_cols", "rs_rows_n", "rs_item_h", "rs_item_aspect",
+            "rs_item_rows")
 
 
 def transform(kind, raw):
@@ -257,6 +289,50 @@ def dedupe(rows):
     return out
 
 
+def decorrelate(Z, dead, threshold):
+    """Drop features that repeat what another feature already says.
+
+    The 24 features were written one at a time, each for its own reason, and
+    several ended up measuring the same thing through different arithmetic:
+    rs_repeat_n and rs_has_repeat correlate at 0.81, rs_depth_mean and
+    rs_node_den at 0.73. A repeated fact is not neutral - it is counted twice
+    in every distance, so the axis it lies on silently outweighs the rest.
+    Over one session the repeat block held 7 of 21 live features but 47% of
+    the squared pairwise distance.
+
+    Greedy: take the most correlated surviving pair and drop whichever of the
+    two is more redundant against everything else, until nothing exceeds the
+    threshold. Dropping is done by zeroing the column rather than removing it,
+    so the matrix keeps its shape and the moving samples project the same way.
+
+    Returns a boolean mask of the columns dropped.
+    """
+    # The band columns are shares of one distribution, so they are
+    # correlated by construction: mass that leaves one band arrives in
+    # another. That is the descriptor working, not two features saying the
+    # same thing, and pruning them takes the distribution apart - over one
+    # session it cost a cluster and dropped the silhouette from 0.476 to
+    # 0.400. They are held out of the pruning and all of them stay.
+    protected = {j for j, (n, _, _) in enumerate(FEATURES)
+                 if n.startswith("rs_item_h") and n[9:].isdigit()
+                 or n.startswith("rs_item_ar")}
+    live = [j for j in range(Z.shape[1]) if not dead[j] and j not in protected]
+    gone = np.zeros(Z.shape[1], dtype=bool)
+    while len(live) > 1:
+        S = np.abs(np.corrcoef(Z[:, live].T)) - np.eye(len(live))
+        S[~np.isfinite(S)] = 0.0
+        if S.max() <= threshold:
+            break
+        i, j = np.unravel_index(S.argmax(), S.shape)
+        # the more redundant of the two goes; ties break on FEATURES order so
+        # the choice does not depend on how the rows arrived
+        a, b = live[i], live[j]
+        drop = a if (S[i].mean(), b) > (S[j].mean(), a) else b
+        gone[drop] = True
+        live = [k for k in live if k != drop]
+    return gone
+
+
 def build_matrix(rows):
     cols = []
     for name, kind, _ in FEATURES:
@@ -360,6 +436,10 @@ def main():
                          "0 keeps every sample, which lets identical points "
                          "form clusters of their own out of sheer density. "
                          "Default 0.25, from the plateau in the sweep.")
+    ap.add_argument("--decorrelate", type=float, default=0.0,
+                    metavar="R",
+                    help="drop features correlating above |r| = R with "
+                         "another feature, most redundant first (0 = keep all)")
     ap.add_argument("--app", default="",
                     help="cluster only scenes whose owning window or app name "
                          "contains this, e.g. --app aweme. The match is made "
@@ -511,8 +591,18 @@ def main():
             rows = merged
             Z, dead, fit = build_matrix(rows)
 
+    if args.decorrelate > 0:
+        gone = decorrelate(Z, dead, args.decorrelate)
+        if gone.any():
+            Z = Z.copy(); Z[:, gone] = 0.0
+            fit[3][gone] = 0.0
+            names = [FEATURES[i][0] for i in np.flatnonzero(gone)]
+            print("  repeating another feature above |r| = %.2f, dropped: %s"
+                  % (args.decorrelate, ", ".join(names)))
+        print("  %d features carry the distance" % int((~dead & ~gone).sum()))
+
     mcs = args.min_cluster or max(5, int(round(0.02 * len(rows))))
-    print("  HDBSCAN, min_cluster_size=%d over %d features" % (mcs, Z.shape[1]))
+    print("  HDBSCAN, min_cluster_size=%d" % mcs)
     model = HDBSCAN(min_cluster_size=mcs, min_samples=None,
                     cluster_selection_method="eom")
     labels = model.fit_predict(Z)

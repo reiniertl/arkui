@@ -291,6 +291,41 @@ def quick_sig(lines, disp_area):
     return {"hash": f"{len(src)}/{len(allk)}-{hexd}", "all": allk, "big": bigk}
 
 
+
+# Band centres for the repeat-shape distribution. Geometric, because item
+# heights are: a 40px row and an 80px row differ as much as a 400px card and
+# an 800px one. Heights are in display heights, aspects in width/height.
+ITEM_H_BANDS = (0.03, 0.08, 0.18, 0.40, 0.85)
+ITEM_A_BANDS = (0.35, 1.0, 3.0)
+
+
+def soft_bins(value, centres):
+    """Spread one measurement over the two band centres nearest to it.
+
+    A hard bin has exactly the defect the argmax had: a card a pixel either
+    side of an edge lands in a different band and the vector jumps. Linear
+    interpolation in log space between the two neighbouring centres makes the
+    encoding continuous in the measurement - a card that drifts across an
+    edge moves its mass gradually instead of teleporting - while still
+    leaving the bands themselves far enough apart to cut between.
+    """
+    w = [0.0] * len(centres)
+    if not (value > 0.0):
+        w[0] = 1.0
+    elif value <= centres[0]:
+        w[0] = 1.0
+    elif value >= centres[-1]:
+        w[-1] = 1.0
+    else:
+        for i in range(len(centres) - 1):
+            a, b = centres[i], centres[i + 1]
+            if a <= value <= b:
+                t = (math.log(value) - math.log(a)) / (math.log(b) - math.log(a))
+                w[i], w[i + 1] = 1.0 - t, t
+                break
+    return w
+
+
 def measure(tree, surf, density, disp_area, dw=1316.0, dh=2832.0):
     nodes = tree["nodes"]
     own = region_area(surf["vis"])
@@ -390,6 +425,11 @@ def measure(tree, surf, density, disp_area, dw=1316.0, dh=2832.0):
     # space. has_repeat says whether there was anything to measure.
     sh["cols"], sh["rows_n"] = "", ""
     sh["item_h"], sh["item_aspect"] = "", ""
+    sh["item_cols"], sh["item_rows"] = "", ""
+    for i in range(len(ITEM_H_BANDS)):
+        sh["item_h%d" % i] = ""
+    for i in range(len(ITEM_A_BANDS)):
+        sh["item_ar%d" % i] = ""
     sh["has_repeat"] = 0
     if score:
         sh["has_repeat"] = 1
@@ -424,6 +464,85 @@ def measure(tree, surf, density, disp_area, dw=1316.0, dh=2832.0):
         sh["rows_n"] = len({round(n["abs"][1] / 40) for n in mem})
         sh["item_h"] = round(ih * density / dh, 3)
         sh["item_aspect"] = round(iw / max(1, ih), 3)
+
+    # ---- the same shape, as a distribution instead of a winner -------
+    #
+    # Everything above picks ONE group and reports its geometry. That is
+    # a winner-take-all read of a screen that usually has several
+    # repeating things on it at once - a feed has cards and an action
+    # rail, a gallery has tiles and a tab row - and the loser's geometry
+    # is discarded entirely. Worse, the pick is unstable: when two groups
+    # cover similar area the winner alternates between samples and all
+    # four numbers jump together. Ablation and SHAP agreed that cols,
+    # item_h and item_aspect carry the partition, and a correlation
+    # audit found the repeat block holding a third of the features but
+    # 47% of the squared pairwise distance - so when the pick flips,
+    # half the geometry of the scene flips with it. One screen moved
+    # between clusters sixteen times across 55 samples without changing.
+    #
+    # The fix is to stop choosing. Every group contributes, weighted by
+    # the area it covers, to a distribution over item shape: five bands
+    # of item height and three of aspect. A feed reports mass in the
+    # card band and a little in the rail band, which is what it is. A
+    # near-tie between two groups now shifts mass smoothly from one band
+    # to the other rather than swapping the entire descriptor.
+    #
+    # The earlier attempt at this - a plain mean over groups - failed
+    # because it turned 41 discrete item heights into 250 and left one
+    # continuum with no density valley to cut. The bands are what keeps
+    # that from happening: they are coarse on purpose, so screens still
+    # pile onto a handful of shapes, and the soft edges only decide what
+    # happens between them.
+    # The two size filters above are cliffs of the same kind as the
+    # argmax. A card that grows past 60% of the display, or a row that
+    # shrinks past 12vp, does not get smaller in the descriptor - it
+    # leaves the set, taking its whole band with it. That turned out to
+    # be what was left of the instability once the winner-take-all pick
+    # was gone: the jumps that remained were groups entering and leaving,
+    # not groups trading places. So the distribution is built over every
+    # group, with the filters applied as a ramp on the area each one
+    # contributes rather than as a gate on whether it exists.
+    grp_all = defaultdict(list)
+    for n in leaves:
+        wv, hv = n["abs"][2] / density, n["abs"][3] / density
+        grp_all[(round(wv), round(hv))].append(n)
+    hmass = [0.0] * len(ITEM_H_BANDS)
+    amass = [0.0] * len(ITEM_A_BANDS)
+    colw = roww = tot = 0.0
+    for k, mem_k in grp_all.items():
+        if len(mem_k) < 2:
+            continue
+        gw, gh = k
+        # 0 below 8vp, 1 above 16vp: too small to be an item, fading in
+        small = min(1.0, max(0.0, (min(gw, gh) - 8.0) / 8.0))
+        # 1 below 45% of the display, 0 above 75%: a panel, fading out
+        frac = (gw * density) * (gh * density) / max(1.0, disp_area)
+        large = min(1.0, max(0.0, (0.75 - frac) / 0.30))
+        ramp = small * large
+        if ramp <= 0.0:
+            continue
+        a = ramp * region_area([(x["abs"][0], x["abs"][1],
+                                 x["abs"][2], x["abs"][3]) for x in mem_k])
+        if a <= 0.0:
+            continue
+        for i, f in enumerate(soft_bins(gh * density / dh, ITEM_H_BANDS)):
+            hmass[i] += a * f
+        for i, f in enumerate(soft_bins(gw / max(1.0, gh), ITEM_A_BANDS)):
+            amass[i] += a * f
+        colw += a * len({round(n["abs"][0] / 40) for n in mem_k})
+        roww += a * len({round(n["abs"][1] / 40) for n in mem_k})
+        tot += a
+    if tot > 0:
+        # shares, so the bands say what shape the repeats are and
+        # repeat_frac alone says how much of the screen they cover.
+        # Keeping magnitude out of them stops the block from carrying
+        # the same fact twice, which is what the prune was removing.
+        for i, v in enumerate(hmass):
+            sh["item_h%d" % i] = round(v / tot, 4)
+        for i, v in enumerate(amass):
+            sh["item_ar%d" % i] = round(v / tot, 4)
+        sh["item_cols"] = round(colw / tot, 2)
+        sh["item_rows"] = round(roww / tot, 2)
 
     # bars: full width, thin, against an edge. Chrome, and the clearest
     # structural difference between a player and a page.
@@ -578,8 +697,11 @@ def build_scene(tree, cmap, disp):
     # summed and weighted across contributors instead, which is how 740
     # samples ended up reporting four repeats with no columns: the status bar
     # had a group and the app did not.
-    for fld in ("cols", "rows_n", "split_n", "item_h", "item_aspect",
-                "bar_top", "bar_bot", "repeat_n", "repeat_frac", "has_repeat"):
+    for fld in (("cols", "rows_n", "split_n", "item_h", "item_aspect",
+                 "bar_top", "bar_bot", "repeat_n", "repeat_frac", "has_repeat",
+                 "item_cols", "item_rows")
+                + tuple("item_h%d" % i for i in range(len(ITEM_H_BANDS)))
+                + tuple("item_ar%d" % i for i in range(len(ITEM_A_BANDS)))):
         sc[fld] = (top.get(fld, "") if top else "")
 
     if top:
@@ -601,7 +723,10 @@ ROW_FIELDS = ["contributors", "z_span", "cover_opaque", "uncovered", "protected"
               "admit_frac", "drop_skip", "drop_odd", "paints", "redrawn",
               "paint_frac", "hwc_frac", "top_win", "top_z", "top_pid",
               "transition", "cols", "rows_n", "item_h", "item_aspect",
-              "bar_top", "bar_bot", "split_n", "has_repeat"]
+              "bar_top", "bar_bot", "split_n", "has_repeat",
+              "item_cols", "item_rows"] \
+             + ["item_h%d" % i for i in range(len(ITEM_H_BANDS))] \
+             + ["item_ar%d" % i for i in range(len(ITEM_A_BANDS))]
 
 
 def row_of(scene):
