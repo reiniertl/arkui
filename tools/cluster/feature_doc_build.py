@@ -94,7 +94,18 @@ HTML = """<!doctype html>
     border-bottom:1px solid var(--line); }
   .rgrp .hd .t { font-size:13.5px; font-weight:650; }
   .rgrp .hd .s { font-size:11.5px; color:var(--dim); margin-top:2px; }
-  .rgrp .pics { display:flex; gap:10px; padding:12px 13px; overflow-x:auto; }
+  .rgrp .pics { display:flex; gap:10px; padding:12px 13px; overflow-x:auto;
+    scroll-snap-type:x proximity; }
+  .rgrp .pics > * { scroll-snap-align:start; }
+  .rgrp .desc { font-size:12.5px; color:var(--fg); padding:0 13px 10px;
+    line-height:1.55; }
+  .rgrp .nums { font-size:11px; color:var(--dim); padding:0 13px 9px;
+    font-family:ui-monospace,"SF Mono",Menlo,Consolas,monospace; }
+  .sch { flex:0 0 150px; }
+  .sch svg { width:100%; height:224px; display:block; border:1px solid var(--accent);
+    border-radius:6px; background:var(--bg); }
+  .sch .cap { font-size:10px; color:var(--accent); margin-top:4px; font-weight:650;
+    text-align:center; }
   .rgrp .pic { flex:0 0 150px; }
   .rgrp .pic img { width:100%; border-radius:6px; border:1px solid var(--line);
     display:block; }
@@ -238,21 +249,31 @@ var DATA = __DATA__;
   // coverage range so a group can be judged by eye rather than by its name.
   function motifs() {
     var P = DATA.pats, h = "<div class='fld'><div class='k'>"
-      + t("Every motif found, with representatives") + "</div><div class='v'>"
+      + t("Every motif found") + "</div><div class='v'>"
       + "<p style='font-size:13px;color:var(--dim);margin:0 0 6px'>"
-      + t("250 scenes that carry both dumps. Representatives are spread across each "
-        + "motif's coverage range and no picture is used twice, so the weak end of a "
-        + "group is visible rather than hidden behind its best member.") + "</p>";
+      + t("250 scenes carry both dumps and 179 of them have a picture. Every pictured "
+        + "scene is shown under its motif, ordered by coverage, so the weak end of a "
+        + "group is visible rather than hidden behind its best member. The first tile "
+        + "in each strip is the motif drawn from its own median geometry \u2014 columns, "
+        + "item height and aspect \u2014 not from an idea of what it should look like.")
+      + "</p>";
     P.groups.forEach(function (g) {
-      var weak = (g.cover === null) || (g.cover < 0.15);
+      var weak = g.cover < 0.15;
       h += "<div class='rgrp'><div class='hd'><div class='t'>" + esc(g.motif)
          + " \u00b7 " + g.n + " " + t("scenes") + "</div><div class='s'>"
-         + (g.cover === null ? t("no repeating group was found at all")
-            : t("median cover") + " <span class='" + (weak ? "flag" : "") + "'>"
-              + g.cover.toFixed(2) + "</span>"
-              + (weak ? " \u00b7 <span class='flag'>" + t("too little to name") + "</span>"
-                      : ""))
-         + "</div></div><div class='pics'>";
+         + t("median cover") + " <span class='" + (weak ? "flag" : "") + "'>"
+         + g.cover.toFixed(2) + "</span>"
+         + (weak ? " \u00b7 <span class='flag'>" + t("too little to name the screen by")
+                   + "</span>" : "")
+         + "</div></div>";
+      if (g.desc) { h += "<div class='desc'>" + t(g.desc) + "</div>"; }
+      h += "<div class='nums'>cell {" + esc(g.cell || "\u2014") + "}"
+         + " \u00b7 " + t("median") + " " + g.members + " " + t("members")
+         + " \u00b7 " + g.cols + " " + t("columns")
+         + " \u00b7 " + t("item height") + " " + g.h + " " + t("of the display")
+         + " \u00b7 " + g.pictured + " " + t("pictured") + "</div>";
+      h += "<div class='pics'><div class='sch'>" + g.svg
+         + "<div class='cap'>" + t("the motif") + "</div></div>";
       g.reps.forEach(function (r) {
         h += "<div class='pic'><img loading='lazy' src='" + r.img + "'>"
            + "<div class='cap'>" + (r.pat ? "{" + esc(r.pat) + "}" : "\u2014")

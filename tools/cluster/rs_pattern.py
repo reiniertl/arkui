@@ -43,6 +43,7 @@ OVERLAY_IN = 0.80      # how much of the smaller must sit inside the larger
 OVERLAY_MAX = 0.40     # and how small it must be to be decoration
 POS_TOL = 40.0         # px: a grid's columns are not pixel-exact
 BUDGET = 8             # kinds per cell; past this it is a page, not a cell
+OVERSIZE = 1.5         # a cell bigger than this many windows is not a cell
 
 
 def _area(r):
@@ -215,7 +216,11 @@ def describe(pat, arr, cols, rows, cover):
     else:
         cell = "plain box"
     if arr == "grid":
-        lay = "grid %dx%d" % (cols, rows)
+        # Columns only. "grid 2x3" and "grid 2x7" are one layout seen at two
+        # scroll offsets - the row count says how far down the list is, not
+        # what kind of screen it is, and it split 33 scenes of one gallery
+        # into six motifs. pat_rows keeps the number for anyone who wants it.
+        lay = "grid, %d columns" % cols
     elif arr == "column":
         lay = "list"
     elif arr == "row":
@@ -236,6 +241,15 @@ def analyse(tree, owner, density, dw, dh):
             continue
         by = defaultdict(list)
         for k in ks:
+            # A cell larger than the window is not a cell. Without this the
+            # detector reported 30 scenes as a repeating row of plain boxes,
+            # and the boxes were Rect nodes of 8359x8360 px sitting at
+            # (-2731, -3172) - blur and shadow sources three displays wide,
+            # which win on area because nothing bounded them. The band
+            # feature had a ceiling that excluded these; removing it for
+            # branches let them back in.
+            if _area(sc.N[k]["abs"]) > OVERSIZE * own_area:
+                continue
             p = sc.pattern(k)
             if p is None:
                 continue
@@ -244,8 +258,18 @@ def analyse(tree, owner, density, dw, dh):
         for (p, inner), mem in by.items():
             if len(mem) < 2:
                 continue
-            rects = [(sc.N[m]["abs"][0], sc.N[m]["abs"][1],
-                      sc.N[m]["abs"][2], sc.N[m]["abs"][3]) for m in mem]
+            # clipped to the window: a card scrolled half off screen covers
+            # half a window, not a whole one
+            rects = []
+            for m in mem:
+                a = sc.N[m]["abs"]
+                x0, y0 = max(a[0], 0.0), max(a[1], 0.0)
+                x1 = min(a[0] + a[2], dw)
+                y1 = min(a[1] + a[3], dh)
+                if x1 > x0 and y1 > y0:
+                    rects.append((x0, y0, x1 - x0, y1 - y0))
+            if not rects:
+                continue
             area = R.region_area(rects)
             arr, cols, rows = sc.arrangement(mem)
             hs = sorted(sc.N[m]["abs"][3] for m in mem)
