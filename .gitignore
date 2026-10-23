@@ -49,3 +49,5 @@ rows.rebuilt.csv
 tools/cluster/feature_reference.html
 tools/cluster/reps_payload.json
 tools/cluster/shapes.json
+tools/cluster/pat_payload.json
+tools/cluster/patterns.csv

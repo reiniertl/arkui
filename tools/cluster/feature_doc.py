@@ -64,7 +64,9 @@ row (band 1) is a settings list, a 400-permille card (band 3) is a feed, an 850-
   extra="""The sixteen layouts below are rectangle lists run through this exact code, so the numbers
 under each picture are computed, not illustrative. Highest SHAP attribution of any feature group, and
 dropping the block entirely costs real structure — silhouette 0.476 → 0.405 — so it is signal.
-<br><br><b>But see the observed section underneath.</b> Checked against the capture, the layouts are
+<br><br><b>Superseded by rs_pat_*, which is in the same group in the menu.</b>
+The replacement groups BRANCHES by what they contain and how it is arranged, rather than leaves by
+their size, and separates overlays from layout. <b>See the observed section underneath for why.</b> Checked against the capture, the layouts are
 worked cases rather than motifs that occur: six of fourteen never appear, and half of all samples emit
 a band profile while their repeating structure covers under 5% of the window. Because the bands are
 shares they look equally confident either way, which is a defect in the feature as designed, not in
@@ -375,3 +377,66 @@ frontmost window that paints a meaningful share.""",
   norm="<code>unit</code>, z-scored, × 0.7.",
   example="union of painting leaves 3 310 000 ÷ 3 726 912 = 0.888 → rs_top_weight 0.888",
   extra="Lowest SHAP of all 21 live features and ablation ARI 0.98 — it neither defines nor decides the partition, and the prune removes it at every threshold. The quantity still matters: it is what selects the owning contributor, from which every arrangement feature is read.")
+
+f(name="rs_pat_* (repeating layout pattern)", group="Repeat shape", status="prototype",
+  weight="not yet in the vector", rng="see each column below",
+  origin="RSTree pass 1 and 2 for geometry and paint state, <code>client</code> for component tags",
+  raw="""client:  frameNodeId[2718], frameNodeTag[Image]
+RSTree:  | CANVAS_NODE[...] innerAbsDrawRect: [24, 310, 622, 622] sortedChildren: 2(...)
+         | CANVAS_NODE[...] innerAbsDrawRect: [24, 310, 622, 480]   <- image
+         | CANVAS_NODE[...] innerAbsDrawRect: [24, 800, 560,  52]   <- label""",
+  extract="""Replaces the leaf grouping entirely. What repeats in a layout is a BRANCH - a cell holding an
+icon and a label, a card holding an image and two lines - not a leaf, which is wherever RenderService
+stopped descending.
+
+Siblings are sorted into three relationships, which the band feature never separated:
+<br>&nbsp;&nbsp;<b>coincident</b> — a node and its child in the same box, within 10% of its area. A wrapper,
+a clip, an effect layer. Collapsed before anything is measured; these are most of why the render tree
+is deeper than the layout.
+<br>&nbsp;&nbsp;<b>overlay</b> — a smaller node, under 40% of the area, sitting at least 80% inside an
+EARLIER-painted sibling. The caption and the like counter over a video. Removed from the pattern and
+reported separately as <code>overlay_frac</code>.
+<br>&nbsp;&nbsp;<b>tiling</b> — siblings sharing edges rather than area. The layout, and the only
+candidates for a repeat.
+
+Each remaining branch is described by the content kinds in its subtree, sorted: <code>I</code> image,
+<code>T</code> text, <code>S</code> glyph, <code>V</code> video surface. Where the tag is a wrapper —
+on this app 103 of 135 leaves are tagged Custom or Stack — the kind is inferred from geometry instead:
+a small square is <code>i</code>, a wide thin box <code>t</code>. Siblings sharing a description are a
+repeating group; the group covering the most area wins, and its arrangement comes from the distinct x
+and y positions of its members.""",
+  why="""The band feature grouped leaf rectangles, and a leaf is a render-tree fact, not a layout one.
+On a launcher that accidentally worked because every icon is 99x99. On a video feed it reported the
+like button and the progress rail, because the feed's own full-screen items were excluded for being
+over 75% of the display. Checked against the capture, half of all samples emitted a confident band
+profile while their repeating structure covered under 5% of the window.""",
+  tells="""The actual layout: a cell description, how it repeats, and over how much of the window.
+<code>media card grid 2x2</code> at 0.76 cover was a video with a recommendation grid beneath it in
+every screenshot checked; <code>image grid 3x4</code> at 0.75 was a dense three-column wall every
+time.""",
+  cost_script="""O(N) to collapse and classify siblings, O(C²) per branch for the overlay test where C
+is its child count (small - the median branch has 2), O(N) for the patterns, one sweep-line union per
+candidate group. Measured at 250 scenes in a few seconds, same order as the existing extractor.""",
+  cost_tree="""Cheaper and better inside ArkUI. The wrapper collapse is unnecessary because the
+component tree does not have those layers; the component type is on every FrameNode with no dump and
+no id join; and a scroller's real item list is available including virtualised items, which the dump
+cannot show.""",
+  norm="""Not yet normalised - this is a prototype and none of it is in the clustering vector. The
+intended shape: <code>pat_cover</code> and <code>overlay_frac</code> as <code>unit</code>,
+<code>pat_cols</code> as <code>clip6</code>, <code>pat_h</code> as <code>unit</code>,
+<code>pat_aspect</code> as <code>logratio</code>, and the motif as a categorical for the
+deduplication key rather than for the distance.""",
+  example="""a 2-column gallery cell: branch 622x622 px holding an image and a label
+  collapse       one coincident wrapper removed
+  overlay test   none; the two children tile
+  kinds          {I, T}  ->  pattern "IT"
+  siblings       8 branches share "IT", union 2.4 Mpx of a 3.7 Mpx window
+  arrangement    2 distinct x, 4 distinct y  ->  grid 2x4
+  result         motif "icon and label grid 2x4", pat_cover 0.65, pat_h 0.22""",
+  extra="""<b>Coverage is the honest gate.</b> Every motif above 0.6 cover was consistent by eye.
+Below 0.1 they were all full-screen video, named after whatever small thing repeated on top: the
+action rail became "icon and label list", the caption became "text list". So the name is withheld
+below 0.15 and reads "no dominant repeat" - 81 of 250 scenes, median cover 0.04. Overlay density does
+not help separate those (r = +0.10 against cover), so coverage is the only gate used.
+<br><br>Still open: 20 of 250 scenes produce no pattern at all, the <code>b</code> kind is still
+a third of the alphabet on this app, and nothing here has been weighted or clustered yet.""")

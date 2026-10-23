@@ -4,7 +4,8 @@ import feature_doc as data
 import json as _j
 SHAPES = _j.load(open("shapes.json", encoding="utf-8"))
 REPS = _j.load(open("reps_payload.json", encoding="utf-8"))
-payload = {"features": data.F, "common": data.COMMON, "shapes": SHAPES, "reps": REPS}
+PATS = _j.load(open("pat_payload.json", encoding="utf-8"))
+payload = {"features": data.F, "common": data.COMMON, "shapes": SHAPES, "reps": REPS, "pats": PATS}
 
 HTML = """<!doctype html>
 <html lang="en">
@@ -40,6 +41,7 @@ HTML = """<!doctype html>
   .st.live { background:#d1fae5; color:#065f46; }
   .st.pruned { background:#fef3c7; color:#92400e; }
   .st.constant { background:#e5e7eb; color:#4b5563; }
+  .st.prototype { background:#dbeafe; color:#1e40af; }
   @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .st.live
     { background:#064e3b; color:#6ee7b7; } :root:not([data-theme="light"]) .st.pruned
     { background:#78350f; color:#fcd34d; } :root:not([data-theme="light"]) .st.constant
@@ -232,6 +234,36 @@ var DATA = __DATA__;
     h += "</div></div>";
     return h;
   }
+  // Every motif the detector produced, with representatives spread across its
+  // coverage range so a group can be judged by eye rather than by its name.
+  function motifs() {
+    var P = DATA.pats, h = "<div class='fld'><div class='k'>"
+      + t("Every motif found, with representatives") + "</div><div class='v'>"
+      + "<p style='font-size:13px;color:var(--dim);margin:0 0 6px'>"
+      + t("250 scenes that carry both dumps. Representatives are spread across each "
+        + "motif's coverage range and no picture is used twice, so the weak end of a "
+        + "group is visible rather than hidden behind its best member.") + "</p>";
+    P.groups.forEach(function (g) {
+      var weak = (g.cover === null) || (g.cover < 0.15);
+      h += "<div class='rgrp'><div class='hd'><div class='t'>" + esc(g.motif)
+         + " \u00b7 " + g.n + " " + t("scenes") + "</div><div class='s'>"
+         + (g.cover === null ? t("no repeating group was found at all")
+            : t("median cover") + " <span class='" + (weak ? "flag" : "") + "'>"
+              + g.cover.toFixed(2) + "</span>"
+              + (weak ? " \u00b7 <span class='flag'>" + t("too little to name") + "</span>"
+                      : ""))
+         + "</div></div><div class='pics'>";
+      g.reps.forEach(function (r) {
+        h += "<div class='pic'><img loading='lazy' src='" + r.img + "'>"
+           + "<div class='cap'>" + (r.pat ? "{" + esc(r.pat) + "}" : "\u2014")
+           + "<br>cover " + (r.cover || "\u2014") + " \u00b7 h " + (r.h || "\u2014")
+           + "<br>overlay " + r.ovl + "</div></div>";
+      });
+      h += "</div></div>";
+    });
+    h += "</div></div>";
+    return h;
+  }
   function overview() {
     mark(document.getElementById("nav-overview"));
     var c = DATA.common, h = "<h2>" + t("How it fits together") + "</h2>"
@@ -279,6 +311,7 @@ var DATA = __DATA__;
     h += fld("Normalisation", "<p>" + t(f.norm) + "</p>");
     h += fld("Worked example, raw to result", pre(f.example));
     if (f.name.indexOf("rs_item_h0") === 0) { h += gallery() + observed(); }
+    if (f.name.indexOf("rs_pat_") === 0) { h += motifs(); }
     h += fld("Worth knowing", "<p>" + t(f.extra) + "</p>");
     document.getElementById("pane").innerHTML = h;
   }
