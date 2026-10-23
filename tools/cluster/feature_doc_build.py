@@ -1,0 +1,177 @@
+import json, html
+import feature_doc as data
+
+payload = {"features": data.F, "common": data.COMMON}
+
+HTML = """<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Scene Feature Reference</title>
+<style>
+  :root { --bg:#ffffff; --fg:#16181d; --dim:#6b7280; --line:#e3e6eb;
+    --card:#f7f8fa; --accent:#2563eb; --teal:#0f766e; --amber:#b45309;
+    --mute:#64748b; --code:#eef1f5; }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) { --bg:#0f1115; --fg:#e6e8ec; --dim:#9aa1ad;
+      --line:#272b33; --card:#171a20; --accent:#60a5fa; --teal:#5eead4;
+      --amber:#fbbf24; --mute:#94a3b8; --code:#11141a; }
+  }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--fg);
+    font:15px/1.6 -apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif; }
+  .shell { display:flex; min-height:100vh; align-items:flex-start; }
+  nav { width:268px; flex:0 0 268px; border-right:1px solid var(--line);
+    padding:20px 0 60px; position:sticky; top:0; max-height:100vh; overflow-y:auto; }
+  nav h1 { font-size:15px; margin:0 18px 4px; }
+  nav .sub { font-size:11.5px; color:var(--dim); margin:0 18px 16px; }
+  nav .grp { font-size:10.5px; text-transform:uppercase; letter-spacing:.07em;
+    color:var(--dim); margin:16px 18px 5px; font-weight:700; }
+  nav a { display:block; padding:5px 18px; font-size:13px; cursor:pointer;
+    color:var(--fg); text-decoration:none; border-left:3px solid transparent; }
+  nav a:hover { background:var(--card); }
+  nav a.on { border-left-color:var(--accent); background:var(--card); font-weight:600; }
+  nav a .st { float:right; font-size:9.5px; padding:1px 5px; border-radius:3px;
+    margin-top:2px; font-weight:600; letter-spacing:.02em; }
+  .st.live { background:#d1fae5; color:#065f46; }
+  .st.pruned { background:#fef3c7; color:#92400e; }
+  .st.constant { background:#e5e7eb; color:#4b5563; }
+  @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .st.live
+    { background:#064e3b; color:#6ee7b7; } :root:not([data-theme="light"]) .st.pruned
+    { background:#78350f; color:#fcd34d; } :root:not([data-theme="light"]) .st.constant
+    { background:#374151; color:#d1d5db; } }
+  main { flex:1; padding:28px 34px 90px; max-width:1020px; min-width:0; }
+  h2 { font-size:21px; margin:0 0 2px; letter-spacing:-.01em; }
+  .meta { font-size:12.5px; color:var(--dim); margin-bottom:20px; }
+  .meta b { color:var(--fg); font-weight:600; }
+  .fld { border-top:1px solid var(--line); padding:13px 0 3px; }
+  .fld .k { font-size:10.5px; text-transform:uppercase; letter-spacing:.07em;
+    color:var(--dim); font-weight:700; margin-bottom:5px; }
+  .fld .v { font-size:14px; }
+  pre { background:var(--code); border:1px solid var(--line); border-radius:7px;
+    padding:11px 13px; overflow-x:auto; font:12px/1.55 ui-monospace,"SF Mono",
+    Menlo,Consolas,monospace; margin:6px 0 0; white-space:pre; }
+  code { background:var(--code); padding:1px 5px; border-radius:4px;
+    font:12.5px ui-monospace,"SF Mono",Menlo,Consolas,monospace; }
+  .two { display:grid; grid-template-columns:1fr 1fr; gap:0 26px; }
+  @media (max-width:780px) { .shell { display:block; } nav { width:auto;
+    max-height:none; position:static; border-right:0; border-bottom:1px solid var(--line); }
+    main { padding:20px 16px 60px; } .two { grid-template-columns:1fr; } }
+  table { border-collapse:collapse; width:100%; font-size:13px; margin:8px 0 0; }
+  td, th { text-align:left; padding:6px 9px; border-bottom:1px solid var(--line); }
+  th { font-size:10.5px; text-transform:uppercase; letter-spacing:.05em;
+    color:var(--dim); }
+  .step { display:flex; gap:11px; margin:7px 0; font-size:13.5px; }
+  .step b { flex:0 0 92px; color:var(--teal); font-size:12px; padding-top:1px; }
+</style>
+</head>
+<body>
+<div class="shell">
+  <nav>
+    <h1>Scene feature reference</h1>
+    <div class="sub">23 cards covering the 29 columns. Bands are documented as one card each.</div>
+    <a id="nav-overview" class="on">How it fits together</a>
+    <div id="menu"></div>
+  </nav>
+  <main id="pane"></main>
+</div>
+<script>
+var DATA = __DATA__;
+(function () {
+  function t(s) { return s; }
+  function esc(s) { return String(s == null ? "" : s)
+    .replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;"); }
+  // The copy carries <code> deliberately, so it is inserted as markup; the
+  // raw dump excerpts never are, and go through esc() into a <pre>.
+  function fld(k, v) {
+    return "<div class='fld'><div class='k'>" + t(k) + "</div><div class='v'>" + v + "</div></div>";
+  }
+  function pre(s) { return "<pre>" + esc(s) + "</pre>"; }
+
+  var groups = [];
+  DATA.features.forEach(function (f) {
+    if (groups.indexOf(f.group) < 0) { groups.push(f.group); }
+  });
+  var menu = document.getElementById("menu");
+  function buildMenu() {
+    var h = "";
+    groups.forEach(function (g) {
+      h += "<div class='grp'>" + t(g) + "</div>";
+      DATA.features.forEach(function (f, i) {
+        if (f.group !== g) { return; }
+        h += "<a data-i='" + i + "'>" + esc(f.name)
+           + "<span class='st " + f.status + "'>" + t(f.status) + "</span></a>";
+      });
+    });
+    menu.innerHTML = h;
+    [].forEach.call(menu.querySelectorAll("a"), function (a) {
+      a.addEventListener("click", function () { show(+a.dataset.i); });
+    });
+  }
+  function mark(el) {
+    [].forEach.call(document.querySelectorAll("nav a"), function (a) {
+      a.classList.remove("on"); });
+    if (el) { el.classList.add("on"); }
+  }
+  function overview() {
+    mark(document.getElementById("nav-overview"));
+    var c = DATA.common, h = "<h2>" + t("How it fits together") + "</h2>"
+      + "<div class='meta'>" + t("Every feature below is produced by the same six steps. "
+      + "Nothing is measured twice and nothing is read from the accessibility tree.") + "</div>";
+    h += "<div class='fld'><div class='k'>" + t("Pipeline") + "</div><div class='v'>";
+    c.pipeline.forEach(function (p) {
+      h += "<div class='step'><b>" + t(p[0]) + "</b><span>" + t(p[1]) + "</span></div>"; });
+    h += "</div></div>";
+    h += "<div class='fld'><div class='k'>" + t("Measured cost, one sample")
+       + "</div><div class='v'><table><tr><th>" + t("Step") + "</th><th>" + t("Time")
+       + "</th><th>" + t("Complexity") + "</th><th>" + t("Note") + "</th></tr>";
+    c.cost.forEach(function (r) {
+      h += "<tr><td>" + t(r[0]) + "</td><td><code>" + r[1] + "</code></td><td><code>"
+        + (r[2] || "—") + "</code></td><td style='color:var(--dim)'>" + t(r[3]) + "</td></tr>"; });
+    h += "</table></div></div>";
+    h += fld("What the costs mean", "<p>" + t("Parsing text is 95% of the work. Every feature "
+      + "is effectively free once the tree is in memory — all 29 together cost 2.66 ms "
+      + "against 12.6 ms to read the dump. Inside ArkUI the parse does not exist at all: the "
+      + "tree, the rects and the component types are already there, so the whole measurement "
+      + "is one pass over the nodes plus a handful of interval unions.") + "</p>"
+      + "<p>" + t("The only superlinear step is the area union, a sweep-line at O(R log R). "
+      + "A sample makes 46 such calls, the largest over 160 rectangles.") + "</p>");
+    h += fld("Status of each column", "<p>" + t("<b>live</b> — carries distance in the "
+      + "clustering. <b>pruned</b> — removed by --decorrelate 0.55 for repeating another "
+      + "feature; still written to the CSV and still readable. <b>constant</b> — no "
+      + "variance in this session, so automatically excluded; expected to vary in a "
+      + "system-wide capture.") + "</p>");
+    document.getElementById("pane").innerHTML = h;
+  }
+  function show(i) {
+    var f = DATA.features[i];
+    mark(menu.querySelector("a[data-i='" + i + "']"));
+    var h = "<h2>" + esc(f.name) + "</h2><div class='meta'>"
+      + t(f.group) + " · <b>" + t(f.status) + "</b> · " + t("weight") + " " + t(f.weight)
+      + " · " + t("range") + " " + t(f.rng) + "</div>";
+    h += fld("Where it comes from", t(f.origin));
+    h += fld("What the raw data looks like", pre(f.raw));
+    h += fld("How it is extracted", "<p>" + t(f.extract) + "</p>");
+    h += "<div class='two'>" + fld("Why we have it", "<p>" + t(f.why) + "</p>")
+       + fld("What it tells us about the scene", "<p>" + t(f.tells) + "</p>") + "</div>";
+    h += "<div class='two'>" + fld("Cost — from a dump, in script",
+        "<p>" + t(f.cost_script) + "</p>")
+       + fld("Cost — inside ArkUI or RenderService", "<p>" + t(f.cost_tree) + "</p>") + "</div>";
+    h += fld("Normalisation", "<p>" + t(f.norm) + "</p>");
+    h += fld("Worked example, raw to result", pre(f.example));
+    h += fld("Worth knowing", "<p>" + t(f.extra) + "</p>");
+    document.getElementById("pane").innerHTML = h;
+  }
+  document.getElementById("nav-overview").addEventListener("click", overview);
+  buildMenu();
+  overview();
+})();
+</script>
+</body>
+</html>
+"""
+
+out = HTML.replace("__DATA__", json.dumps(payload, ensure_ascii=False))
+open("feature_reference.html", "w", encoding="utf-8").write(out)
+print("wrote feature_reference.html")

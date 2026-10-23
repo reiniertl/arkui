@@ -46,3 +46,4 @@ rows.rebuilt.csv
 # capture dumps, compressed. captures/ covers them, but a session rebuilt or
 # copied elsewhere must not become a public upload of somebody using a phone.
 *.json.gz
+tools/cluster/feature_reference.html
