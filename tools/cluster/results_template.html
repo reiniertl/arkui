@@ -1,0 +1,181 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Scene Classification Results</title>
+<style>
+  :root {
+    --bg:#ffffff; --fg:#16181d; --dim:#6b7280; --line:#e3e6eb;
+    --card:#f7f8fa; --accent:#2563eb; --warn:#b45309;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg:#0f1115; --fg:#e6e8ec; --dim:#9aa1ad; --line:#272b33;
+      --card:#171a20; --accent:#60a5fa; --warn:#fbbf24;
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); color:var(--fg); font:15px/1.65
+    -apple-system, "Segoe UI", Roboto, "Noto Sans SC", Helvetica, Arial, sans-serif; }
+  .wrap { max-width:860px; margin:0 auto; padding:30px 18px 80px; }
+  h1 { font-size:24px; margin:0 0 6px; letter-spacing:-.01em; }
+  h2 { font-size:17px; margin:34px 0 10px; letter-spacing:-.01em; }
+  .lede { color:var(--dim); margin:0 0 6px; }
+  .tiny { font-size:12.5px; color:var(--dim); }
+  section { border-top:1px solid var(--line); padding-top:4px; }
+  table { border-collapse:collapse; width:100%; margin:14px 0; font-size:13.5px;
+    font-variant-numeric:tabular-nums; }
+  th, td { text-align:left; padding:7px 10px; border-bottom:1px solid var(--line); }
+  th { color:var(--dim); font-weight:600; font-size:12px;
+       text-transform:uppercase; letter-spacing:.04em; }
+  td.n, th.n { text-align:right; }
+  tr.pick td { background:var(--card); font-weight:600; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:10px;
+    padding:14px 16px; margin:14px 0; }
+  .card.warn { border-left:3px solid var(--warn); }
+  code { font:12.5px/1.5 ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    background:var(--card); padding:1px 5px; border-radius:4px; }
+  ul { margin:8px 0; padding-left:20px; }
+  li { margin:5px 0; }
+  .kpi { display:flex; flex-wrap:wrap; gap:0; margin:18px 0 6px;
+    background:var(--card); border:1px solid var(--line); border-radius:10px;
+    overflow:hidden; }
+  .kpi div { flex:1 1 130px; padding:12px 14px; border-right:1px solid var(--line); }
+  .kpi div:last-child { border-right:0; }
+  .kpi b { display:block; font-size:21px; font-weight:650; letter-spacing:-.02em; }
+  .kpi span { font-size:11.5px; color:var(--dim); }
+  #langbar { position:fixed; top:10px; right:12px; z-index:50; }
+  #langbar button { font:inherit; font-size:12px; padding:4px 10px; cursor:pointer;
+    border-radius:6px; border:1px solid var(--line); background:var(--card);
+    color:inherit; }
+  footer { margin-top:38px; border-top:1px solid var(--line); padding-top:12px; }
+</style>
+</head>
+<body>
+<div id="langbar"><button id="lang">中文</button></div>
+<div class="wrap">
+
+<h1>Scene classification from the render tree</h1>
+<p class="lede">What one capture session says, and what it does not say yet.</p>
+
+<div class="kpi">
+  <div><b>4,673</b><span>samples captured</span></div>
+  <div><b>0.26 s</b><span>per sample</span></div>
+  <div><b>26</b><span>features, render tree only</span></div>
+  <div><b>6</b><span>scene classes found</span></div>
+</div>
+
+<section>
+<h2>What is measured</h2>
+<p>A scene is the set of rendered nodes, from any window on a display, whose
+clipped rectangle survives occlusion, in that display's coordinates. It is
+defined at an instant; the change against the previous reading is treated as a
+modifier, never as part of the class.</p>
+<p>Every number comes from RenderService's own tree. The accessibility tree is
+not read at all. Joining the render tree to the component tree succeeds on
+100% of nodes, against 38% for the accessibility route, and it costs one dump
+instead of two.</p>
+</section>
+
+<section>
+<h2>What the clustering found</h2>
+<p>Six classes, at the setting where the answer stops depending on the
+setting. The finer view splits them into fifteen, and those fifteen nest
+cleanly inside the six — not one of them straddles two.</p>
+<table>
+<tr><th>Minimum cluster size</th><th class="n">Classes</th><th class="n">Unassigned</th><th class="n">Silhouette</th></tr>
+<tr><td>6 — the original default</td><td class="n">15</td><td class="n">37%</td><td class="n">0.483</td></tr>
+<tr><td>8</td><td class="n">7</td><td class="n">40%</td><td class="n">0.456</td></tr>
+<tr class="pick"><td>9 to 13 — unchanged across the range</td><td class="n">6</td><td class="n">43%</td><td class="n">0.466</td></tr>
+<tr><td>15</td><td class="n">3</td><td class="n">30%</td><td class="n">0.270</td></tr>
+</table>
+<p class="tiny">A range that wide holding one answer is the structure, not the
+setting. Three is where it collapses.</p>
+</section>
+
+<section>
+<h2>Three corrections that mattered</h2>
+<p><b>The shape of what repeats is now a distribution, not a winner.</b>
+Four features used to come from whichever repeating group covered the most
+area. A screen normally has several at once, so the rest was discarded, and
+when two were close the pick alternated between samples — one screen crossed
+between two classes sixteen times without changing. Every group now
+contributes to five height bands and three aspect bands, weighted by area.
+Clusters went from 11 at silhouette 0.426 to 14 at 0.477.</p>
+<p><b>Six features were repeating each other.</b> Three of them measured one
+axis under three names and carried 47% of all distance between scenes.
+Removing the duplicates raised separation and cost nothing.</p>
+<p><b>Deduplication no longer depends on the features.</b> It used to measure
+distance in the same space being tuned, so every feature change quietly
+redrew the dataset. The rule is now stated and frozen: four categorical
+fields must match exactly, the rest within a stated tolerance. Three
+different feature sets now produce byte-identical datasets.</p>
+</section>
+
+<section>
+<h2>What this does not yet support</h2>
+<div class="card warn">
+<p style="margin:0 0 8px"><b>About a third of scenes fit no class, and that
+number is stable.</b> 92 of 324 measurements are unassigned at every setting
+tried. They are not noise and not members — they sit on the slope between
+classes.</p>
+<p style="margin:0" class="tiny">Density clustering reports what it cannot
+place rather than forcing it. That is the correct behaviour for discovering
+classes and the wrong behaviour for labelling every frame.</p>
+</div>
+<p>The next step is the one this work exists to set up: train a classifier on
+the confident members, which assigns every scene including those on the
+boundary. Clustering discovers the classes; it should not be asked to serve
+them.</p>
+</section>
+
+<section>
+<h2>Honest limits</h2>
+<ul>
+<li>One device, one session, a single application for most of it. The six
+classes are what this session contains, not a taxonomy.</li>
+<li>Roughly half of samples have no nearby screenshot, so visual checking
+covers part of the set.</li>
+<li>The distribution change improved what the descriptor says; it did not
+make it steadier between consecutive samples, which is what it was intended
+to fix.</li>
+<li>Scene classes are reported here. Aggregation, power attribution and
+scheduling policy are decided elsewhere, from this input.</li>
+</ul>
+</section>
+
+<footer class="tiny">
+Generated from capture session <code>20261022_123014</code>. The accompanying
+viewer shows every scene in every class and opens in any browser with nothing
+installed.
+</footer>
+
+</div>
+<script>
+(function () {
+  var ZH = {"Scene classification from the render tree": "基于渲染树的场景分类", "What one capture session says, and what it does not say yet.": "一次采集会话说明了什么，以及还不能说明什么。", "samples captured": "采集样本", "per sample": "每样本耗时", "features, render tree only": "个特征，全部来自渲染树", "scene classes found": "个场景类别", "What is measured": "测量的是什么", "A scene is the set of rendered nodes, from any window on a display, whose clipped rectangle survives occlusion, in that display's coordinates. It is defined at an instant; the change against the previous reading is treated as a modifier, never as part of the class.": "场景定义为：某一显示屏上任意窗口中，裁剪后矩形在遮挡之后仍然可见的渲染节点集合，并以该显示屏的坐标系表示。场景定义在某一瞬间；与上一次读数之间的变化只作为修饰量，绝不计入类别本身。", "Every number comes from RenderService's own tree. The accessibility tree is not read at all. Joining the render tree to the component tree succeeds on 100% of nodes, against 38% for the accessibility route, and it costs one dump instead of two.": "所有数值均取自 RenderService 自身的渲染树，完全不读取无障碍树。渲染树与组件树的关联在 100% 的节点上成功，而无障碍路径只有 38%，并且只需一次 dump，而不是两次。", "What the clustering found": "聚类得到的结果", "Six classes, at the setting where the answer stops depending on the setting. The finer view splits them into fifteen, and those fifteen nest cleanly inside the six — not one of them straddles two.": "六个类别，取自结果不再随参数变化的那一段。更细的视角会分成十五个，而这十五个干净地嵌套在六个之内——没有任何一个跨越两类。", "Minimum cluster size": "最小簇规模", "Classes": "类别数", "Unassigned": "未归类", "Silhouette": "轮廓系数", "6 — the original default": "6 — 原始默认值", "9 to 13 — unchanged across the range": "9 至 13 — 整段区间结果不变", "A range that wide holding one answer is the structure, not the setting. Three is where it collapses.": "如此宽的区间给出同一答案，说明这是数据本身的结构，而非参数的产物。到 3 就塌缩了。", "Three corrections that mattered": "三项关键修正", "The shape of what repeats is now a distribution, not a winner.": "重复元素的形状现在用分布表示，而不是取胜者。", "Four features used to come from whichever repeating group covered the most area. A screen normally has several at once, so the rest was discarded, and when two were close the pick alternated between samples — one screen crossed between two classes sixteen times without changing. Every group now contributes to five height bands and three aspect bands, weighted by area. Clusters went from 11 at silhouette 0.426 to 14 at 0.477.": "过去有四个特征取自覆盖面积最大的那一组重复元素。一个界面通常同时存在多组，其余的被整个丢弃；当两组面积接近时，选择会在采样之间来回跳动——有一个界面在毫无变化的情况下，在两个类别之间往返了十六次。现在每一组都按其覆盖面积加权，计入五个高度区间和三个长宽比区间。簇数由 11 个（轮廓系数 0.426）变为 14 个（0.477）。", "Six features were repeating each other.": "有六个特征在互相重复。", "Three of them measured one axis under three names and carried 47% of all distance between scenes. Removing the duplicates raised separation and cost nothing.": "其中三个以三个名字测量同一个维度，却占据了场景间全部距离的 47%。去掉重复项提升了可分性，且没有任何代价。", "Deduplication no longer depends on the features.": "去重不再依赖于特征集合。", "It used to measure distance in the same space being tuned, so every feature change quietly redrew the dataset. The rule is now stated and frozen: four categorical fields must match exactly, the rest within a stated tolerance. Three different feature sets now produce byte-identical datasets.": "过去它在正被调整的同一空间里度量距离，因此每次改动特征都会悄悄重画数据集。现在规则被明确写出并固定：四个类别字段必须完全相同，其余字段需落在给定容差内。三种不同的特征集合现在产生完全一致的数据集。", "What this does not yet support": "目前还不能支撑的结论", "About a third of scenes fit no class, and that number is stable.": "约三分之一的场景不属于任何类别，而且这个比例是稳定的。", "92 of 324 measurements are unassigned at every setting tried. They are not noise and not members — they sit on the slope between classes.": "在尝试过的所有参数下，324 个测量点中都有 92 个未被归类。它们既不是噪声也不是成员——而是位于类别之间的过渡带上。", "Density clustering reports what it cannot place rather than forcing it. That is the correct behaviour for discovering classes and the wrong behaviour for labelling every frame.": "基于密度的聚类会如实报告无法归置的点，而不是强行安放。这对于发现类别是正确的做法，对于给每一帧打标签则是错误的做法。", "The next step is the one this work exists to set up: train a classifier on the confident members, which assigns every scene including those on the boundary. Clustering discovers the classes; it should not be asked to serve them.": "下一步正是这项工作一直在为之铺路的：用高置信度的成员训练分类器，由它为每一个场景（包括边界上的场景）给出类别。聚类用于发现类别，不应被要求在线提供类别。", "Honest limits": "需要说明的局限", "One device, one session, a single application for most of it. The six classes are what this session contains, not a taxonomy.": "单一设备、单次会话，且其中大部分时间只有一个应用。这六个类别是本次会话所包含的内容，而不是一套完整的分类体系。", "Roughly half of samples have no nearby screenshot, so visual checking covers part of the set.": "大约一半的样本没有时间上邻近的截图，因此人工目视核对只覆盖了部分数据。", "The distribution change improved what the descriptor says; it did not make it steadier between consecutive samples, which is what it was intended to fix.": "改用分布提升了描述符所表达的信息，但并没有让它在连续采样之间更稳定，而后者才是这项改动原本想解决的问题。", "Scene classes are reported here. Aggregation, power attribution and scheduling policy are decided elsewhere, from this input.": "这里只报告场景类别。聚合、功耗归因与调度策略由其他模块基于这些输入决定。", "Generated from capture session": "数据来自采集会话", ". The accompanying viewer shows every scene in every class and opens in any browser with nothing installed.": "。配套的查看器展示每个类别下的全部场景，无需安装任何软件，任意浏览器均可打开。"};
+  var lang = "en", orig = new WeakMap();
+  function walk(node) {
+    if (node.nodeType === 3) {
+      if (!orig.has(node)) { orig.set(node, node.nodeValue); }
+      var en = orig.get(node), key = en.replace(/\s+/g, " ").trim();
+      if (!key) { return; }
+      if (lang === "zh" && ZH[key]) { node.nodeValue = en.replace(key, ZH[key]); }
+      else { node.nodeValue = en; }
+      return;
+    }
+    if (node.nodeType !== 1) { return; }
+    if (node.id === "langbar" || node.tagName === "SCRIPT" || node.tagName === "STYLE") { return; }
+    for (var i = 0; i < node.childNodes.length; i++) { walk(node.childNodes[i]); }
+  }
+  document.getElementById("lang").addEventListener("click", function () {
+    lang = (lang === "en") ? "zh" : "en";
+    this.textContent = (lang === "en") ? "中文" : "English";
+    document.documentElement.lang = (lang === "en") ? "en" : "zh-Hans";
+    walk(document.body);
+  });
+})();
+</script>
+</body>
+</html>
