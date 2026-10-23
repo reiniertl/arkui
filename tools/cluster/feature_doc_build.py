@@ -5,7 +5,8 @@ import json as _j
 SHAPES = _j.load(open("shapes.json", encoding="utf-8"))
 REPS = _j.load(open("reps_payload.json", encoding="utf-8"))
 PATS = _j.load(open("pat_payload.json", encoding="utf-8"))
-payload = {"features": data.F, "common": data.COMMON, "shapes": SHAPES, "reps": REPS, "pats": PATS}
+SURF = _j.load(open("surf_payload.json", encoding="utf-8"))
+payload = {"features": data.F, "common": data.COMMON, "shapes": SHAPES, "reps": REPS, "pats": PATS, "surf": SURF}
 
 HTML = """<!doctype html>
 <html lang="en">
@@ -285,6 +286,36 @@ var DATA = __DATA__;
     h += "</div></div>";
     return h;
   }
+  // Every scene grouped by the kind of surface found, with all its pictures.
+  function surfaces() {
+    var S = DATA.surf, h = "<div class='fld'><div class='k'>"
+      + t("What each surface kind looks like") + "</div><div class='v'>"
+      + "<p style='font-size:13px;color:var(--dim);margin:0 0 6px'>"
+      + t("All 250 scenes grouped by the kind of surface found, ordered within a "
+        + "group by how much of the window it covers. Every pictured scene is "
+        + "shown.") + "</p>";
+    S.groups.forEach(function (g) {
+      h += "<div class='rgrp'><div class='hd'><div class='t'>"
+         + t("kind") + " " + g.kind + " \u2014 " + esc(g.name) + " \u00b7 "
+         + g.n + " " + t("scenes") + "</div><div class='s'>"
+         + (g.cover === null ? t("nothing to measure")
+            : t("median cover") + " " + g.cover.toFixed(2)
+              + " \u00b7 " + t("median drawn over") + " " + (g.over || 0)
+              + " \u00b7 " + g.full + " " + t("fill the window"))
+         + "</div></div>";
+      h += "<div class='desc'>" + t(g.desc) + "</div>";
+      h += "<div class='pics'>";
+      g.reps.forEach(function (r) {
+        h += "<div class='pic'><img loading='lazy' src='" + r.img + "'>"
+           + "<div class='cap'>cover " + r.cover + (r.full === "1" ? " full" : "")
+           + "<br>over " + r.over
+           + "<br>" + esc(String(r.slot1).slice(0, 22)) + "</div></div>";
+      });
+      h += "</div></div>";
+    });
+    h += "</div></div>";
+    return h;
+  }
   function overview() {
     mark(document.getElementById("nav-overview"));
     var c = DATA.common, h = "<h2>" + t("How it fits together") + "</h2>"
@@ -333,6 +364,7 @@ var DATA = __DATA__;
     h += fld("Worked example, raw to result", pre(f.example));
     if (f.name.indexOf("rs_item_h0") === 0) { h += gallery() + observed(); }
     if (f.name.indexOf("rs_pat_") === 0) { h += motifs(); }
+    if (f.name.indexOf("rs_surf_") === 0) { h += surfaces(); }
     h += fld("Worth knowing", "<p>" + t(f.extra) + "</p>");
     document.getElementById("pane").innerHTML = h;
   }

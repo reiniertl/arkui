@@ -440,3 +440,76 @@ below 0.15 and reads "no dominant repeat" - 81 of 250 scenes, median cover 0.04.
 not help separate those (r = +0.10 against cover), so coverage is the only gate used.
 <br><br>Still open: 20 of 250 scenes produce no pattern at all, the <code>b</code> kind is still
 a third of the alphabet on this app, and nothing here has been weighted or clustered yet.""")
+
+f(name="rs_pat1_* / rs_pat2_* (two pattern slots)", group="Repeat shape", status="prototype",
+  weight="slot 1 at parity, slot 2 at 0.7 of it", rng="per column, as the single-slot version",
+  origin="the same branch detection as rs_pat_*",
+  raw="""one scene, two repeating groups found under the owning window:
+  group A   {IIITTT} x4   grid, 2 columns   cover 0.69   top 0.31
+  group B   {it}     x5   column            cover 0.11   top 0.86""",
+  extract="""The detector already finds a median of SIX repeating groups per scene and 87% of scenes
+have two or more; the single-slot version reported the largest and discarded the rest. Both slots are
+now emitted, ordered by coverage with the tie broken on vertical position — topmost first — rather
+than on the quantity that is nearly tied, so two groups of similar size cannot swap slots between
+samples and jump the whole vector.
+
+An absent second group writes EMPTY, not zero, and <code>has_slot2</code> records the absence. Writing
+a zero coverage and a zero height would place a missing group at the small end of both scales instead
+of nowhere, which is the mistake <code>item_h</code> made on 1,266 samples.""",
+  why="""A screen with a video above a comment list has two structures and the single slot reported
+one of them, with nothing in the vector to say which half was being described.""",
+  tells="Both of a screen's structures at once: a grid under a player, a feed beside an action rail.",
+  cost_script="Free — the groups were already computed and then thrown away.",
+  cost_tree="Free.",
+  norm="Slot 2 at 0.7 of slot 1's weights, so a secondary structure cannot outvote the primary one.",
+  example="""slot1  cover 0.69  h 0.39  aspect 0.57  cols 2  n 4   -> "media card grid, 2 columns"
+slot2  cover 0.11  h 0.05  aspect 7.6  cols 1  n 5   -> "icon and label list"
+has_slot2 1""",
+  extra="""<b>Measured, and it does not pay.</b> Over 179 scenes, adding slot 2 raised the share of
+scenes fitting no cluster from 8–20% to 13–35% while moving the silhouette both ways, and no weight
+between 0.25 and 1.0 recovered it. Slot 1 alone remains the best vector measured. The columns are
+computed and written; nothing is in the clustering vector.
+<br><br>The likeliest cause is sample count, not the feature: 179 scenes is thin for 13 dimensions.
+The pattern features need the <code>client</code> dump, which the fast capture writes once per
+distinct scene rather than once per sample, so 3,263 samples yield only 250 usable scenes. Settling
+this needs that capture change first.""")
+
+f(name="rs_surf_* (media surface)", group="Composition", status="prototype",
+  weight="not yet in the vector", rng="kind 0–3, the rest 0–1",
+  origin="RSTree pass 1 for rects, pass 2 for paint state, <code>client</code> for the tag",
+  raw="""| CANVAS_NODE[...] innerAbsDrawRect: [0, 112, 1316, 2560]  DrawableVec:[24, 28, 31]
+client: frameNodeId[3021], frameNodeTag[XComponent]""",
+  extract="""The thing that does NOT repeat. Among nodes of the owning window that paint, or carry a
+surface tag, and cover at least a quarter of the window once clipped to it, the largest is taken — with
+a stated kind outranking a plain painted box of the same size, because an XComponent IS the scene
+while a background merely fills it.
+
+Nodes already claimed by a pattern slot are excluded, so the two blocks never describe the same
+pixels. A full-bleed repeating page — the short-form feed, an item taller than 80% of the display
+repeating in one column — is handed to this block rather than to the pattern slots, since it is a
+media surface wearing a repeat's clothes.
+
+Emits the kind (0 none, 1 painted box, 2 image, 3 external surface), its coverage, aspect, height,
+how much of it is drawn over, and whether it fills the window.""",
+  why="""Half the captured scenes have no dominant repeat, and the vector described them only by what
+they lacked: 91 such scenes split into two or three groups with half of them left over, collapsing
+entirely at a larger minimum cluster size. A player is not an absence of a grid.""",
+  tells="""Whether the scene is one large surface and what kind. External surfaces matter most — their
+frame cost is not predictable from node count, which is exactly the case where a scene class must
+carry the information instead.""",
+  cost_script="O(N) over the owner's nodes, one clip and one area each. Negligible beside the parse.",
+  cost_tree="Free: ArkUI knows which node is an XComponent or a Web without a dump or an id join.",
+  norm="Intended: <code>surf_kind</code> as <code>clip4</code>, the rest <code>unit</code>, aspect as <code>logratio</code>.",
+  example="""a full-screen player with a HUD over it
+  largest painting node 1316 x 2560 px, tag XComponent
+  clipped area 3 368 960 of 3 726 912  -> surf_cover 0.904
+  surf_kind 3   surf_aspect 0.514   surf_h 0.904   surf_full 1
+  overlays inside it cover 412 000 px -> surf_over 0.122""",
+  extra="""Found on 207 of 250 scenes — 40 external surfaces, 90 image surfaces, 77 painted boxes —
+with a median coverage of 0.83 and 70 filling the window. Scenes the pipeline can say something about
+rose from 48% to 93%.
+<br><br><b>But it does not improve the clustering.</b> Added to slot 1 it raises the share fitting no
+cluster from 8–20% to 20–41%; at full weight it gives the highest silhouette measured, 0.636 at eight
+clusters, and the worst outlier rate of the new options. No weight between 0.25 and 1.0 resolves the
+trade. It is a good descriptor on evidence and an unproven feature, and it is written to the CSV
+rather than into the vector until there are enough scenes to tell which.""")

@@ -57,6 +57,32 @@ def _inside(a, b):
     return x * y
 
 
+def clipped(r, dw, dh):
+    """The part of a rect that is on the display. A card scrolled half off
+    screen covers half a window, not a whole one."""
+    x0, y0 = max(r[0], 0.0), max(r[1], 0.0)
+    x1, y1 = min(r[0] + r[2], dw), min(r[1] + r[3], dh)
+    if x1 <= x0 or y1 <= y0:
+        return None
+    return (x0, y0, x1 - x0, y1 - y0)
+
+
+SURF_TAGS = ("XComponent", "Web", "Video", "UIExtension", "Embedded", "Plugin")
+SURF_MIN = 0.25        # a surface under this much of the window is furniture
+FULLBLEED_H = 0.80     # a repeating page this tall is a media page, not a cell
+
+
+def surface_kind(n):
+    t = n["tag"] or ""
+    if any(k in t for k in SURF_TAGS):
+        return 3                      # an externally rendered surface
+    if t == "Image":
+        return 2                      # a decoded image
+    if n["paints"]:
+        return 1                      # a painted box of no stated kind
+    return 0
+
+
 def leaf_kind(n, density):
     """What a leaf draws. The tag when there is a real one, otherwise a guess
     from shape - a small square is icon-like, a wide thin box is text-like."""
@@ -179,6 +205,60 @@ class Scene:
 NAME_FLOOR = 0.15      # below this the repeat describes decoration, not layout
 
 
+def media_surface(sc, dw, dh, own_area, used):
+    """The thing that does NOT repeat: one large painting node holding the
+    scene. Half the captured scenes have no dominant repeat, and the vector
+    described them only by what they lacked - 91 of them split into two or
+    three groups with half left over. A player is not an absence of a grid;
+    it is a surface, and this says how big it is, what shape, what kind, and
+    how much is drawn on top of it.
+
+    Nodes already claimed by a repeating group are excluded, so the two
+    blocks never describe the same pixels.
+    """
+    best = None
+    for nid, n in sc.N.items():
+        if nid in used or not sc._mine(nid):
+            continue
+        a = n["abs"]
+        if not a or a[2] <= 0 or a[3] <= 0:
+            continue
+        k = surface_kind(n)
+        if k == 0:
+            continue
+        c = clipped(a, dw, dh)
+        if not c:
+            continue
+        area = c[2] * c[3]
+        if area < SURF_MIN * own_area:
+            continue
+        # a surface with a real kind outranks a plain painted box of the
+        # same size: an XComponent IS the scene, a background merely fills it
+        score = (k >= 2, area)
+        if best is None or score > best[0]:
+            best = (score, n, c, k, area)
+    if best is None:
+        return {"surf_kind": 0, "surf_cover": "", "surf_aspect": "",
+                "surf_h": "", "surf_over": "", "surf_full": 0}
+    _, n, c, k, area = best
+    ov = []
+    for i in sc.overlay:
+        a = sc.N[i]["abs"]
+        if not a or a[2] <= 0:
+            continue
+        x0, y0 = max(a[0], c[0]), max(a[1], c[1])
+        x1 = min(a[0] + a[2], c[0] + c[2])
+        y1 = min(a[1] + a[3], c[1] + c[3])
+        if x1 > x0 and y1 > y0:
+            ov.append((x0, y0, x1 - x0, y1 - y0))
+    return {"surf_kind": k,
+            "surf_cover": round(min(1.0, area / own_area), 3),
+            "surf_aspect": round(c[2] / max(1.0, c[3]), 3),
+            "surf_h": round(c[3] / dh, 3),
+            "surf_over": round(min(1.0, R.region_area(ov) / max(1.0, area)), 3),
+            "surf_full": 1 if area >= 0.90 * own_area else 0}
+
+
 def describe(pat, arr, cols, rows, cover):
     """A readable name, from the cell's content and how it repeats.
 
@@ -274,27 +354,96 @@ def analyse(tree, owner, density, dw, dh):
             arr, cols, rows = sc.arrangement(mem)
             hs = sorted(sc.N[m]["abs"][3] for m in mem)
             ws = sorted(sc.N[m]["abs"][2] for m in mem)
+            # where the group sits, and how far down the window it runs.
+            # The detector says WHAT repeats; without this it cannot say
+            # whether the grid is the page or a strip under a player.
+            ys = [sc.N[m]["abs"][1] for m in mem]
+            ye = [sc.N[m]["abs"][1] + sc.N[m]["abs"][3] for m in mem]
             groups.append({"pat": p, "inner": inner, "arr": arr, "cols": cols,
                            "rows": rows, "n": len(mem), "area": area,
-                           "h": hs[len(hs) // 2], "w": ws[len(ws) // 2]})
+                           "h": hs[len(hs) // 2], "w": ws[len(ws) // 2],
+                           "top": max(0.0, min(ys)) / dh,
+                           "bot": min(dh, max(ye)) / dh,
+                           "ids": list(mem)})
     out = {"pat_n_groups": len(groups)}
     ov = [(sc.N[i]["abs"][0], sc.N[i]["abs"][1], sc.N[i]["abs"][2], sc.N[i]["abs"][3])
           for i in sc.overlay if sc.N[i]["abs"] and sc.N[i]["abs"][2] > 0]
     out["overlay_frac"] = round(min(1.0, R.region_area(ov) / own_area), 3)
     out["overlay_n"] = len(ov)
-    if not groups:
+
+    # A full-bleed repeating page - the short-form feed - is a media surface
+    # wearing a repeat's clothes. It goes to the surface block, and the
+    # pattern block describes whatever else is on the screen, so the two
+    # never claim the same pixels.
+    def fullbleed(g):
+        return (g["h"] / dh >= FULLBLEED_H
+                and g["area"] / own_area >= 0.5
+                and g["cols"] <= 1
+                and any(c in g["pat"] for c in "IiVW"))
+    pages = [g for g in groups if fullbleed(g)]
+    groups = [g for g in groups if not fullbleed(g)]
+
+    # Ordered by coverage, but ties broken on vertical position rather than
+    # on the quantity that is nearly tied. Two groups of similar size would
+    # otherwise swap slots between samples and the whole vector would jump -
+    # the argmax failure, one level up.
+    groups.sort(key=lambda g: (-round(g["area"] / own_area, 1), g["top"]))
+
+    used = set()
+    for g in pages:
+        used |= set(g["ids"])
+    for g in groups[:2]:
+        used |= set(g["ids"])
+
+    for i in (1, 2):
+        p = "pat%d_" % i
+        if len(groups) >= i:
+            g = groups[i - 1]
+            cov = min(1.0, g["area"] / own_area)
+            out.update({p + "pat": g["pat"], p + "arr": g["arr"],
+                        p + "cols": g["cols"], p + "rows": g["rows"],
+                        p + "n": g["n"], p + "cover": round(cov, 3),
+                        p + "h": round(g["h"] / dh, 3),
+                        p + "aspect": round(g["w"] / max(1.0, g["h"]), 3),
+                        p + "top": round(g["top"], 3),
+                        p + "motif": describe(g["pat"], g["arr"], g["cols"],
+                                              g["rows"], cov)})
+        else:
+            # Empty, not zero. Writing a zero coverage and a zero height for
+            # an absent second group would place it at the small end of both
+            # scales instead of nowhere, which is the mistake item_h made on
+            # 1,266 samples. build_matrix imputes these to the column mean.
+            out.update({p + k: "" for k in ("pat", "arr", "cols", "rows", "n",
+                                            "cover", "h", "aspect", "top", "motif")})
+    out["has_slot2"] = 1 if len(groups) >= 2 else 0
+
+    out.update(media_surface(sc, dw, dh, own_area, used))
+    if pages and not out["surf_cover"]:
+        # the feed page itself, when nothing else qualified as a surface
+        g = max(pages, key=lambda g: g["area"])
+        out.update(surf_kind=3 if "V" in g["pat"] else 2,
+                   surf_cover=round(min(1.0, g["area"] / own_area), 3),
+                   surf_aspect=round(g["w"] / max(1.0, g["h"]), 3),
+                   surf_h=round(g["h"] / dh, 3),
+                   surf_over=out["overlay_frac"],
+                   surf_full=1 if g["area"] >= 0.90 * own_area else 0)
+
+    # kept for reading: the single best group, as before
+    if groups or pages:
+        g = max(groups + pages, key=lambda g: g["area"])
+        cov = min(1.0, g["area"] / own_area)
+        out.update(pat=g["pat"], pat_inner=g["inner"], pat_arr=g["arr"],
+                   pat_cols=g["cols"], pat_rows=g["rows"], pat_n=g["n"],
+                   pat_cover=round(cov, 3), pat_top=round(g["top"], 3),
+                   pat_bot=round(g["bot"], 3),
+                   pat_band=round(max(0.0, g["bot"] - g["top"]), 3),
+                   pat_h=round(g["h"] / dh, 3),
+                   pat_aspect=round(g["w"] / max(1.0, g["h"]), 3),
+                   motif=describe(g["pat"], g["arr"], g["cols"], g["rows"], cov))
+    else:
         out.update(pat="", pat_inner="", pat_arr="", pat_cols="", pat_rows="",
-                   pat_n="", pat_cover="", pat_h="", pat_aspect="", motif="")
-        return out
-    # the level that covers the most, which is the level a person would name
-    g = max(groups, key=lambda g: g["area"])
-    out.update(pat=g["pat"], pat_inner=g["inner"], pat_arr=g["arr"],
-               pat_cols=g["cols"], pat_rows=g["rows"], pat_n=g["n"],
-               pat_cover=round(min(1.0, g["area"] / own_area), 3),
-               pat_h=round(g["h"] / dh, 3),
-               pat_aspect=round(g["w"] / max(1.0, g["h"]), 3),
-               motif=describe(g["pat"], g["arr"], g["cols"], g["rows"],
-                              min(1.0, g["area"] / own_area)))
+                   pat_n="", pat_cover="", pat_h="", pat_aspect="", motif="",
+                   pat_top="", pat_bot="", pat_band="")
     return out
 
 
