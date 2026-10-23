@@ -220,17 +220,38 @@ class Scene:
 NAME_FLOOR = 0.15      # below this the repeat describes decoration, not layout
 
 
-def media_surface(sc, dw, dh, own_area, used):
-    """The thing that does NOT repeat: one large painting node holding the
-    scene. Half the captured scenes have no dominant repeat, and the vector
-    described them only by what they lacked - 91 of them split into two or
-    three groups with half left over. A player is not an absence of a grid;
-    it is a surface, and this says how big it is, what shape, what kind, and
-    how much is drawn on top of it.
+SURF_BANDS = (0.25, 0.50, 0.75, 1.00)
 
-    Nodes already claimed by a repeating group are excluded, so the two
-    blocks never describe the same pixels.
+
+def media_surface(sc, dw, dh, own_area, used, order):
+    """The externally rendered surface holding the scene, graded by how much
+    of the window you can actually SEE of it.
+
+    Two things this gets right that the first version did not.
+
+    It measures the surface UNOCCLUDED. A player with a comment sheet pulled
+    half over it is a different scene from the same player uncovered, and the
+    raw rect says they are identical. Everything painted after the surface
+    that lands on it is subtracted, so what is reported is the media you can
+    see rather than the media that exists.
+
+    And the coverage is graded rather than thresholded. A quarter of the
+    window and the whole of it are different scenes with different costs;
+    one flag said they were the same. Four soft bands at 0.25, 0.50, 0.75
+    and 1.00 carry it, interpolated between neighbours so a surface growing
+    across a boundary moves mass gradually instead of jumping - the same
+    treatment the item-height bands get, for the same reason.
+
+    The kind still comes from the component tag alone. Nothing else in the
+    tree marks media: hwc never fires on a node here (RenderService reports
+    it as a list of other ids) and headroom stays at 1.0 throughout, so
+    there is no attribute-based confirmation available to cross-check the
+    tag against.
     """
+    empty = {"surf_kind": 0, "surf_cover": "", "surf_vis": "", "surf_aspect": "",
+             "surf_h": "", "surf_over": "", "surf_full": 0}
+    for i in range(len(SURF_BANDS)):
+        empty["surf_b%d" % i] = ""
     best = None
     for nid, n in sc.N.items():
         if nid in used or not sc._mine(nid):
@@ -238,8 +259,7 @@ def media_surface(sc, dw, dh, own_area, used):
         a = n["abs"]
         if not a or a[2] <= 0 or a[3] <= 0:
             continue
-        k = surface_kind(n)
-        if k == 0:
+        if surface_kind(n) != 3:
             continue
         c = clipped(a, dw, dh)
         if not c:
@@ -247,31 +267,77 @@ def media_surface(sc, dw, dh, own_area, used):
         area = c[2] * c[3]
         if area < SURF_MIN * own_area:
             continue
-        # a surface with a real kind outranks a plain painted box of the
-        # same size: an XComponent IS the scene, a background merely fills it
-        score = (k >= 2, area)
-        if best is None or score > best[0]:
-            best = (score, n, c, k, area)
+        if best is None or area > best[0]:
+            best = (area, nid, n, c)
     if best is None:
-        return {"surf_kind": 0, "surf_cover": "", "surf_aspect": "",
-                "surf_h": "", "surf_over": "", "surf_full": 0}
-    _, n, c, k, area = best
-    ov = []
-    for i in sc.overlay:
-        a = sc.N[i]["abs"]
-        if not a or a[2] <= 0:
+        return empty
+    area, nid, n, c = best
+
+    # everything painted after it that lands on it, whether it was classed as
+    # an overlay or is simply a later sibling: a sheet dragged over a player
+    # hides it either way
+    on_top = []
+    mine_after = order.get(nid, 0)
+    for mid, m in sc.N.items():
+        if mid == nid or not sc._mine(mid) or order.get(mid, 0) <= mine_after:
             continue
-        x0, y0 = max(a[0], c[0]), max(a[1], c[1])
-        x1 = min(a[0] + a[2], c[0] + c[2])
-        y1 = min(a[1] + a[3], c[1] + c[3])
+        # Leaves only. A BRANCH that paints is almost always a scrim or a
+        # wrapper whose children are the real content: on one scene two
+        # untagged full-window branches with paints=True covered the player
+        # 100% each, and the surface was reported as entirely invisible. A
+        # sheet genuinely dragged over the player is still caught, because
+        # its leaves overlap too.
+        if m["kids"]:
+            continue
+        if not (m["paints"] or (m["tag"] or "") in ("Text", "Image", "SymbolGlyph")):
+            continue
+        q = clipped(m["abs"], dw, dh) if m["abs"] and m["abs"][2] > 0 else None
+        if not q:
+            continue
+        # A node sharing the surface's box is the surface's own content, not
+        # something over it: a player's poster frame is drawn as an Image at
+        # exactly the XComponent's rect, and counting it hid the video
+        # completely on 70 of 88 scenes. Same rule as the coincident wrapper
+        # collapse - the same box is the same thing.
+        # The same blur and shadow sources the pattern block bounds: Rect
+        # nodes of 8198x8198 px at negative origins, four times the window.
+        # They cover everything and occlude nothing.
+        if _area(m["abs"]) > OVERSIZE * own_area:
+            continue
+        qa, ca2 = q[2] * q[3], c[2] * c[3]
+        if ca2 > 0 and qa / ca2 >= COINCIDENT and abs(q[0] - c[0]) < 4 and abs(q[1] - c[1]) < 4:
+            continue
+        x0, y0 = max(q[0], c[0]), max(q[1], c[1])
+        x1, y1 = min(q[0] + q[2], c[0] + c[2]), min(q[1] + q[3], c[1] + c[3])
         if x1 > x0 and y1 > y0:
-            ov.append((x0, y0, x1 - x0, y1 - y0))
-    return {"surf_kind": k,
-            "surf_cover": round(min(1.0, area / own_area), 3),
-            "surf_aspect": round(c[2] / max(1.0, c[3]), 3),
-            "surf_h": round(c[3] / dh, 3),
-            "surf_over": round(min(1.0, R.region_area(ov) / max(1.0, area)), 3),
-            "surf_full": 1 if area >= 0.90 * own_area else 0}
+            on_top.append((x0, y0, x1 - x0, y1 - y0))
+    hidden = R.region_area(on_top)
+    visible = max(0.0, area - hidden)
+
+    out = {"surf_kind": 3,
+           "surf_cover": round(min(1.0, area / own_area), 3),
+           "surf_vis": round(min(1.0, visible / own_area), 3),
+           "surf_aspect": round(c[2] / max(1.0, c[3]), 3),
+           "surf_h": round(c[3] / dh, 3),
+           "surf_over": round(min(1.0, hidden / max(1.0, area)), 3),
+           "surf_full": 1 if visible >= 0.90 * own_area else 0}
+    # graded, on what is visible
+    v = min(1.0, visible / own_area)
+    w = [0.0] * len(SURF_BANDS)
+    if v <= SURF_BANDS[0]:
+        w[0] = 1.0
+    elif v >= SURF_BANDS[-1]:
+        w[-1] = 1.0
+    else:
+        for i in range(len(SURF_BANDS) - 1):
+            lo, hi = SURF_BANDS[i], SURF_BANDS[i + 1]
+            if lo <= v <= hi:
+                t = (v - lo) / (hi - lo)
+                w[i], w[i + 1] = 1.0 - t, t
+                break
+    for i, x in enumerate(w):
+        out["surf_b%d" % i] = round(x, 3)
+    return out
 
 
 def describe(pat, arr, cols, rows, cover):
@@ -440,7 +506,8 @@ def analyse(tree, owner, density, dw, dh):
                                             "cover", "h", "aspect", "top", "motif")})
     out["has_slot2"] = 1 if len(groups) >= 2 else 0
 
-    out.update(media_surface(sc, dw, dh, own_area, used))
+    order = {k: i for i, k in enumerate(sc.N)}
+    out.update(media_surface(sc, dw, dh, own_area, used, order))
     if False:
         # the feed page itself, when nothing else qualified as a surface
         g = max(pages, key=lambda g: g["area"])

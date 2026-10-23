@@ -474,36 +474,54 @@ The pattern features need the <code>client</code> dump, which the fast capture w
 distinct scene rather than once per sample, so 3,263 samples yield only 250 usable scenes. Settling
 this needs that capture change first.""")
 
-f(name="rs_surf_* (external surface)", group="Composition", status="prototype",
-  weight="not in the vector; it did not earn a place", rng="kind 0 or 3, the rest 0–1",
-  origin="<code>client</code> tag for the kind, RSTree pass 1 for the geometry",
+f(name="rs_surf_* (external surface, graded)", group="Composition", status="prototype",
+  weight="not yet in the vector", rng="kind 0 or 3; bands 0–1 summing to 1",
+  origin="<code>client</code> tag for the kind, RSTree pass 1 for geometry and paint order",
   raw="""client: frameNodeId[3021], frameNodeTag[XComponent]
-RSTree: | CANVAS_NODE[...] innerAbsDrawRect: [0, 112, 1316, 740]""",
-  extract="""The largest node carrying an externally-rendered surface tag - XComponent, Web, Video,
-UIExtension, Embedded, Plugin - clipped to the window. Emits its coverage, aspect, height, how much
-is drawn over it, and whether it fills the window. Nodes already claimed by a pattern slot are
-excluded, and a full-bleed repeating page is handed to this block only when such a surface exists.""",
-  why="""Half the captured scenes have no dominant repeat and the vector described them only by what
-they lacked. The intent was to describe them positively, by the surface holding them.""",
-  tells="How much of the window an externally-rendered surface fills: a quarter, or all of it.",
-  cost_script="O(N) over the owner's nodes, one clip each. Negligible.",
-  cost_tree="Free; ArkUI knows which node is an XComponent without a dump or an id join.",
-  norm="Intended: <code>surf_cover</code> and <code>surf_over</code> as <code>unit</code>, aspect as <code>logratio</code>, <code>surf_full</code> as a flag.",
-  example="""largest XComponent 1316 x 740 px on a 1316 x 2832 window
-  surf_cover 0.26   surf_aspect 1.78   surf_h 0.26   surf_full 0   surf_over 0.03""",
-  extra="""<b>This block was cut back after it failed inspection, and the remainder still does not pay.</b>
-<br><br>It first accepted any large painting node, ranked image over plain box. The screenshots showed
-that was wrong: 77 "painted box" and 90 "image surface" scenes all reported cover 1.00 - comment pages,
-shopping pages and list screens alike - because what it found was the window's background fill, or a
-blurred backdrop drawn as one full-window Image leaf. A backdrop paints, covers everything, and says
-nothing.
-<br><br>Two rules were tried to separate a backdrop from content and neither worked. Counting painting
-descendants catches a container backdrop - a Scroll holding 53 of them - but not a leaf Image.
-Measuring how much is painted on top catches the backdrops and also condemns the real surfaces: in a
-short-form feed the next page overlaps the current one, so the XComponent itself reads 83% and 100%
-covered.
-<br><br>So the kind now comes from the tag alone, which is stated and reliable. That is correct but
-thin: 88 of 250 scenes, twelve distinct coverage values, and adding it to the pattern slot raises the
-share of scenes fitting no cluster from 8–20% to 16–26%. <code>rs_surface_tag</code>, already in the
-vector, does the same job at the same cost. The columns are written to the CSV; nothing is in the
-vector.""")
+RSTree: | CANVAS_NODE[...] innerAbsDrawRect: [0, 899, 1316, 740]""",
+  extract="""The largest node carrying an externally-rendered surface tag — XComponent, Web, Video,
+UIExtension, Embedded, Plugin — clipped to the window.
+
+Measured UNOCCLUDED. A player with a comment sheet pulled over it is a different scene from the same
+player uncovered, and the raw rect calls them identical. Every LEAF painted after the surface that
+lands on it is subtracted. Three exclusions, each one found by a wrong answer:
+<br>&nbsp;&nbsp;— branches, because a painting branch is a scrim or wrapper whose children are the
+real content; two untagged full-window branches once hid a player completely;
+<br>&nbsp;&nbsp;— nodes sharing the surface's box, because a player's poster frame is drawn as an
+Image at exactly the XComponent's rect; this alone hid the video on 70 of 88 scenes;
+<br>&nbsp;&nbsp;— nodes larger than one and a half windows, the same 8198x8198 blur and shadow
+sources at negative origins that the pattern block already bounds.
+
+Coverage is then GRADED, not thresholded: four soft bands at a quarter, a half, three quarters and
+the whole window, interpolated between neighbours so a surface growing across a boundary moves mass
+gradually. A quarter of the window and the whole of it are different scenes with different costs;
+one flag said they were the same.""",
+  why="""Half the captured scenes have no dominant repeat and were described only by what they
+lacked. An external surface is the one thing in the tree whose frame cost is not predictable from
+node count, which is exactly where a scene class has to carry the information.""",
+  tells="""Whether playback holds the scene, and how much of the window it actually occupies once
+everything drawn over it is taken off. The flagged half differs from the rest where a power model
+would look: draw slots at 1.00 standardised separation, image fraction 0.96, node count 0.64,
+overlay fraction 0.60, animation count 0.45.""",
+  cost_script="O(N) for the surface, O(N) again for the occluders, one sweep-line union. Negligible.",
+  cost_tree="Free; ArkUI knows which node is an XComponent, and knows what is drawn over it.",
+  norm="Bands as <code>unit</code>, <code>surf_kind</code> as a flag, <code>surf_vis</code> as <code>unit</code>.",
+  example="""XComponent 1316 x 740 px on a 1316 x 2832 window, a comment list drawn below it
+  raw cover 0.261
+  occluders: poster frame at the same rect (excluded), 2 HUD icons, 1 label
+  visible 0.253  ->  bands  b0 0.99  b1 0.01  b2 0.00  b3 0.00""",
+  extra="""<b>What it is good for, and what it is not.</b> The flag separates playback from the rest
+of the app cleanly — the pictures agree, and it is NOT the same as <code>rs_surface_tag</code>, which
+it matches on only 60% of scenes: that counts matching nodes anywhere, this identifies a scene HELD
+by one.
+<br><br>Grading made the measure real: raw coverage took 12 distinct values over 88 scenes and
+visible coverage takes 39. Occlusion costs a median 0.22 of the window and more than 5% on 69% of
+them, so it is not a correction one can skip.
+<br><br>Still wrong in one place: a player above a comment sheet can read near zero when the video is
+plainly visible. One such scene survives in the "about a quarter or less" strip below, and it is the
+layout to fix next.
+<br><br>Earlier versions of this block accepted any large painting node and ranked image over plain
+box. 167 scenes of that were the window's background fill or a blurred backdrop drawn as one
+full-window Image leaf, all reporting cover 1.00 on comment pages, shopping pages and list screens
+alike. Two rules were tried to tell a backdrop from content — counting painting descendants, and
+measuring what is painted on top — and neither worked, so the kind comes from the tag alone.""")
