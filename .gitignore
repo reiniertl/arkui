@@ -48,3 +48,4 @@ rows.rebuilt.csv
 *.json.gz
 tools/cluster/feature_reference.html
 tools/cluster/reps_payload.json
+tools/cluster/shapes.json
