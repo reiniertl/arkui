@@ -93,9 +93,8 @@ The baseline the executions read (read each file in full):
 ORDER
 ===============================================================================
 
-  What remains, in this order (records 1 to 10 hold the decisions; each
+  What remains, in this order (records 1 to 9 hold the decisions; each
   prompt names the records it applies):
-    * the vector invariants, two of them already satisfied (/cb-green);
     * determinism and the tiebreak (/cb-green);
     * the error vocabulary (/cb-green);
     * the boundary and the artefact rules (/cb-green);
@@ -197,22 +196,27 @@ THE DECISIONS IN FORCE
          which is which; this record states the vectors alone, and the node
          is where the full width is settled.
 
-     Applied by: the vector invariants;
-     each threshold given a contract; the surface vector's collapse.
+          each threshold given a contract; the surface vector's collapse.
 
   4. What is measured and what is not. Decided by the evidence; verified
      2026-10-26 against the two capture sessions, 250 scenes.
-       * Holds: the surface columns sum to one. Stated as five columns here
-         and measured as five, which was loose: visible_surface computes
-         substrate as the complement of FIVE content kinds - xcomp, image,
-         text, glyph and content - so the sum that is exactly one is over
-         six columns. vis_glyph was left out of the vector and out of the
-         measurement, and the 0.006 worst deviation recorded here is the
-         glyph fraction plus the rounding, not slack in the arithmetic.
-         INV-SUBSTRATE-IS-COMPLEMENT states the six-column relation; the
-         vector invariants item states what the five in the vector sum to.
-       * Holds: every column declared unit lies in [0,1], no violations.
-         This can be adopted as an invariant already satisfied.
+       * Holds, and is now INV-SURFACE-SUMS-TO-ONE: the six surface columns
+         depart from one by at most 0.0060 over 250 rows, against a
+         tolerance of 0.01 that exists for the rounding of six numbers
+         written to three decimals. The five in the vector depart by at
+         most 0.0060 as well, because vis_glyph - the one they leave out -
+         never exceeds 0.0060 on this capture. Six is the number that sums
+         exactly: visible_surface claims pixels for xcomp, image, text,
+         glyph and content, and substrate is what none of them claimed.
+       * Holds, and is now INV-UNIT-COLUMNS-BOUNDED: nine columns are
+         declared unit - overlay_frac, pat1_cover, pat1_h and the six vis_*
+         - and over 250 rows none leaves [0,1]. pat1_cover and pat1_h carry
+         28 empty fields, which is a measurement not taken and is allowed.
+       * Holds, and is now INV-ABSENT-NOT-ZERO: those same 28 scenes have
+         no repeating group and none of them writes a zero. transform('')
+         and transform(None) are nan, transform('0') is 0.0, and a nan
+         column is filled with its mean. The rule spans two files and now
+         has a check that spans them too.
        * Holds: the reduction of rs_extract.py from 1,028 lines to 404 left
          the output byte-identical on ten real dumps. Determinism is what
          made that reduction checkable rather than arguable.
@@ -249,51 +253,10 @@ THE DECISIONS IN FORCE
          surface holding the display from everything else, which is real.
          The rest is not settled.
 
-     Applied by: the vector invariants; determinism
+     Applied by: determinism
      and the tiebreak; the surface vector's collapse.
 
-  5. The rules that already failed. Decided by the evidence; each was a
-     defect that shipped, was found, and was fixed at cost.
-       * Only a node whose shouldPaint_ is set may subtract area from
-         another. IsSubTreeSkipped means cached, not invisible — on one scene
-         75 of 77 content nodes were skipped — and must never be read as a
-         visibility test.
-       * Occlusion walks the real paint order, honouring ReverseChildren
-         and PositionZ, never the order the dump prints. One dump carries
-         34 reversed parents and PositionZ values from 1 to 2200.
-       * The oversize test applies to a node's own rect, never its clipped
-         rect. Without this the detector reported 30 scenes as a repeating
-         row of plain boxes, and the boxes were Rect nodes of 8359x8360 px
-         at (-2731,-3172): blur and shadow sources three displays wide.
-       * Node counts come from the main-thread pass of the RSTree dump; a
-         repeated node id marks where the second pass begins. Counting both
-         passes doubles every node.
-       * A measurement not taken is written empty, becomes nan, and is
-         imputed to the column mean. Writing 0.0 places an absent group at
-         the small end of every scale — the mistake an earlier column made
-         on 1,266 samples. rs_pattern.py and vectors_build.py must agree on
-         this and nothing holds them to it.
-       Each of these was a comment. All five are now invariants with a
-       check that runs over real dumps rather than over the source, because
-       a regex can be satisfied by code that does the wrong thing and every
-       one of these failures was visible in the output long before it was
-       visible in the source. Measured over 40 dumps of the full capture:
-       all 40 carry a second pass and 23,939 node rects match their
-       first-pass line; all 40 carry a reversed parent and a PositionZ and
-       all 40 rank differently from the file; 2,897 of 5,771 admitted marks
-       are IsSubTreeSkipped, which is what proves skipped is not read as
-       invisibility; the 8359x8360 blur source is rejected at 18.8 windows
-       while its clipped rect is exactly 1.00, which is what a clipped test
-       would have let through.
-       One of the checks was weak when first written and passed a parse
-       that deliberately read both passes: the two passes carry the same
-       node ids, so comparing id sets cannot detect a leak. It compares
-       each node's rect against its first-pass line instead, and fails on
-       that parse.
-
-     Applied by: the vector invariants.
-
-  6. Silence is the failure mode. Decided by the evidence.
+  5. Silence is the failure mode. Decided by the evidence.
        * There is no error vocabulary at all. A missing display.txt falls
          back to 1316x2832 at density 3.5 and says nothing. A missing
          client dump drops a scene. A missing screenshot drops a row. No
@@ -306,7 +269,7 @@ THE DECISIONS IN FORCE
 
      Applied by: the error vocabulary.
 
-  7. Reproducibility. Decided by the evidence, and by one near-loss.
+  6. Reproducibility. Decided by the evidence, and by one near-loss.
        * The same session must yield a byte-identical patterns.csv.
        * Every generated artefact is produced by a tracked script from
          declared inputs. The page generator existed only as an inline
@@ -330,7 +293,7 @@ THE DECISIONS IN FORCE
      Applied by: determinism and the tiebreak; the boundary and the
      artefact rules.
 
-  8. The open question. Decided by the human, carried from the first audit
+  7. The open question. Decided by the human, carried from the first audit
      (finding F6, CRITICAL).
        * correlate.py states the premise the whole component rests on — do
          features derived from ArkUI carry information about power and
@@ -350,7 +313,7 @@ THE DECISIONS IN FORCE
 
      Applied by: correlate.py closed.
 
-  9. Names, proposed by this list and confirmed by the human before each
+  8. Names, proposed by this list and confirmed by the human before each
      envelope.
        * One module: SUB-FEATURE-RESEARCH, role neutral, containmentProfile
          unrestricted. The authority / implementation / test split is not
@@ -359,7 +322,7 @@ THE DECISIONS IN FORCE
          algorithm is written.
        * Interfaces: IF-CAPTURE-SESSION (language meta), IF-PATTERNS-ROW
          (py). IF-PAGE-PAYLOAD and IF-SCENE-RECORD are held back — see
-         record 10.
+         record 9.
        * Automatons: AUT-TREE-CHECK, the gate where tree-level static checks
          run. Every invariant needs exactly one checked-at edge to an
          automaton (AUTH-008, AUTH-012), so the static family shares this
@@ -398,7 +361,7 @@ THE DECISIONS IN FORCE
 
      Applied by: every /cb-green item.
 
-  10. What is deliberately not declared yet. Decided by the human.
+  9. What is deliberately not declared yet. Decided by the human.
        * IF-SCENE-RECORD, the shape correlate.py expects, waits until
          something produces it. An interface with no producer and no
          consumer is how the deleted C header started.
@@ -422,52 +385,6 @@ THE DECISIONS IN FORCE
 PROMPTS
 ===============================================================================
 
-/cb-green — the vector invariants, two of them already satisfied
-  - What: record 4's measured properties authored as invariants.
-    INV-SURFACE-SUMS-TO-ONE and INV-UNIT-COLUMNS-BOUNDED are adopted as
-    already satisfied — they were verified across all 250 rows, worst
-    deviation 0.006 — and an invariant that is already true is free to
-    keep. INV-ABSENT-NOT-ZERO is the cross-file agreement of record 5 that
-    nothing currently holds: rs_pattern.py writes empty and
-    vectors_build.py's transform() turns empty into nan, and both must
-    continue to.
-    The verification is re-run in this session against a real capture and
-    the figures written into the report; the 2026-10-26 figures are not
-    carried.
-  - Read: records 3, 4 and 5; vectors_build.py's transform() and VECTORS
-    table; rs_pattern.py's analyse and visible_surface.
-  - Spec areas: SUB-FEATURE-RESEARCH.
-  - Spec work:
-      add invariant INV-SURFACE-SUMS-TO-ONE (SUB-FEATURE-RESEARCH,
-        enforcementBasis runtime, strength strong): the five surface
-        columns sum to one within 0.01; contains; protects
-        IF-PATTERNS-ROW; emits ERR-SURFACE-SUM-OFF;
-      add invariant INV-UNIT-COLUMNS-BOUNDED (SUB-FEATURE-RESEARCH): every
-        column declared unit lies in [0,1]; contains; protects
-        IF-PATTERNS-ROW;
-      add invariant INV-ABSENT-NOT-ZERO (SUB-FEATURE-RESEARCH): a
-        measurement not taken is written empty, becomes nan, and is imputed
-        to the column mean; no column writes 0.0 for absence; contains;
-        protects IF-PATTERNS-ROW;
-      add error-code ERR-SURFACE-SUM-OFF (severity ERROR, language py,
-        SUB-FEATURE-RESEARCH): contains.
-  - Code path: tools/cluster/vectors_build.py and rs_pattern.py where a
-    check is added; no behaviour change expected.
-  - Test: the three checks run against a real capture, their figures in the
-    report; the pipeline output unchanged; npm run spec:check, no
-    violations.
-  - BOUNDARY: as above.
-
-  - IMPORTANT: The context you get is not hallucinated, its deterministically extracted.
-  - REFERENCE: If specification authoring details are needed, ask RIL for authoring rules.
-  - INVIOLABLE: SPECIFICATION SURFACE IS AUTHORITATIVE.
-  - INVIOLABLE: DO NOT EMIT P3_SKIPPED. If you do not need to modify the specification you must submit a reason.
-  - FORBIDDEN: MULTI-AGENT execution is not allowed. DO NOT SPAWN MULTIPLE AGENTS.
-  - WHEN TO COMMIT: Before "silk run finalize".
-  - DECISION PROTOCOL: If a decision must be made, ask for direct feedback. DO NOT DECIDE ALONE.
-  - AT THE END: update this list as the rule at the head of the list states.
-
-
 /cb-green — determinism and the tiebreak
   - What: the two properties that make any later change to the measurement
     checkable rather than arguable. Determinism is what let a 624-line
@@ -475,7 +392,7 @@ PROMPTS
     tiebreak is what stops two groups of near-equal coverage swapping slots
     between samples and jumping the whole vector — the argmax failure, one
     level up.
-  - Read: records 4 and 7; rs_pattern.py's group ordering in analyse.
+  - Read: records 4 and 6; rs_pattern.py's group ordering in analyse.
   - Spec areas: SUB-FEATURE-RESEARCH.
   - Spec work:
       add invariant INV-DETERMINISTIC-MEASUREMENT (SUB-FEATURE-RESEARCH,
@@ -501,7 +418,7 @@ PROMPTS
 
 
 /cb-green — the error vocabulary
-  - What: record 6's seven remaining error codes authored and emitted,
+  - What: record 5's seven remaining error codes authored and emitted,
     so a capture that is partly broken says so. ERR-SCENE-WITHOUT-REP was
     authored with the fix and is not repeated here.
     Each is emitted where the silence is today: the display.txt fallback to
@@ -509,7 +426,7 @@ PROMPTS
     patterns row whose shot matches nothing; owner_of returning None; a
     vector column with zero variance over a capture; the capture finding no
     screenshot command on the device.
-  - Read: record 6; rs_extract.py's read_display and session walk;
+  - Read: record 5; rs_extract.py's read_display and session walk;
     rs_pattern.py's owner_of and main; vectors_build.py's row load;
     rs_capture.ps1's Find-ShotCommand.
   - Spec areas: SUB-FEATURE-RESEARCH.
@@ -539,11 +456,11 @@ PROMPTS
 
 
 /cb-green — the boundary and the artefact rules
-  - What: record 7's three structural rules. The device side computes
+  - What: record 6's three structural rules. The device side computes
     nothing; no capture is ever tracked; every generated artefact has a
     tracked producer and declared inputs. All three are checkable from the
     tree alone, and the third is the one that was nearly lost.
-  - Read: record 7; tools/rs_capture.ps1 in full; .gitignore; the
+  - Read: record 6; tools/rs_capture.ps1 in full; .gitignore; the
     producers of every artefact the repository expects.
   - Spec areas: SUB-FEATURE-RESEARCH.
   - Spec work:
@@ -579,10 +496,10 @@ PROMPTS
     Only now, with the invariants in place: an algorithm node with no
     invariant over it is documentation.
     The two device-side algorithms are declared language meta, because the
-    enum has 23 entries and PowerShell is not among them (record 10). That
+    enum has 23 entries and PowerShell is not among them (record 9). That
     costs nothing while their invariant is that they compute nothing, and
     the gap is reported upstream rather than worked around.
-  - Read: records 2, 9 and 10; every file named under Code path, in full.
+  - Read: records 2, 8 and 9; every file named under Code path, in full.
   - Spec areas: SUB-FEATURE-RESEARCH.
   - Spec work:
       add algorithm ALG-CAPTURE-LOOP (meta): the capture loop; contains;
@@ -642,7 +559,7 @@ PROMPTS
     Where relation nodes are authored, the twelve vector columns come first
     and carry their transform and weight from record 3; the other columns
     follow only if the warning persists.
-  - Read: record 3 and record 9; the AUTH-024 text from
+  - Read: record 3 and record 8; the AUTH-024 text from
     `npm run ril -- template interface`; the graph as the algorithms item
     leaves it.
   - Spec areas: SUB-FEATURE-RESEARCH, IF-CAPTURE-SESSION, IF-PATTERNS-ROW.
@@ -709,7 +626,7 @@ PROMPTS
 
 
 /cb-green — correlate.py closed: the premise measured
-  - What: record 8's question answered. One capture session on the device
+  - What: record 7's question answered. One capture session on the device
     carrying, on one clock, a scene record per interval and a
     sample_power.sh capture of cpufreq and cpuidle; the join run; the
     answer attached to the spec as evidence.
@@ -721,7 +638,7 @@ PROMPTS
     This item is the cheapest decisive experiment in the repository and it
     has never been run. A negative answer changes what the rest of the work
     is for, and that is reported as the result, not worked around.
-  - Read: record 8; tools/correlate.py and tools/sample_power.sh in full;
+  - Read: record 7; tools/correlate.py and tools/sample_power.sh in full;
     tools/rs_capture.ps1's loop.
   - Spec areas: SUB-FEATURE-RESEARCH.
   - Spec work:
@@ -762,10 +679,10 @@ PROMPTS
     scene that still has none keeps its empty tile and its
     ERR-SCENE-WITHOUT-REP; the count should fall well below 71 and the
     report says what it fell to.
-    This is also what decides record 7's open question: if samples.csv is
+    This is also what decides record 6's open question: if samples.csv is
     read, it stops being an output with no consumer and
     IF-CAPTURE-SESSION is modified to say so.
-  - Read: record 4 and record 7; IF-CAPTURE-SESSION as it stands;
+  - Read: record 4 and record 6; IF-CAPTURE-SESSION as it stands;
     vectors_build.py; one session's samples.csv in full; rs_capture.ps1
     where it decides to photograph.
   - Spec areas: SUB-FEATURE-RESEARCH, IF-CAPTURE-SESSION.
@@ -812,7 +729,7 @@ PROMPTS
     names with a tag the mapping does not cover, and whether the geometry
     fallback already in the code can split it.
     Each finding with its evidence and a recommendation; nothing decided.
-  - Read: records 3, 4 and 10; rs_pattern.py's visible_surface, vis_kind,
+  - Read: records 3, 4 and 9; rs_pattern.py's visible_surface, vis_kind,
     mark_kind and the slot sets, in full; the full patterns.csv of a real
     capture; the page.
   - Spec work: none; an audit changes nothing.
@@ -831,12 +748,12 @@ PROMPTS
     question the list cannot answer for itself: whether the surface vector
     stays as a second measurement, is repaired, or is dropped and the
     pattern vector left alone. The ruling is written into record 3, which
-    then states the vectors in the form they keep, and record 10's caveat
+    then states the vectors in the form they keep, and record 9's caveat
     is deleted or restated.
     If the surface vector stays, IF-PAGE-PAYLOAD is planned by this session
     and placed in the order; if it is dropped, every later reference to it
     in this list is removed.
-  - Read: the audit's report; records 3, 4 and 10.
+  - Read: the audit's report; records 3, 4 and 9.
   - Spec work: none; the session writes this list and changes no node.
   - BOUNDARY: as above.
 
