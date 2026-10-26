@@ -158,6 +158,9 @@ def is_structural(n):
     return not is_drawn(n) and not is_composed(n)
 
 
+NO_SLOTS = os.environ.get("RS_NO_SLOTS") == "1"
+
+
 def mark_kind(n, density):
     """What a node puts on the screen, or "" if it puts nothing.
 
@@ -167,6 +170,24 @@ def mark_kind(n, density):
     """
     if is_composed(n):
         return "V"
+    if NO_SLOTS:
+        # the primitive before slot 28 existed: a tag that names content, or
+        # a shape that looks like an icon or a line of text
+        if not n.get("should", True):
+            return ""
+        t = n["tag"] or ""
+        if not TAG_KIND.get(t):
+            a = n["abs"]
+            if not a or a[2] <= 0 or a[3] <= 0:
+                return ""
+            w, h = a[2] / density, a[3] / density
+            ar = w / max(1.0, h)
+            if 0.7 <= ar <= 1.4 and max(w, h) <= 56:
+                return "i"
+            if ar >= 2.5 and h <= 30:
+                return "t"
+            return ""
+        return TAG_KIND[t]
     if not is_drawn(n):
         return ""
     t = n["tag"] or ""

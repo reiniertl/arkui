@@ -1,0 +1,124 @@
+"""One page, two vectors, two clusterings. Nothing else.
+
+The reference grew 27 cards documenting every column the extractor has ever
+produced, most of them pruned, constant or superseded. Two vectors are under
+development; this shows those, each clustered on its own, with every scene.
+"""
+import json, os
+
+D = json.load(open("two_payload.json", encoding="utf-8"))
+
+HTML = """<!doctype html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Scene Vectors</title>
+<style>
+  :root { --bg:#fff; --fg:#16181d; --dim:#6b7280; --line:#e3e6eb; --card:#f7f8fa;
+          --accent:#2563eb; --warn:#b45309; --code:#eef1f5; }
+  @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+    --bg:#0f1115; --fg:#e6e8ec; --dim:#9aa1ad; --line:#272b33; --card:#171a20;
+    --accent:#60a5fa; --warn:#fbbf24; --code:#11141a; } }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--fg);
+    font:15px/1.6 -apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif; }
+  .shell { display:flex; align-items:flex-start; min-height:100vh; }
+  nav { width:230px; flex:0 0 230px; border-right:1px solid var(--line);
+    padding:20px 0 50px; position:sticky; top:0; }
+  nav h1 { font-size:15px; margin:0 18px 14px; }
+  nav a { display:block; padding:9px 18px; font-size:13.5px; cursor:pointer;
+    border-left:3px solid transparent; color:var(--fg); }
+  nav a:hover { background:var(--card); }
+  nav a.on { border-left-color:var(--accent); background:var(--card); font-weight:650; }
+  nav a small { display:block; color:var(--dim); font-size:11px; font-weight:400; }
+  main { flex:1; min-width:0; padding:26px 32px 80px; max-width:1180px; }
+  h2 { font-size:22px; margin:0 0 4px; }
+  .meta { font-size:13px; color:var(--dim); margin-bottom:18px; }
+  .meta b { color:var(--fg); }
+  .fld { border-top:1px solid var(--line); padding:13px 0 4px; }
+  .k { font-size:10.5px; text-transform:uppercase; letter-spacing:.07em;
+    color:var(--dim); font-weight:700; margin-bottom:6px; }
+  table { border-collapse:collapse; width:100%; font-size:13px; margin:4px 0; }
+  td,th { text-align:left; padding:5px 9px; border-bottom:1px solid var(--line); }
+  th { font-size:10.5px; text-transform:uppercase; color:var(--dim); letter-spacing:.05em; }
+  code { background:var(--code); padding:1px 5px; border-radius:4px;
+    font:12.5px ui-monospace,"SF Mono",Menlo,Consolas,monospace; }
+  .cl { border:1px solid var(--line); border-radius:9px; margin:14px 0; overflow:hidden; }
+  .cl .hd { padding:10px 13px; background:var(--card); border-bottom:1px solid var(--line); }
+  .cl .hd .t { font-size:14px; font-weight:650; }
+  .cl .hd .s { font-size:11.5px; color:var(--dim); margin-top:2px; }
+  .pics { display:flex; gap:9px; padding:11px 13px; overflow-x:auto; }
+  .pic { flex:0 0 118px; }
+  .pic img { width:100%; border-radius:5px; border:1px solid var(--line); display:block; }
+  .pic .cap { font-size:9.5px; color:var(--dim); margin-top:3px; line-height:1.45;
+    font-family:ui-monospace,"SF Mono",Menlo,Consolas,monospace; }
+  .flag { color:var(--warn); font-weight:650; }
+  @media (max-width:760px){ .shell{display:block} nav{width:auto;position:static;
+    border-right:0;border-bottom:1px solid var(--line)} main{padding:18px 14px 50px} }
+</style></head><body>
+<div class="shell">
+  <nav><h1>Scene vectors</h1><div id="menu"></div></nav>
+  <main id="pane"></main>
+</div>
+<script>
+var DATA = __DATA__;
+(function () {
+  function esc(s){return String(s==null?"":s).replace(/&/g,"&amp;")
+    .replace(/</g,"&lt;").replace(/>/g,"&gt;");}
+  var keys = Object.keys(DATA);
+  document.getElementById("menu").innerHTML = keys.map(function (k) {
+    var v = DATA[k];
+    return "<a data-k='" + k + "'>" + esc(v.title)
+      + "<small>" + v.k + " clusters \\u00b7 " + v.cols.length + " columns</small></a>";
+  }).join("");
+  function show(k) {
+    var v = DATA[k];
+    [].forEach.call(document.querySelectorAll("nav a"), function (a) {
+      a.classList.toggle("on", a.dataset.k === k); });
+    var h = "<h2>" + esc(v.title) + "</h2><div class='meta'>"
+      + v.n + " scenes \\u00b7 <b>" + v.k + " clusters</b> \\u00b7 "
+      + v.outliers + " fitting none (" + Math.round(100*v.outliers/v.n) + "%)"
+      + " \\u00b7 silhouette <b>" + v.silhouette + "</b>"
+      + " \\u00b7 min_cluster_size " + v.mcs + "</div>";
+    h += "<p style='margin:0 0 6px'>" + esc(v.blurb) + "</p>";
+    h += "<div class='fld'><div class='k'>The columns</div><table><tr><th>column</th>"
+       + "<th>transform</th><th>weight</th><th>what it measures</th></tr>"
+       + v.cols.map(function (c) {
+           return "<tr><td><code>" + esc(c.name) + "</code></td><td><code>" + esc(c.t)
+                + "</code></td><td>" + c.w + "</td><td style='color:var(--dim)'>"
+                + esc(c.what) + "</td></tr>"; }).join("")
+       + "</table><div style='font-size:12px;color:var(--dim);margin-top:5px'>"
+       + "PCA variance explained: "
+       + v.explained.map(function (x){return (100*x).toFixed(0)+"%";}).join(" / ")
+       + "</div></div>";
+    h += "<div class='fld'><div class='k'>Every scene in every cluster</div>"
+       + "<div style='font-size:12.5px;color:var(--dim);margin-bottom:4px'>"
+       + "Ordered from each cluster's centre outwards, so the last tiles are where it "
+       + "frays.</div>";
+    v.groups.forEach(function (g) {
+      var none = g.id < 0;
+      h += "<div class='cl'><div class='hd'><div class='t'>"
+         + (none ? "fitted no cluster" : "cluster " + g.id)
+         + " \\u00b7 " + g.n + " scenes</div><div class='s'>"
+         + (none ? "reported rather than forced into the nearest group"
+                 : "cohesion " + g.cohesion + " \\u00b7 "
+                   + g.labels.map(function (l){return esc(l[0])+" \\u00d7"+l[1];}).join(" \\u00b7 "))
+         + "</div></div><div class='pics'>";
+      g.reps.forEach(function (r) {
+        h += "<div class='pic'><img loading='lazy' src='" + r.img + "'><div class='cap'>"
+           + "sil " + (r.sil === null ? "\\u2014" : r.sil) + "<br>"
+           + r.cap.map(esc).join("<br>") + "</div></div>";
+      });
+      h += "</div></div>";
+    });
+    h += "</div>";
+    document.getElementById("pane").innerHTML = h;
+  }
+  [].forEach.call(document.querySelectorAll("nav a"), function (a) {
+    a.addEventListener("click", function () { show(a.dataset.k); }); });
+  show(keys[0]);
+})();
+</script></body></html>
+"""
+open("vectors.html", "w", encoding="utf-8").write(
+    HTML.replace("__DATA__", json.dumps(D, ensure_ascii=False)))
+print("wrote vectors.html  %.1f MB" % (os.path.getsize("vectors.html") / 1048576))
