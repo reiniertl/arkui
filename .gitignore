@@ -71,3 +71,20 @@ node_modules/
 # the skills, agents and hooks come from know_kernel and stay per
 # machine, like the engine they drive
 .claude/
+
+# Generated deliverables. Every one is rebuilt from tracked code plus a
+# capture, and a capture never lives here - so these are outputs, not
+# sources, and they sit beside the code only because that is where you
+# want to open them from.
+#   vectors.html / scene_feature_reference.html  <- vectors_page.py
+#   two_payload.json                             <- vectors_build.py
+#   patterns*.csv                                <- rs_pattern.py
+#   scene_data_*.pdf / .pptx                     <- tools/deck
+vectors.html
+scene_feature_reference.html
+two_payload.json
+patterns.csv
+patterns_*.csv
+scene_data_*.pdf
+scene_data_*.pptx
+scene_results.html
