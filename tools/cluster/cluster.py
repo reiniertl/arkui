@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
-"""Cluster captured screens on geometry alone, and say where ArkUI is blind.
+"""Cluster captured displays on geometry alone, and say where ArkUI is blind.
 
 The classifier in scene_class.ps1 is a DISTILLED form: twenty-three class
 names written by hand before the data existed.  This does it the other way
-round - take what real screens actually look like, group them on structure
+round - take what real displays actually look like, group them on structure
 alone, and let the class set fall out of the groups.
 
 Two rules it is built around:
@@ -45,7 +45,7 @@ from sklearn.metrics import silhouette_score, silhouette_samples
 # the extractor, so no panel size and no pixel count reaches this file.
 #
 # weight exists because standardisation alone inflates a rare binary flag
-# into a dominant axis: `bar_edit` is 1 on maybe a twentieth of screens, so
+# into a dominant axis: `bar_edit` is 1 on maybe a twentieth of displays, so
 # its z-score swings by 4.5 while `rep_frac` swings by 1.
 # ---------------------------------------------------------------------------
 FEATURES = [
@@ -60,14 +60,14 @@ FEATURES = [
     ("rs_repeat_n",    "log1p",   0.7),
     # The content fractions sit below the structural ones on purpose.
     #
-    # At parity they split three sets of screens that a person reading the
+    # At parity they split three sets of displays that a person reading the
     # thumbnails called alike, separating them on text_frac alone - 2.2
     # standard deviations - while repeat count, fan-out and depth barely
-    # moved. Three screens built the same way carrying different amounts of
+    # moved. Three displays built the same way carrying different amounts of
     # text were being filed as three kinds.
     #
     # They are not noise, though, and cannot go much lower: at 0.5 the trio
-    # does merge, but a cluster of six screens the same reader called
+    # does merge, but a cluster of six displays the same reader called
     # homogeneous breaks in two, and at 0.35 into three. 0.75 is the whole
     # free move - it halves the over-splitting and costs nothing that was
     # already right.
@@ -87,7 +87,7 @@ FEATURES = [
     ("rs_paint_frac",  "unit",    0.75),  # how much of it carries content, not boxes
 
     # ---- arrangement -----------------------------------------------------
-    # How the screen is laid out, rather than how much is on it. Without
+    # How the display is laid out, rather than how much is on it. Without
     # these the vector measured densities, fractions and counts and nothing
     # else, so three clusters collapsed onto one point at den 0.60, depth 18,
     # leaf 0.30, scroll 8 and separated only on content. cols was called the
@@ -96,13 +96,13 @@ FEATURES = [
     # The shape of what repeats, as a distribution rather than a winner.
     #
     # cols, rows_n, item_h and item_aspect used to come from ONE repeating
-    # group - whichever covered the most area. A screen normally has several
+    # group - whichever covered the most area. A display normally has several
     # at once, a feed's cards beside its action rail, and reporting only the
     # winner threw the rest away and made the descriptor jump whenever the
     # two traded places. Ablation and SHAP both put item_h, item_aspect and
     # cols at the top of what the partition rests on, and a correlation
     # audit found them to be one axis wearing three names, so the flip moved
-    # half the geometry of the scene at once. One screen crossed between two
+    # half the geometry of the scene at once. One display crossed between two
     # clusters sixteen times across 55 samples without changing.
     #
     # item_h0..4 and item_ar0..2 are the area-weighted share of repeating
@@ -204,7 +204,7 @@ HELD_OUT = ("shape", "split_main", "scene", "name", "window", "pid", "described"
 
 def transform(kind, raw):
     # An empty field is a measurement that was not taken, not a zero. item_h
-    # was reported as 0.0 when a screen had no repeating group, and on a
+    # was reported as 0.0 when a display had no repeating group, and on a
     # continuous scale that reads as the smallest possible items rather than
     # as absence. It comes back as nan and is filled with the column mean
     # below, so the dimension contributes nothing to the distance instead of
@@ -255,7 +255,7 @@ def load_sessions(dirs, out):
     """Several capture sessions, read as one measurement.
 
     Nothing has to be merged on disk. The layout signature is the join: the
-    same screen captured on two different days hashes the same, so dedupe
+    same display captured on two different days hashes the same, so dedupe
     folds them together and the dwell adds up by itself. All this does is
     make every screenshot path relative to wherever the viewer will sit, so
     the sessions can stay where they are.
@@ -289,11 +289,11 @@ def thumb_name(shot):
 
 
 def dedupe(rows):
-    """One entry per distinct screen; how many samples it had is its dwell.
+    """One entry per distinct display; how many samples it had is its dwell.
 
-    Without this, half an hour parked on one feed outvotes every other screen
+    Without this, half an hour parked on one feed outvotes every other display
     in the session and the clusters describe how the phone was used rather
-    than what screens exist.
+    than what displays exist.
     """
     groups = defaultdict(list)
     for r in rows:
@@ -511,14 +511,14 @@ def main():
     ap.add_argument("session", nargs="+",
                     help="one or more capture directories written by -Capture. "
                          "Several are read as ONE measurement: dwell accumulates "
-                         "across them, because the same screen hashes the same")
+                         "across them, because the same display hashes the same")
     ap.add_argument("--out", default="",
                     help="where clusters.js, viewer.html and thumbs/ are written. "
                          "Default: the session itself, or captures\\merged for several")
     ap.add_argument("--min-cluster", type=int, default=0,
-                    help="smallest group that counts as a cluster (default: 2%% of screens, min 5)")
+                    help="smallest group that counts as a cluster (default: 2%% of displays, min 5)")
     # 990, not 800. The fast capture reads every 0.31s, and at that rate a
-    # screen barely changes between consecutive reads even mid-scroll: half
+    # display barely changes between consecutive reads even mid-scroll: half
     # of all samples agree with the one before to 1000 permille and the
     # tenth percentile is 786. A cut at 800 therefore passes almost every
     # moving sample through, and those samples bridge the gaps between the
@@ -527,7 +527,7 @@ def main():
     # best silhouette of the sweep while still keeping 70% of the samples.
     # The old 800 was calibrated for a loop that sampled every few seconds.
     ap.add_argument("--still", type=int, default=990,
-                    help="a sample below this structural hold was taken while the screen "
+                    help="a sample below this structural hold was taken while the display "
                          "was moving: it has no screenshot and does not define a screen "
                          "(default 800, matching -MoveTol 200)")
     ap.add_argument("--include-moving", action="store_true",
@@ -634,10 +634,10 @@ def main():
 
     # A sample taken mid-scroll has a real tree but no matching picture, and
     # its layout signature is a one-off - the list happened to be at that
-    # offset once. Letting those define screens would bury the session in
+    # offset once. Letting those define displays would bury the session in
     # near-identical entries, so they are held aside and attributed to the
     # clusters they resemble after the fact. That keeps the dwell honest
-    # without letting scrolling invent screens.
+    # without letting scrolling invent displays.
     def hold(r):
         v = str(r.get("still", "")).strip()
         if not v:
@@ -650,7 +650,7 @@ def main():
     moving = [] if args.include_moving else [r for r in raw if hold(r) < args.still]
     settled = raw if args.include_moving else [r for r in raw if hold(r) >= args.still]
     if moving:
-        print("  %d of %d samples were taken while the screen was moving (%.0f%%)"
+        print("  %d of %d samples were taken while the display was moving (%.0f%%)"
               % (len(moving), len(raw), 100.0 * len(moving) / len(raw)))
 
     if args.app:
@@ -686,7 +686,7 @@ def main():
     # Collapse measurements that are the same measurement twice, and carry
     # the count as dwell.
     #
-    # A screen held still produces nearly the same vector sample after
+    # A display held still produces nearly the same vector sample after
     # sample: of 780 samples from one app, 674 had a nearest neighbour at
     # distance exactly zero. Points at distance zero have unbounded density,
     # so HDBSCAN makes each such group a cluster whatever surrounds it - and
@@ -908,7 +908,7 @@ def quality(s):
         return "- clusters are well separated"
     if s >= 0.25:
         return "- clusters are real but overlapping; expect boundary disputes"
-    return "- WEAK. The vector may not carry what separates these screens."
+    return "- WEAK. The vector may not carry what separates these displays."
 
 
 def blind_spots(rows, clusters):

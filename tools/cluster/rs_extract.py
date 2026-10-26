@@ -446,14 +446,14 @@ def measure(tree, surf, density, disp_area, dw=1316.0, dh=2832.0):
             continue
         # Judged on the node OWN rect, not on how much of it is visible.
         #
-        # The visible area moves as the screen scrolls and the rule is a
+        # The visible area moves as the display scrolls and the rule is a
         # hard line, so a full-height card slipped under it when scrolled
         # and sat above it when settled. Two samples of one feed, one pixel
         # apart in card height - 1316x2563 against 1316x2562 - took
         # opposite sides: the settled card excluded at 90% visible, the
         # scrolled one kept at 56%. Whichever way it fell decided which
         # group won, so item_h alternated between 0.061 and 0.905 and one
-        # screen flipped between two clusters sixteen times without
+        # display flipped between two clusters sixteen times without
         # changing. A card is the same card either way, and its own rect
         # does not move.
         if (n["abs"][2] * n["abs"][3]) > 0.6 * disp_area:
@@ -476,10 +476,10 @@ def measure(tree, surf, density, disp_area, dw=1316.0, dh=2832.0):
 
     # ---- arrangement -----------------------------------------------------
     #
-    # How the screen is laid out, as opposed to how much is on it. The vector
+    # How the display is laid out, as opposed to how much is on it. The vector
     # had densities, fractions and counts and nothing about arrangement, so
-    # screens built the same way and carrying different amounts of text were
-    # separating while screens laid out differently collapsed onto one point.
+    # displays built the same way and carrying different amounts of text were
+    # separating while displays laid out differently collapsed onto one point.
     #
     # These were uitest features once, which is a historical accident: when
     # they were written uitest was the only source of per-component rects.
@@ -508,7 +508,7 @@ def measure(tree, surf, density, disp_area, dw=1316.0, dh=2832.0):
         # discontinuous: when two groups cover similar area - a feed's cards
         # against its action rail - the argmax alternates between samples and
         # the reported item height jumps to a different group's geometry. One
-        # screen flipped between two clusters sixteen times across 55
+        # display flipped between two clusters sixteen times across 55
         # samples, and item_h was among the three features responsible in ten
         # of the eleven pictures that appeared in more than one cluster.
         #
@@ -537,7 +537,7 @@ def measure(tree, surf, density, disp_area, dw=1316.0, dh=2832.0):
     # ---- the same shape, as a distribution instead of a winner -------
     #
     # Everything above picks ONE group and reports its geometry. That is
-    # a winner-take-all read of a screen that usually has several
+    # a winner-take-all read of a display that usually has several
     # repeating things on it at once - a feed has cards and an action
     # rail, a gallery has tiles and a tab row - and the loser's geometry
     # is discarded entirely. Worse, the pick is unstable: when two groups
@@ -546,7 +546,7 @@ def measure(tree, surf, density, disp_area, dw=1316.0, dh=2832.0):
     # item_h and item_aspect carry the partition, and a correlation
     # audit found the repeat block holding a third of the features but
     # 47% of the squared pairwise distance - so when the pick flips,
-    # half the geometry of the scene flips with it. One screen moved
+    # half the geometry of the scene flips with it. One display moved
     # between clusters sixteen times across 55 samples without changing.
     #
     # The fix is to stop choosing. Every group contributes, weighted by
@@ -559,7 +559,7 @@ def measure(tree, surf, density, disp_area, dw=1316.0, dh=2832.0):
     # The earlier attempt at this - a plain mean over groups - failed
     # because it turned 41 discrete item heights into 250 and left one
     # continuum with no density valley to cut. The bands are what keeps
-    # that from happening: they are coarse on purpose, so screens still
+    # that from happening: they are coarse on purpose, so displays still
     # pile onto a handful of shapes, and the soft edges only decide what
     # happens between them.
     # The two size filters above are cliffs of the same kind as the
@@ -603,7 +603,7 @@ def measure(tree, surf, density, disp_area, dw=1316.0, dh=2832.0):
         tot += a
     if tot > 0:
         # shares, so the bands say what shape the repeats are and
-        # repeat_frac alone says how much of the screen they cover.
+        # repeat_frac alone says how much of the display they cover.
         # Keeping magnitude out of them stops the block from carrying
         # the same fact twice, which is what the prune was removing.
         for i, v in enumerate(hmass):
@@ -626,7 +626,7 @@ def measure(tree, surf, density, disp_area, dw=1316.0, dh=2832.0):
     sh["bar_top"], sh["bar_bot"] = round(bt, 3), round(bb, 3)
 
     # stacked divisions of the content band: distinct horizontal bands among
-    # the wide, tall leaves. A split screen and a single pane differ here.
+    # the wide, tall leaves. A split display and a single pane differ here.
     bands = {(round(n["abs"][1] / 60), round((n["abs"][1] + n["abs"][3]) / 60))
              for n in leaves if n["abs"][2] >= 0.6 * dw and n["abs"][3] >= 0.05 * dh}
     sh["split_n"] = len(bands)
@@ -760,8 +760,8 @@ def build_scene(tree, cmap, disp):
     # Arrangement comes from the contributor that owns the scene, not summed
     # across them and not averaged with them: columns counted over a grid, a
     # status bar and a nav bar add up to six columns of nothing. A status bar
-    # has a layout, but it is not the screen's layout.
-    # All of these describe ONE screen's layout, so all come from the
+    # has a layout, but it is not the display's layout.
+    # All of these describe ONE display's layout, so all come from the
     # contributor that owns the scene. repeat_n and repeat_frac used to be
     # summed and weighted across contributors instead, which is how 740
     # samples ended up reporting four repeats with no columns: the status bar
@@ -910,7 +910,7 @@ def session_rows(sdir, per_sample):
             # the clustering - 718 captures became 584 before deduplication.
             # The fast capture path dropped the stillness guard and kept
             # every sample, so transitions, scroll states and mid-animation
-            # frames went into the clustering as though they were screens
+            # frames went into the clustering as though they were displays
             # somebody was looking at. The clusterer still asks for this
             # column and defaults to 800 permille; it was simply never
             # written.

@@ -60,7 +60,7 @@ def _inside(a, b):
 
 def clipped(r, dw, dh):
     """The part of a rect that is on the display. A card scrolled half off
-    screen covers half a window, not a whole one."""
+    display covers half a window, not a whole one."""
     x0, y0 = max(r[0], 0.0), max(r[1], 0.0)
     x1, y1 = min(r[0] + r[2], dw), min(r[1] + r[3], dh)
     if x1 <= x0 or y1 <= y0:
@@ -79,7 +79,7 @@ def surface_kind(n):
     This block first accepted any large painting node, ranked image over
     plain box. Checked against the screenshots that was wrong: 77 'painted
     box' and 90 'image surface' scenes all reported cover 1.00, on comment
-    pages, shopping pages and list screens alike, because what it found was
+    pages, shopping pages and list displays alike, because what it found was
     the window's background fill or a blurred backdrop drawn as one
     full-window Image leaf. A backdrop paints, covers everything, and says
     nothing.
@@ -108,7 +108,7 @@ SLOT_CHILDREN = 29          # CHILDREN
 # the enum's four save/restore pairs: SAVE_ALL/RESTORE_ALL,
 # BG_SAVE_BOUNDS/BG_RESTORE_BOUNDS, SAVE_FRAME/RESTORE_FRAME and the
 # bounds pair around them. A bracket sets up or tears down a clip; it puts
-# nothing on the screen.
+# nothing on the display.
 #
 # 11 and 12 were the first two members of the background family here, and
 # they sit on 31.6% of all nodes - every clipping container. That is why
@@ -138,12 +138,12 @@ def is_composed(n):
 
 
 def is_drawn(n):
-    """A node that puts a mark on the screen this frame.
+    """A node that puts a mark on the display this frame.
 
     Slot 28 is the content pass, and shouldPaint_ is the renderer's verdict
     on whether it happens. NOT IsSubTreeSkipped: that means the subtree was
     not re-traversed, which is caching, not absence - on one scene 75 of 77
-    content nodes are skipped while the screen is plainly full of images.
+    content nodes are skipped while the display is plainly full of images.
     Using it as a visibility filter would discard most of the content.
     """
     if not n.get("should", True):
@@ -162,7 +162,7 @@ NO_SLOTS = os.environ.get("RS_NO_SLOTS") == "1"
 
 
 def mark_kind(n, density):
-    """What a node puts on the screen, or "" if it puts nothing.
+    """What a node puts on the display, or "" if it puts nothing.
 
     Replaces the old leaf_kind, which asked whether a node had children.
     That was wrong in both directions: 73% of leaves draw nothing and 16%
@@ -382,7 +382,7 @@ class Scene:
         return [k for k in self.kids.get(nid, ()) if k not in self.overlay]
 
     def pattern(self, nid):
-        """The kinds of content this branch puts on screen, sorted.
+        """The kinds of content this branch puts on display, sorted.
 
         Every mark in the subtree counts, wherever it sits - a container
         that paints its own background is a mark as well as a joint, and a
@@ -491,7 +491,7 @@ def media_surface(sc, dw, dh, own_area, used, order):
         # It must actually be drawn this frame. shouldPaint_ alone: the
         # Image that reported a plainly visible player as covered carries
         # shouldPaint_[0], while IsSubTreeSkipped marks cached content that
-        # is still on screen and would discard most of it.
+        # is still on display and would discard most of it.
         if not (is_drawn(m) or is_composed(m)):
             continue
         q = clipped(m["abs"], dw, dh) if m["abs"] and m["abs"][2] > 0 else None
@@ -620,7 +620,7 @@ def describe(pat, arr, cols, rows, cover):
     if arr == "grid":
         # Columns only. "grid 2x3" and "grid 2x7" are one layout seen at two
         # scroll offsets - the row count says how far down the list is, not
-        # what kind of screen it is, and it split 33 scenes of one gallery
+        # what kind of display it is, and it split 33 scenes of one gallery
         # into six motifs. pat_rows keeps the number for anyone who wants it.
         lay = "grid, %d columns" % cols
     elif arr == "column":
@@ -661,7 +661,7 @@ def analyse(tree, owner, density, dw, dh):
         for (p, inner), mem in by.items():
             if len(mem) < 2:
                 continue
-            # clipped to the window: a card scrolled half off screen covers
+            # clipped to the window: a card scrolled half off display covers
             # half a window, not a whole one
             rects = []
             for m in mem:
@@ -696,7 +696,7 @@ def analyse(tree, owner, density, dw, dh):
 
     # A full-bleed repeating page - the short-form feed - is a media surface
     # wearing a repeat's clothes. It goes to the surface block, and the
-    # pattern block describes whatever else is on the screen, so the two
+    # pattern block describes whatever else is on the display, so the two
     # never claim the same pixels.
     def fullbleed(g):
         return (g["h"] / dh >= FULLBLEED_H
