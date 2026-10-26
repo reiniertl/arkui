@@ -99,7 +99,14 @@ def surface_kind(n):
     return 3 if any(k in t for k in SURF_TAGS) else 0
 
 
-VIS_KINDS = ("video", "image", "text", "glyph", "fill")
+# RSDrawableSlot on this build, recovered by aligning the published enum on
+# the SAVE_FRAME / RESTORE_FRAME pair. See parse_tree for the derivation.
+SLOT_CONTENT = 28           # CONTENT_STYLE
+SLOT_CHILDREN = 29          # CHILDREN
+SLOTS_BACKGROUND = frozenset((10, 11, 12, 13, 14))   # colour, shader, image, filter
+SLOTS_BORDER = frozenset((6, 43))                    # OUTLINE, BORDER
+
+VIS_KINDS = ("xcomp", "image", "text", "glyph", "content", "background", "border")
 
 
 def is_composed(n):
@@ -119,7 +126,10 @@ def is_drawn(n):
     content nodes are skipped while the screen is plainly full of images.
     Using it as a visibility filter would discard most of the content.
     """
-    return n["paints"] and n.get("should", True)
+    if not n.get("should", True):
+        return False
+    sl = n.get("slotset") or frozenset()
+    return bool(sl & ({SLOT_CONTENT} | SLOTS_BACKGROUND | SLOTS_BORDER))
 
 
 def is_structural(n):
@@ -156,14 +166,34 @@ def mark_kind(n, density):
 
 
 def vis_kind(n):
-    t = n["tag"] or ""
+    """What a node puts on the display, by what it actually draws.
+
+    The type comes from two independent places and both are needed. The
+    component tag says image, text or glyph, and nothing else identifies an
+    external surface. The drawable slots say background and border, which no
+    tag reports - 32% of nodes draw a background and they were all landing in
+    one "fill" bucket that averaged 0.39 of the display and meant nothing.
+
+    Within one node the content pass sits above its own background, so a node
+    that draws both is attributed to its content.
+    """
     if is_composed(n):
-        return "video"
-    for k, v in (("Image", "image"), ("Text", "text"),
-                 ("SymbolGlyph", "glyph"), ("Divider", "glyph")):
-        if k in t:
-            return v
-    return "fill"
+        return "xcomp"
+    sl = n.get("slotset") or frozenset()
+    if SLOT_CONTENT in sl:
+        t = n["tag"] or ""
+        if "Image" in t:
+            return "image"
+        if "Text" in t:
+            return "text"
+        if "SymbolGlyph" in t or "Divider" in t:
+            return "glyph"
+        return "content"          # draws, but nothing says what
+    if sl & SLOTS_BACKGROUND:
+        return "background"
+    if sl & SLOTS_BORDER:
+        return "border"
+    return ""                      # structural: draws nothing
 
 
 def visible_surface(sc, dw, dh, own_area, order, step=4):
@@ -189,6 +219,8 @@ def visible_surface(sc, dw, dh, own_area, order, step=4):
             continue
         if not (is_drawn(n) or is_composed(n)):
             continue
+        if not vis_kind(n):
+            continue
         # Size is judged on the node's OWN rect, never on the clipped one:
         # an 8198x8198 blur source clips to exactly the window and so slips
         # through a clipped-area test, which is how five of them ended up
@@ -210,7 +242,7 @@ def visible_surface(sc, dw, dh, own_area, order, step=4):
     out = {}
     for k in VIS_KINDS:
         out["vis_" + k] = round(min(1.0, int((grid == idx[k]).sum()) * cell / tot), 3)
-    out["vis_bare"] = round(max(0.0, 1.0 - sum(out.values())), 3)
+    out["vis_residual"] = round(max(0.0, 1.0 - sum(out.values())), 3)
     out["vis_marks"] = len(marks)
     return out
 

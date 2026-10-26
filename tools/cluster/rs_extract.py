@@ -232,6 +232,17 @@ def parse_tree(lines):
             continue
         slots = [int(x) for x in dv.group(1).split(",") if x.strip()]
         nodes[nid]["slots"] = len(slots)
+        nodes[nid]["slotset"] = frozenset(slots)
+        # Slot 28 is CONTENT_STYLE on this build. The device's drawable
+        # vector is longer than any published OpenHarmony release - it emits
+        # slot 50 where master's enum ends at MAX = 46 - so the mapping was
+        # recovered by alignment rather than read: slots 24 and 31 occur
+        # together 3570 times and alone never once, which identifies them as
+        # the SAVE_FRAME / RESTORE_FRAME pair, and anchoring there puts the
+        # content region at master's numbering plus four. 28 and 29 then fall
+        # on CONTENT_STYLE and CHILDREN, which matches what they do: 3506 of
+        # 3805 vectors carry exactly one of the two, and the 51 that carry
+        # both are drawing containers.
         nodes[nid]["paints"] = 28 in slots
         sp = RX_SHOULD.search(l)
         if sp:
