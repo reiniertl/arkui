@@ -27,6 +27,7 @@ Three sibling relationships, which the earlier code did not separate:
                 these are candidates for a repeat.
 """
 import re, os, sys, csv, glob, argparse
+import numpy as np
 from collections import defaultdict
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -96,6 +97,122 @@ def surface_kind(n):
     fills, which was 0.26 on one scene and 0.89 on another."""
     t = n["tag"] or ""
     return 3 if any(k in t for k in SURF_TAGS) else 0
+
+
+VIS_KINDS = ("video", "image", "text", "glyph", "fill")
+
+
+def is_composed(n):
+    """An externally rendered surface. It has no content drawable at all -
+    an XComponent's slots are [11, 12, 24, 29, 31, 47], no 28 - because the
+    compositor draws it, not the render pass. A decomposition keyed on slot
+    28 therefore reports video as zero, which is how this was found."""
+    return any(k in (n["tag"] or "") for k in SURF_TAGS)
+
+
+def is_drawn(n):
+    """A node that puts a mark on the screen this frame.
+
+    Slot 28 is the content pass, and shouldPaint_ is the renderer's verdict
+    on whether it happens. NOT IsSubTreeSkipped: that means the subtree was
+    not re-traversed, which is caching, not absence - on one scene 75 of 77
+    content nodes are skipped while the screen is plainly full of images.
+    Using it as a visibility filter would discard most of the content.
+    """
+    return n["paints"] and n.get("should", True)
+
+
+def is_structural(n):
+    """Slot 29 is the children-only pass: the node positions and clips its
+    children and draws nothing itself. The skeleton, never a mark."""
+    return not is_drawn(n) and not is_composed(n)
+
+
+def mark_kind(n, density):
+    """What a node puts on the screen, or "" if it puts nothing.
+
+    Replaces the old leaf_kind, which asked whether a node had children.
+    That was wrong in both directions: 73% of leaves draw nothing and 16%
+    of marks are containers painting their own background.
+    """
+    if is_composed(n):
+        return "V"
+    if not is_drawn(n):
+        return ""
+    t = n["tag"] or ""
+    k = TAG_KIND.get(t)
+    if k:
+        return k
+    a = n["abs"]
+    if not a or a[2] <= 0 or a[3] <= 0:
+        return ""
+    w, h = a[2] / density, a[3] / density
+    ar = w / max(1.0, h)
+    if 0.7 <= ar <= 1.4 and max(w, h) <= 56:
+        return "i"
+    if ar >= 2.5 and h <= 30:
+        return "t"
+    return "b"
+
+
+def vis_kind(n):
+    t = n["tag"] or ""
+    if is_composed(n):
+        return "video"
+    for k, v in (("Image", "image"), ("Text", "text"),
+                 ("SymbolGlyph", "glyph"), ("Divider", "glyph")):
+        if k in t:
+            return v
+    return "fill"
+
+
+def visible_surface(sc, dw, dh, own_area, order, step=4):
+    """What you can actually SEE, by content type.
+
+    A painter's pass, topmost first: every mark claims only the area that
+    nothing above it has already claimed. An Image inside a container that
+    also paints wins the pixels it covers, because it is above its
+    container - the nesting case resolved by construction rather than by a
+    rule. The result is a composition of the display that sums to one.
+
+    Rasterised at `step` pixels rather than unioned rectangle by rectangle,
+    because the incremental union is O(n^2) in sweep-line calls and costs
+    more than the whole rest of the extractor. At 4 px the area error is
+    under a percent.
+    """
+    W, H = int(dw // step) + 1, int(dh // step) + 1
+    grid = np.zeros((H, W), dtype=np.uint8)
+    idx = {k: i + 1 for i, k in enumerate(VIS_KINDS)}
+    marks = []
+    for nid, n in sc.N.items():
+        if not sc._mine(nid):
+            continue
+        if not (is_drawn(n) or is_composed(n)):
+            continue
+        # Size is judged on the node's OWN rect, never on the clipped one:
+        # an 8198x8198 blur source clips to exactly the window and so slips
+        # through a clipped-area test, which is how five of them ended up
+        # painted over a video and the display read as 87% plain fill.
+        if _area(n["abs"]) > OVERSIZE * own_area:
+            continue
+        q = clipped(n["abs"], dw, dh) if n["abs"] and n["abs"][2] > 0 else None
+        if not q:
+            continue
+        marks.append((order.get(nid, 0), q, vis_kind(n)))
+    marks.sort(key=lambda m: -m[0])              # topmost first
+    for _, q, k in marks:
+        x0, y0 = int(q[0] // step), int(q[1] // step)
+        x1, y1 = int((q[0] + q[2]) // step) + 1, int((q[1] + q[3]) // step) + 1
+        sub = grid[y0:y1, x0:x1]
+        np.putmask(sub, sub == 0, idx[k])
+    cell = float(step * step)
+    tot = float(dw * dh)
+    out = {}
+    for k in VIS_KINDS:
+        out["vis_" + k] = round(min(1.0, int((grid == idx[k]).sum()) * cell / tot), 3)
+    out["vis_bare"] = round(max(0.0, 1.0 - sum(out.values())), 3)
+    out["vis_marks"] = len(marks)
+    return out
 
 
 def leaf_kind(n, density):
@@ -194,20 +311,23 @@ class Scene:
         return [k for k in self.kids.get(nid, ()) if k not in self.overlay]
 
     def pattern(self, nid):
-        """The kinds of content this branch draws, sorted. None if it holds
-        more than a cell's worth."""
+        """The kinds of content this branch puts on screen, sorted.
+
+        Every mark in the subtree counts, wherever it sits - a container
+        that paints its own background is a mark as well as a joint, and a
+        childless node that draws nothing is neither. The old version
+        descended to childless nodes and read those, which on one scene
+        meant reading 131 leaves of which 2 drew anything.
+        """
         out, stack = [], [nid]
         while stack and len(out) <= BUDGET:
             c = self.N.get(stack.pop())
             if c is None:
                 continue
-            ks = self.base(c["id"])
-            if not ks:
-                k = leaf_kind(c, self.d)
-                if k:
-                    out.append(k)
-            else:
-                stack.extend(ks)
+            k = mark_kind(c, self.d)
+            if k:
+                out.append(k)
+            stack.extend(self.base(c["id"]))
         if not out or len(out) > BUDGET:
             return None
         return "".join(sorted(out))
@@ -297,7 +417,11 @@ def media_surface(sc, dw, dh, own_area, used, order):
         # its leaves overlap too.
         if m["kids"]:
             continue
-        if not (m["paints"] or (m["tag"] or "") in ("Text", "Image", "SymbolGlyph")):
+        # It must actually be drawn this frame. shouldPaint_ alone: the
+        # Image that reported a plainly visible player as covered carries
+        # shouldPaint_[0], while IsSubTreeSkipped marks cached content that
+        # is still on screen and would discard most of it.
+        if not (is_drawn(m) or is_composed(m)):
             continue
         q = clipped(m["abs"], dw, dh) if m["abs"] and m["abs"][2] > 0 else None
         if not q:
@@ -361,27 +485,27 @@ def draw_state(sc, dw, dh, own_area, surf_id):
     composed, whatever its rectangle says, and a scene where a third of the
     tree is skipped is not the same workload as one where none of it is.
     """
-    n_all = n_skip = n_nopaint = 0
-    skip_rects = []
+    n_all = n_mark = n_cached = n_nopaint = 0
     for nid, n in sc.N.items():
         if not sc._mine(nid):
             continue
         n_all += 1
-        if n["skipped"]:
-            n_skip += 1
-            q = clipped(n["abs"], dw, dh) if n["abs"] and n["abs"][2] > 0 else None
-            if q:
-                skip_rects.append(q)
+        if is_drawn(n) or is_composed(n):
+            n_mark += 1
+            # cached: the subtree was not re-traversed. Still composited,
+            # so it costs composition but not rasterisation - which is cost
+            # information, and the reason it must not be a visibility test.
+            if n["skipped"]:
+                n_cached += 1
         if not n.get("should", True):
             n_nopaint += 1
-    out = {"draw_skip_frac": round(n_skip / n_all, 3) if n_all else "",
+    out = {"draw_mark_frac": round(n_mark / n_all, 3) if n_all else "",
+           "draw_cached_frac": round(n_cached / n_mark, 3) if n_mark else "",
            "draw_nopaint_frac": round(n_nopaint / n_all, 3) if n_all else "",
-           "draw_skip_area": round(min(1.0, R.region_area(skip_rects) / own_area), 3)
-                             if skip_rects else 0.0,
            "surf_painting": "", "surf_skipped": ""}
     if surf_id is not None and surf_id in sc.N:
         n = sc.N[surf_id]
-        out["surf_painting"] = 1 if n.get("should", True) and not n["skipped"] else 0
+        out["surf_painting"] = 1 if is_drawn(n) or is_composed(n) else 0
         out["surf_skipped"] = 1 if n["skipped"] else 0
     return out
 
@@ -557,6 +681,7 @@ def analyse(tree, owner, density, dw, dh):
     surf_id = ms.pop("_surf_id", None)
     out.update(ms)
     out.update(draw_state(sc, dw, dh, own_area, surf_id))
+    out.update(visible_surface(sc, dw, dh, own_area, order))
     if False:
         # the feed page itself, when nothing else qualified as a surface
         g = max(pages, key=lambda g: g["area"])
