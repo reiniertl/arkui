@@ -416,9 +416,6 @@ class Scene:
         return "stack", 1, 1
 
 
-NAME_FLOOR = 0.15      # below this the repeat describes decoration, not layout
-
-
 SURF_BANDS = (0.25, 0.50, 0.75, 1.00)
 
 
@@ -581,57 +578,6 @@ def draw_state(sc, dw, dh, own_area, surf_id):
     return out
 
 
-def describe(pat, arr, cols, rows, cover):
-    """A readable name, from the cell's content and how it repeats.
-
-    Gated on coverage. Checked against the screenshots, every motif above
-    0.6 cover was consistent by eye - 'media card grid 2x2' was a video with
-    a recommendation grid under it every time, 'image grid 3x4' a dense
-    three-column wall every time. Below 0.1 they were all full-screen video,
-    named after whatever small thing happened to repeat on top of it: the
-    action rail became 'icon and label list', the caption became 'text
-    list'. That is the old feature's failure returning in a new costume, so
-    the name says plainly that there is nothing to name. The number stays
-    either way; only the label is withheld.
-
-    Overlay density does not help here - it is no higher on these scenes
-    than on the rest (r = +0.10 against cover), so coverage is the only
-    honest gate.
-    """
-    if cover < NAME_FLOOR:
-        return "no dominant repeat"
-    img = sum(pat.count(c) for c in "IiVW")
-    txt = sum(pat.count(c) for c in "Tt")
-    sym = pat.count("S")
-    if img >= 2:
-        cell = "media card"
-    elif img == 1 and txt >= 1:
-        cell = "icon and label"
-    elif img == 1:
-        cell = "image"
-    elif txt >= 1 and sym >= 1:
-        cell = "label and glyph"
-    elif txt >= 1:
-        cell = "text"
-    elif sym >= 1:
-        cell = "glyph"
-    else:
-        cell = "plain box"
-    if arr == "grid":
-        # Columns only. "grid 2x3" and "grid 2x7" are one layout seen at two
-        # scroll offsets - the row count says how far down the list is, not
-        # what kind of display it is, and it split 33 scenes of one gallery
-        # into six motifs. pat_rows keeps the number for anyone who wants it.
-        lay = "grid, %d columns" % cols
-    elif arr == "column":
-        lay = "list"
-    elif arr == "row":
-        lay = "row"
-    else:
-        lay = "stack"
-    return "%s %s" % (cell, lay)
-
-
 def analyse(tree, owner, density, dw, dh):
     order = R.paint_order(tree)
     sc = Scene(tree["nodes"], owner, density, order)
@@ -736,16 +682,14 @@ def analyse(tree, owner, density, dw, dh):
                         p + "n": g["n"], p + "cover": round(cov, 3),
                         p + "h": round(g["h"] / dh, 3),
                         p + "aspect": round(g["w"] / max(1.0, g["h"]), 3),
-                        p + "top": round(g["top"], 3),
-                        p + "motif": describe(g["pat"], g["arr"], g["cols"],
-                                              g["rows"], cov)})
+                        p + "top": round(g["top"], 3)})
         else:
             # Empty, not zero. Writing a zero coverage and a zero height for
             # an absent second group would place it at the small end of both
             # scales instead of nowhere, which is the mistake item_h made on
             # 1,266 samples. build_matrix imputes these to the column mean.
             out.update({p + k: "" for k in ("pat", "arr", "cols", "rows", "n",
-                                            "cover", "h", "aspect", "top", "motif")})
+                                            "cover", "h", "aspect", "top")})
     out["has_slot2"] = 1 if len(groups) >= 2 else 0
 
     ms = media_surface(sc, dw, dh, own_area, used, order)
@@ -773,11 +717,10 @@ def analyse(tree, owner, density, dw, dh):
                    pat_bot=round(g["bot"], 3),
                    pat_band=round(max(0.0, g["bot"] - g["top"]), 3),
                    pat_h=round(g["h"] / dh, 3),
-                   pat_aspect=round(g["w"] / max(1.0, g["h"]), 3),
-                   motif=describe(g["pat"], g["arr"], g["cols"], g["rows"], cov))
+                   pat_aspect=round(g["w"] / max(1.0, g["h"]), 3))
     else:
         out.update(pat="", pat_inner="", pat_arr="", pat_cols="", pat_rows="",
-                   pat_n="", pat_cover="", pat_h="", pat_aspect="", motif="",
+                   pat_n="", pat_cover="", pat_h="", pat_aspect="",
                    pat_top="", pat_bot="", pat_band="")
     return out
 
@@ -788,8 +731,7 @@ def owner_of(tree, disp):
             and s["alpha"] > 0 and R.region_area(s["vis"]) > 0]
     best = None
     for s in sorted(live, key=lambda s: s["z"]):
-        sh = R.measure(tree, s, disp["density"], disp["w"] * disp["h"],
-                       disp["w"], disp["h"])
+        sh = R.window_weight(tree, s)
         w = min(1.0, sh.get("paint_px", 0) / (disp["w"] * disp["h"]))
         if sh.get("nodes", 0) > 0 and w >= 0.2:
             return s

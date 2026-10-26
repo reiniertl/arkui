@@ -9,8 +9,15 @@ about power and frequency that the schedule does not already have?
 
     ./correlate.py --descriptors scenes.jsonl --power power.csv --out joined.csv
 
+Nothing here has been run. There is no descriptor stream in this repository
+yet, so the premise above is still unmeasured, and every other decision in the
+project is downstream of it. The C header that once declared the record below
+has been deleted - it asserted a scene taxonomy no measurement supported - so
+the shape a producer must emit is now defined by this file and nothing else.
+
 Inputs
-  --descriptors  JSONL, one ark_scene_descriptor_t per line (ABI 2).
+  --descriptors  JSONL, one scene record per line: the interval counters named
+                 below plus the two feature vectors rs_pattern.py measures.
   --power        CSV from sample_power.sh. Must share CLOCK_MONOTONIC with
                  every descriptor producer.
 
@@ -20,7 +27,7 @@ Output
   stdout         a data-integrity report, then features ranked by |Pearson r|
                  against each target with a lead-correlation check.
 
-Three ABI-2 fields change the analysis and are enforced here:
+Three fields change the analysis and are enforced here:
 
   vsyncs       cadence is frames/vsyncs, never frames/second. Thirty frames in
                half a second is saturation at 60Hz and half rate at 120Hz, and
@@ -318,7 +325,7 @@ def main() -> int:
         print("     gaps are not idle; treat affected windows as unmeasured")
     if no_vsync:
         print(f"  !! {no_vsync} records have no vsync count — cadence is "
-              f"uninterpretable for those (ABI < 2 producer?)")
+              f"uninterpretable for those")
 
     feature_names = sorted(derive_features(descs[0]).keys())
     target_names = [t for t in ("mean_khz", "power_uw") if t in rows[0]]
