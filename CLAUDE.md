@@ -9,14 +9,20 @@ policy.
 The spec graph is empty as of this commit. Code under `tools/` predates
 combobul and is not yet bound to spec nodes; binding it is the work ahead.
 
+There are no scene classes in this repository and that is deliberate. Three
+asserted taxonomies - a C enum of 20, a PowerShell classifier of 23, and a
+naming function of 28 shapes - have been deleted. Two feature vectors are
+measured and each is clustered on its own; nothing confirms a class list.
+
 ## Where things are
 
 | Path | What |
 |---|---|
-| `tools/cluster/rs_extract.py` | RenderService dump -> scene features |
+| `tools/cluster/rs_extract.py` | RenderService dump -> tree, surfaces, ownership |
 | `tools/cluster/rs_pattern.py` | the pattern and surface vectors |
-| `tools/cluster/cluster.py` | clustering, viewer payload |
-| `tools/rs_scene.ps1`, `tools/scene_class.ps1` | capture on the device |
+| `tools/cluster/vectors_build.py` | clustering, page payload |
+| `tools/cluster/vectors_page.py` | the page |
+| `tools/rs_capture.ps1` | capture on the device |
 | `combobul/` | the spec engine (see below) |
 
 Captures live on the capture machine at `C:\ark_ui\captures`, never in

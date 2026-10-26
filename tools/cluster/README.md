@@ -1,216 +1,95 @@
-# Clustering captured screens
+# The two vectors
 
-Turns a capture session into a set of measured screen shapes, and tells you
-where ArkUI cannot see.
+Turns a capture session into two measurements per scene, clusters each on its
+own, and puts every scene on one page.
 
-The classifier in `scene_class.ps1` is a **distilled form**: twenty-three class
-names written by hand before any data existed. This does it the other way
-round — record what real screens look like, group them on geometry alone, and
-let the class set fall out of the groups.
-
-## Two rules it is built around
-
-**Cluster screens, not apps.** One app shows a video player, a chat, a settings
-page and a feed, often from a single window — TikTok's three states come out of
-one *view*. Nothing about the app predicts the screen, so nothing identifying
-the app enters the vector. The package name is used exactly once, in the
-purity alarm, *after* the clustering.
-
-**Nothing the scorer produces enters the vector.** Not `scene`, not `score`,
-not `confidence`, `margin`, `candidates` or `ranked` — the last five are not
-even read. The seventeen columns clustered on are all measurements of the
-geometry. So when the report cross-tabs `scene` against the clusters it is a
-test of the class list rather than a restatement of it: where a class name
-lands in one cluster it earned that, and where it is spread over five, the
-cluster is the measurement and the name is the guess.
-
-**The hand-written taxonomy is held out.** `shape` is a guess at the answer.
-Feeding the guess in and reading it back out proves nothing, so it is scored
-against the clusters instead. A cluster that is cleanly one shape confirms it;
-a cluster split between two says those two are really one; one shape spread
-over four clusters says it is too coarse.
-
-## Running it
-
-```
-scene_class.cmd -Capture 1800 -DumpOpt uitest     on the box with the phone
-cluster.cmd captures\20261014_101500
+```sh
+python rs_pattern.py    ../../captures --out patterns.csv
+python vectors_build.py patterns.csv --reps patreps --out payload.json
+python vectors_page.py  payload.json --out vectors.html
 ```
 
-`cluster.cmd` creates its own virtual environment on first run and then just
-runs. If that machine has no package index:
+| | |
+|---|---|
+| `rs_extract.py` | parse a RenderService dump: tree, surfaces, paint order, ownership |
+| `rs_pattern.py` | measure both vectors, one row per scene |
+| `vectors_build.py` | cluster each vector, embed the screenshots, write the payload |
+| `vectors_page.py` | render the payload to a single page |
 
-```
-pip download -r requirements.txt -d D:\wheels     on a machine that does
-set ARKUI_WHEELS=D:\wheels
-cluster.cmd captures\20261014_101500
-```
+`rs_extract.py` is a library now. It used to be a second feature extractor —
+a port of a PowerShell one, 26 columns wide, three of them constant and six
+pruned as redundant. All of it is gone; what remains is the parsing that
+`rs_pattern.py` stands on.
 
-Then open `viewer.html` inside the capture directory. No server, no network —
-it is a plain file, and `clusters.js` is loaded as a script rather than
-fetched because `file://` blocks `fetch()` but not `<script src>`.
+## Pattern vector
 
-## The vector
+What repeats in the layout, and how much of the window it holds.
 
-| Group | Columns | Transform |
-|---|---|---|
-| repetition | `rep_frac`, `rep_n`, `cols` | per-mille; `log1p` on the count; `cols` clipped at 6 |
-| item geometry | `item_h`, `item_aspect` | per-mille; **log** on the aspect, so 0.5 and 2.0 sit equally far from square |
-| division | `split_n`, `split_ratio`, `overlay` | per-mille, `split_n` clipped at 4 |
-| anchors | `bar_top`, `bar_bot`, `bar_edit`, `pager` | per-mille; the two flags down-weighted |
-| surface | `surf_frac`, `surf_visible`, `cover_web`, `cover_xc`, `cover_emb` | per-mille |
+Branches are grouped by a description of their subtree — the kinds of content
+in it and how those are arranged — and the group covering the most area wins.
+Ties break on vertical position rather than on the area they are nearly tied
+on, so two similar groups cannot swap slots between samples and jump the whole
+vector.
 
-Every column is already normalised against the viewport, so no pixel count and
-no panel size reaches the clusterer.
+| column | transform | weight | measures |
+|---|---|---|---|
+| `pat1_cover` | unit | 1.0 | share of the window that repeats |
+| `pat1_h` | unit | 1.0 | the repeating item's height, in display heights |
+| `pat1_aspect` | logratio | 1.0 | its width / height |
+| `pat1_cols` | clip6 | 1.2 | distinct columns |
+| `pat1_n` | log1p | 0.7 | members in the group |
+| `overlay_frac` | unit | 0.7 | area drawn over the layout |
+| `pat_n_groups` | log1p | 0.7 | how many repeating groups exist |
 
-Weights exist because standardisation alone inflates a rare binary flag into a
-dominant axis: `bar_edit` is 1 on perhaps a twentieth of screens, so its
-z-score swings by 4.5 while `rep_frac` swings by 1.
+A second group is measured into `pat2_*` and `has_slot2`, and is not in the
+vector. An absent second group writes **empty, not zero**: a zero coverage and
+a zero height would place it at the small end of both scales instead of
+nowhere, which is a mistake an earlier column made on 1,266 samples.
 
-**Held out, never clustered on:** `shape`, `split_main`, `scene`, `window`,
-`pid`, `described`. Also every component tag count — those are what the current
-classifier uses, and they are exactly what makes one app's screens resemble
-each other.
+## Surface vector
 
-## Algorithm
+What the display is finally made of, after occlusion.
 
-`sklearn.cluster.HDBSCAN`, `min_cluster_size` defaulting to 2% of distinct
-screens. Three properties matter here specifically:
+Every node that draws content, and every externally composed surface, walked
+topmost first, each claiming only the pixels nothing above it claimed.
+Substrate is the complement — it does not compete, because a background will
+win any contest it is entered into.
 
-- **It is not told K.** Fixing K assumes the answer, and the answer is the
-  question — whether five shapes is right, or three, or nine.
-- **Variable density.** `ROWS` will be a tight ball of thousands; a map view
-  will be forty points in a loose one. k-means splits the ball and swallows the
-  sparse cluster.
-- **It labels outliers** instead of forcing them. The outliers are the find —
-  a screen that fits no cluster is either a shape nobody listed or a screen
-  ArkUI cannot describe.
+| column | transform | weight | measures |
+|---|---|---|---|
+| `vis_xcomp` | unit | 1.0 | externally composed surface |
+| `vis_image` | unit | 1.0 | nodes tagged `Image` |
+| `vis_text` | unit | 1.0 | nodes tagged `Text` |
+| `vis_content` | unit | 0.7 | draws, but no tag names the type |
+| `vis_substrate` | unit | 0.7 | claimed by nothing: background, chrome, blank |
 
-Validated with silhouette, reported in the header.
+**This one is not yet trustworthy.** On the captures measured so far it
+collapses towards a single axis — substrate correlates about −0.8 with content —
+and the silhouette rewards a split that a person looking at the tiles would
+not. It is reported because it separates an external surface holding the
+display from everything else, which is real, and the rest of it is not settled.
 
-## Deduplication
+## No class names anywhere
 
-One entry per distinct layout signature; the number of samples sharing it
-becomes its **dwell**. Without this, half an hour parked on one feed outvotes
-every other screen in the session, and the clusters describe how the phone was
-used rather than what screens exist.
+Nothing here names a scene. A cluster is reported by its id, its size, its
+cohesion and the median of its own columns; a scene by the values measured
+from it. The clustering is given the vectors and nothing else.
 
-The signature is **structural**: the set of rects covering at least 2% of the
-screen, rounded to 16px. That matters here as much as it does at capture time.
-A video feed whose comment barrage is rolling produces a different byte-exact
-tree every second; on an exact signature it would arrive as two hundred
-distinct screens and drown everything else. On the structural one it is a
-single screen with a dwell of two hundred, which is what it is.
+This is deliberate and it is a reversal. A naming function used to sort each
+measured repeat into one of twenty-eight pre-written shapes — seven cell kinds
+crossed with four arrangements — and print the name beside the cluster. The
+name was never an input to anything; it was a pre-conditioned taxonomy
+travelling alongside the measurement and getting read as if it were one.
 
-## Installing
+## Reading the page
 
-```
-cluster\cluster.cmd captures\<timestamp>
-```
+Every scene appears, ordered from its cluster's centre outwards, so the last
+tiles in a row are where the cluster frays. Scenes fitting no cluster are
+reported in their own row rather than forced into the nearest group.
 
-First run builds `.venv` beside the script and installs the pinned wheels.
-Nothing is installed into the system Python.
+## Inputs that are not in this repository
 
-It chooses the interpreter rather than taking `py -3`, which is the newest
-installed one. On a Python too new for the pinned versions pip falls back to
-numpy's *source* tarball and asks for a C compiler, and the error it prints is
-about meson rather than about the Python version. So: 3.12, 3.11, 3.10 or 3.13
-in that order, `--only-binary=:all:` so a missing wheel is reported instead of
-compiled, and if the pins cannot be met at all, the newest wheels that can.
-
-The "already installed" marker is `.venv\.deps-ok`, written only after a
-successful install. A venv whose install failed still contains an interpreter,
-and testing for that turned one legible pip error into an `ImportError` on the
-next run.
-
-## Several sessions, one measurement
-
-```
-cluster.cmd <dir> [<dir> ...]
-```
-
-Capture sessions are never merged on disk. The layout signature does the join:
-the same screen seen on two different days hashes the same, so dedupe folds the
-samples together and the dwell adds up. All the loader does is rewrite each
-screenshot path relative to wherever the viewer will sit, so the sessions stay
-where they are and nothing is duplicated.
-
-Accumulating is therefore the normal case, not a special mode. Capture for half
-an hour whenever it suits, and cluster over everything so far. The only thing
-that changes with more sessions is that `min_cluster_size` grows with the
-screen count, so small clusters that were noise in one session can become real.
-
-## Which column is the app
-
-`name`. `window` is the numeric window id, and it was being counted as the app
-— stable while an app stays up, and silently splitting it in two the moment it
-is killed and relaunched. One app appearing as two is precisely the evidence
-the design-language alarm keys on, so the error was in the alarm's favour.
-
-## Samples taken while the screen was moving
-
-A row whose `still` is below `--still` (default 800) was captured mid-scroll.
-It has a real tree and no screenshot. It is **not** allowed to define a screen:
-a list at one particular scroll offset happened once, and letting those in
-turned a 160-screen test session into 996 near-identical ones.
-
-It is not discarded either. After clustering, each is assigned to the nearest
-cluster centroid in the same standardised space — not a claim that a
-half-scrolled list *is* that cluster, a claim about which shape it most
-resembles — and counted as that cluster's `moving` total. That is how much of
-the session was spent scrolling through a shape rather than sitting on it,
-which is the difference between a list that costs nothing and a list that is
-relaying out sixty times a second.
-
-The moving samples never enter the standardisation. If they did, the clusters
-would shift depending on how much the user happened to scroll.
-
-## Jitter
-
-`jitter` is the permille of the whole tree that changed between the two dumps
-that bracketed the screenshot — the churn below the structural floor. It is
-**held out of the vector on purpose**: a still list and an animating list are
-the same shape, and a clusterer told otherwise would split every screen in two
-along a line that has nothing to do with composition.
-
-It is reported beside each cluster instead, as a median. That is where it
-belongs: shape says what has to be composited, jitter says how often, and the
-two are separate questions that the aggregator downstream will want to join.
-
-## The purity alarm, and what it is not
-
-A cluster that is 90% one app gets looked at, but purity alone flags two very
-different things — and loudly flagging both made it useless. In test it fired
-on eight clusters of twelve when exactly one app was the planted trap.
-
-The real signature of a design language is **not** one cluster. It is one app
-carved out *across several shapes at once*, while other apps produce those same
-shapes together elsewhere. So the test is per app:
-
-- the app is alone in ≥2 clusters, spanning ≥2 different hand-shapes
-- ≥80% of that app's screens are in those app-only clusters
-- other apps produce those shapes elsewhere
-
-One app alone in one cluster is reported separately and much more quietly: it
-usually means nobody else in the session showed that shape, which is a gap in
-the capture, not a fault in the clustering.
-
-## The output that matters most
-
-With a screenshot beside every dump, the blind spot becomes measurable instead
-of arguable:
-
-- what fraction of real screens, in real use, are describable from the tree
-  alone — split by Web / XComponent / embedded, which is exactly the producer
-  routing decision
-- clusters that are tight in feature space but visually heterogeneous: ArkUI
-  cannot tell apart screens that look different, which is the worse failure
-
-Nothing else in this pipeline produces that number.
-
-## Screenshots never enter this repository
-
-It is public. `captures/`, every image extension, `clusters.js`, `thumbs/` and
-the row files are all excluded in `.gitignore`. `viewer.html` and `cluster.py`
-are code and live here; everything they read stays on the machine that drives
-the device.
+`--reps` is a directory of one jpeg per scene, named after the row's `shot`
+column with the separators replaced by `__`. Screenshots are pictures of a real
+phone in real use and never enter the repository, so that directory lives
+beside the captures.

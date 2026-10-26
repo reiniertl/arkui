@@ -2,11 +2,14 @@
 # sessions is not a measurement. scikit-learn 1.3 brought HDBSCAN into the
 # library itself, which is why the separate hdbscan package is not here.
 #
-# These versions have wheels for CPython 3.10 - 3.13. cluster.cmd prefers an
-# interpreter in that range, installs with --only-binary=:all: so a missing
-# wheel says so instead of starting a compile, and falls back to the newest
-# wheels that do exist if the pins cannot be satisfied.
+# These versions have wheels for CPython 3.10 - 3.13. Install with
+# --only-binary=:all: so a missing wheel says so instead of starting a compile.
+#
+#   python -m venv .venv
+#   .venv/bin/pip install --only-binary=:all: -r requirements.txt
+#
+# scipy is not imported directly; scikit-learn requires it. pillow was dropped
+# with the thumbnail code - screenshots are embedded as bytes, never decoded.
 numpy==2.1.3
 scikit-learn==1.5.2
 scipy==1.14.1
-pillow==11.0.0
