@@ -1,12 +1,17 @@
 """One page, two vectors, two clusterings. Nothing else.
 
+    ./vectors_build.py patterns.csv --reps patreps --out two_payload.json
+    ./vectors_page.py  two_payload.json --out vectors.html
+
 The reference grew 27 cards documenting every column the extractor has ever
 produced, most of them pruned, constant or superseded. Two vectors are under
 development; this shows those, each clustered on its own, with every scene.
-"""
-import json, os
 
-D = json.load(open("two_payload.json", encoding="utf-8"))
+A cluster is headed by its id, its size, its cohesion and the median of its
+own columns. It is not named: naming it would be asserting a scene class, and
+there is no scene class here to assert.
+"""
+import argparse, json, os
 
 HTML = """<!doctype html>
 <html lang="en"><head><meta charset="utf-8">
@@ -100,8 +105,8 @@ var DATA = __DATA__;
          + (none ? "fitted no cluster" : "cluster " + g.id)
          + " \\u00b7 " + g.n + " scenes</div><div class='s'>"
          + (none ? "reported rather than forced into the nearest group"
-                 : "cohesion " + g.cohesion + " \\u00b7 "
-                   + g.labels.map(function (l){return esc(l[0])+" \\u00d7"+l[1];}).join(" \\u00b7 "))
+                 : "cohesion " + g.cohesion + " \\u00b7 median "
+                   + g.centre.map(esc).join(" \\u00b7 "))
          + "</div></div><div class='pics'>";
       g.reps.forEach(function (r) {
         h += "<div class='pic'><img loading='lazy' src='" + r.img + "'><div class='cap'>"
@@ -119,6 +124,14 @@ var DATA = __DATA__;
 })();
 </script></body></html>
 """
-open("vectors.html", "w", encoding="utf-8").write(
+ap = argparse.ArgumentParser(description=__doc__,
+                             formatter_class=argparse.RawDescriptionHelpFormatter)
+ap.add_argument("payload", nargs="?", default="two_payload.json",
+                help="vectors_build.py's json")
+ap.add_argument("--out", default="vectors.html")
+a = ap.parse_args()
+
+D = json.load(open(a.payload, encoding="utf-8"))
+open(a.out, "w", encoding="utf-8").write(
     HTML.replace("__DATA__", json.dumps(D, ensure_ascii=False)))
-print("wrote vectors.html  %.1f MB" % (os.path.getsize("vectors.html") / 1048576))
+print("wrote %s  %.1f MB" % (a.out, os.path.getsize(a.out) / 1048576))
