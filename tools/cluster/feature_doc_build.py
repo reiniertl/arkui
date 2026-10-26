@@ -7,7 +7,8 @@ REPS = _j.load(open("reps_payload.json", encoding="utf-8"))
 PATS = _j.load(open("pat_payload.json", encoding="utf-8"))
 SURF = _j.load(open("surf_payload.json", encoding="utf-8"))
 VIS  = _j.load(open("vis_payload.json", encoding="utf-8"))
-payload = {"features": data.F, "common": data.COMMON, "shapes": SHAPES, "reps": REPS, "pats": PATS, "surf": SURF, "vis": VIS}
+CLU  = _j.load(open("cluster_payload.json", encoding="utf-8"))
+payload = {"features": data.F, "common": data.COMMON, "shapes": SHAPES, "reps": REPS, "pats": PATS, "surf": SURF, "vis": VIS, "clu": CLU}
 
 HTML = """<!doctype html>
 <html lang="en">
@@ -129,6 +130,7 @@ HTML = """<!doctype html>
     <h1>Scene feature reference</h1>
     <div class="sub">23 cards covering the 29 columns. Bands are documented as one card each.</div>
     <a id="nav-overview" class="on">How it fits together</a>
+    <a id="nav-clusters">Clusters &mdash; current result</a>
     <div id="menu"></div>
   </nav>
   <main id="pane"></main>
@@ -346,6 +348,56 @@ var DATA = __DATA__;
     h += "</div></div>";
     return h;
   }
+  // The clustering as it stands, with every scene in every cluster.
+  function clusters() {
+    mark(document.getElementById("nav-clusters"));
+    var C = DATA.clu;
+    var h = "<h2>" + t("Clusters \u2014 current result") + "</h2>"
+      + "<div class='meta'>" + C.n + " " + t("pictured scenes") + " \u00b7 <b>"
+      + C.k + " " + t("clusters") + "</b> \u00b7 " + C.outliers + " "
+      + t("fitting none") + " (" + Math.round(100 * C.outliers / C.n) + "%)"
+      + " \u00b7 " + t("silhouette") + " <b>" + C.silhouette + "</b>"
+      + " \u00b7 min_cluster_size " + C.mcs + "</div>";
+    h += fld("What it is clustered on", "<p>"
+      + t("The pattern vector, seven columns, on the scenes that carry both "
+        + "dumps. Not the twenty-six render-tree columns, and not the "
+        + "composition \u2014 both are measured on their cards and neither "
+        + "earns a place here yet.") + "</p><p>"
+      + C.features.map(function (f) {
+          return "<code>" + f.name + "</code> &times;" + f.weight; }).join(" \u00b7 ")
+      + "</p><p style='color:var(--dim);font-size:12.5px'>"
+      + t("PCA variance explained") + ": "
+      + C.explained.map(function (v) { return (100 * v).toFixed(0) + "%"; }).join(" / ")
+      + "</p>");
+    h += "<div class='fld'><div class='k'>" + t("Every scene in every cluster")
+      + "</div><div class='v'><p style='font-size:13px;color:var(--dim);margin:0 0 6px'>"
+      + t("Ordered within a cluster from its centre outwards, so the last tiles "
+        + "are where it frays. The caption gives the scene's silhouette, the "
+        + "share of the window that repeats, and the motif.") + "</p>";
+    C.groups.forEach(function (g) {
+      var none = g.id < 0;
+      h += "<div class='rgrp'><div class='hd'><div class='t'>"
+         + (none ? t("fitted no cluster") : t("cluster") + " " + g.id)
+         + " \u00b7 " + g.n + " " + t("scenes") + "</div><div class='s'>"
+         + (none ? t("these fit nothing and are reported rather than forced")
+            : t("cohesion") + " " + g.cohesion + " \u00b7 " + t("median cover") + " "
+              + g.cover + " \u00b7 " + t("item height") + " " + g.h
+              + " \u00b7 " + t("columns") + " " + g.cols)
+         + "</div></div>";
+      h += "<div class='nums'>" + g.motifs.map(function (m) {
+             return esc(m[0]) + " \u00d7" + m[1]; }).join(" \u00b7 ") + "</div>";
+      h += "<div class='pics'>";
+      g.reps.forEach(function (r) {
+        h += "<div class='pic'><img loading='lazy' src='" + r.img + "'>"
+           + "<div class='cap'>sil " + (r.sil === null ? "\u2014" : r.sil)
+           + " \u00b7 cover " + r.cover
+           + "<br>" + esc(String(r.slot1).slice(0, 22)) + "</div></div>";
+      });
+      h += "</div></div>";
+    });
+    h += "</div></div>";
+    document.getElementById("pane").innerHTML = h;
+  }
   function overview() {
     mark(document.getElementById("nav-overview"));
     var c = DATA.common, h = "<h2>" + t("How it fits together") + "</h2>"
@@ -400,6 +452,7 @@ var DATA = __DATA__;
     document.getElementById("pane").innerHTML = h;
   }
   document.getElementById("nav-overview").addEventListener("click", overview);
+  document.getElementById("nav-clusters").addEventListener("click", clusters);
   buildMenu();
   overview();
 })();

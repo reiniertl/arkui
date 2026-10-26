@@ -156,6 +156,36 @@ FEATURES = [
 #   rotation, refresh             device state, constant across a session.
 #   protected, skipped, nodes     reported; nodes is unnormalised and
 #       rs_node_den carries it in a form that transfers across panels.
+# The vector built on rs_pattern.py: the repeating layout of the scene plus
+# what the display is finally made of. Selected with --patterns, which merges
+# that extractor's csv onto the rows by screenshot and keeps only the scenes
+# it covers - the client dump it needs is written once per distinct scene, so
+# it reaches 250 of 4,673 samples rather than all of them.
+#
+# Measured against the 26-column vector on the scenes both can see: this
+# leaves 10-13% of scenes fitting no cluster where that leaves 35-51%.
+PATTERN_FEATURES = [
+    ("rs_pat1_cover",  "unit",     1.0),   # how much of the window repeats
+    ("rs_pat1_h",      "unit",     1.0),   # the repeating item's height
+    ("rs_pat1_aspect", "logratio", 1.0),
+    ("rs_pat1_cols",   "clip6",    1.2),   # gallery vs feed
+    ("rs_pat1_n",      "log1p",    0.7),
+    ("rs_overlay_frac","unit",     0.7),   # how much is drawn over the layout
+    ("rs_pat_n_groups","log1p",    0.7),
+]
+
+# Composition in reals, summing to one. Held apart from the vector above
+# because on this capture it collapses towards a single axis - background
+# correlates -0.80 with content - and clusters three knots at 65% outliers,
+# which the silhouette rewards and a person would not.
+COMPOSITION_FEATURES = [
+    ("rs_vis_xcomp",      "unit", 1.0),
+    ("rs_vis_image",      "unit", 1.0),
+    ("rs_vis_text",       "unit", 1.0),
+    ("rs_vis_content",    "unit", 0.7),
+    ("rs_vis_background", "unit", 0.5),
+]
+
 HELD_OUT = ("shape", "split_main", "scene", "name", "window", "pid", "described",
             "jitter", "still", "session", "rs_top_name", "rs_vsync", "rs_fps_scene",
             "rs_blur_frac", "rs_shadow_frac", "rs_corner_frac", "rs_blend_frac",
@@ -511,6 +541,14 @@ def main():
                          "carried as dwell. 0 keeps every sample, which lets "
                          "identical points form clusters of their own out of "
                          "sheer density.")
+    ap.add_argument("--patterns", default="", metavar="CSV",
+                    help="merge rs_pattern.py output onto the rows by "
+                         "screenshot and cluster on the pattern vector "
+                         "instead of the 26 render-tree columns. Only the "
+                         "scenes that csv covers are kept.")
+    ap.add_argument("--with-composition", action="store_true",
+                    help="add the visible-surface composition to the pattern "
+                         "vector. Measured as a loss on the capture so far.")
     ap.add_argument("--decorrelate", type=float, default=0.0,
                     metavar="R",
                     help="drop features correlating above |r| = R with "
@@ -551,6 +589,48 @@ def main():
     print("reading %d session%s" % (len(dirs), "" if len(dirs) == 1 else "s"))
     raw = load_sessions(dirs, out)
     print("  %d samples in all" % len(raw))
+
+    if args.patterns:
+        global FEATURES
+
+        def shot_key(v):
+            """Session folder and file name only.
+
+            load_sessions rewrites shot to a path relative to the output
+            directory - ../captures/<session>/<stem>.jpeg - while the pattern
+            csv holds <session>/<stem>.jpeg, so a literal comparison matched
+            nothing at all.
+            """
+            v = (v or "").replace("\\", "/").strip().rstrip("/")
+            parts = [p for p in v.split("/") if p not in ("", ".", "..")]
+            return "/".join(parts[-2:]) if len(parts) >= 2 else v
+
+        pat = {}
+        with open(args.patterns, encoding="utf-8") as fh:
+            for r in csv.DictReader(fh):
+                sh = shot_key(r.get("shot"))
+                if sh:
+                    pat[sh] = r
+        before = len(raw)
+        keep = []
+        for r in raw:
+            p = pat.get(shot_key(r.get("shot")))
+            if not p:
+                continue
+            for k, v in p.items():
+                if k not in ("session", "stem", "shot", "owner"):
+                    r["rs_" + k] = v
+            keep.append(r)
+        raw = keep
+        FEATURES = list(PATTERN_FEATURES)
+        if args.with_composition:
+            FEATURES += COMPOSITION_FEATURES
+        print("  --patterns: %d of %d samples are covered by %s"
+              % (len(raw), before, os.path.basename(args.patterns)))
+        print("  clustering on %d pattern columns, not the %d render-tree ones"
+              % (len(FEATURES), 29))
+        if not raw:
+            sys.exit("no sample matched a row in that csv")
 
     # A sample taken mid-scroll has a real tree but no matching picture, and
     # its layout signature is a one-off - the list happened to be at that
