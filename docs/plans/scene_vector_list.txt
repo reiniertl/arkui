@@ -1,0 +1,820 @@
+SCENE VECTOR LIST — THE FEATURE RESEARCH BROUGHT UNDER SPECIFICATION
+
+This list is the work that puts the scene-vector research under a
+specification. The project measures what is on a HarmonyOS display, from
+RenderService dumps, and asks whether that measurement carries information
+about power draw and CPU frequency that the scheduler does not already
+have. It reports structure. It decides no policy: aggregation, power
+attribution and scheduling are elsewhere, and what is decided here is the
+quality of the data they read.
+
+Two things make this list what it is, and both were decided in the session
+that preceded it. The first: there are no scene classes, and three attempts
+at one were deleted — a C enum of twenty, a PowerShell classifier of
+twenty-three, a naming function of twenty-eight shapes. The clustering is
+not here to confirm a class list; it is given the vectors and nothing else.
+The second: the spec graph is empty over 3,298 lines of tracked code, so
+the governance adopted in 2da1e4d has nothing to verify with. Every item
+below exists to close one of those two gaps or to repair something the
+audits found while looking.
+
+Each item is one skill execution, run in the order below.
+
+- /cb-audit executions read and report; they change nothing.
+- /cb-fix executions repair a defect against a reproduction.
+- /cb-free sessions bring each finding to the human, one at a time, and
+  write the decision into THE DECISIONS IN FORCE of this list.
+- /cb-green executions author spec nodes and change code.
+
+Every item ends by bringing this list to the state its work leaves, in the
+same session, before the gate is cleared:
+- the item is deleted, with its line under What remains, and its prompt;
+- each record of THE DECISIONS IN FORCE the item applies is written again to
+  what is still to do, its "Applied by" line naming only the items left, and
+  deleted when no item is left;
+- each finding the item reports and does not resolve is written as an open
+  point of the record it bears on when it is a question for the human, and
+  as an item in its place in the order, with its prompt, when it is work;
+- each name the item wrote differently from the record is written into the
+  record and into every later item that cites it, in the form the item
+  wrote;
+- every reference in the list to the deleted item, or to a name it changed,
+  is written again or removed.
+An audit cannot write; the list update an audit owes is done by the /cb-free
+session after it, which names it in its report.
+
+Every prompt carries a Spec work section naming its specification work node
+by node: each node it adds (id, kind, module, and every edge it carries),
+each node it modifies (id and the fields written), each node and each edge
+it removes. An item that changes no node says so and gives the reason. The
+names a prompt gives are record 9's; the human confirms them before the
+envelope is written.
+
+Every prompt carries the BOUNDARY clause: combobul and ArkUI are two
+projects, and no rule, kind, check or store of one is carried to the other.
+
+An item runs, at its end, the checks that read the files it changed, and
+names them in its report: `npm run spec:check`, and the pipeline on a real
+capture where its change reaches the pipeline.
+
+A measurement that an item claims is verified is verified in that session,
+against a real capture, and the figures are written into the report. A
+figure carried from an earlier session is marked as such.
+
+The captures carry no weight on the design: they are two sessions of one
+device held by one person, and nothing in this list treats a number taken
+from them as settled beyond the capture it came from. Captures live on the
+capture machine and never in this repository — they are pictures of a real
+phone in real use.
+
+The baseline the executions read (read each file in full):
+- README.md, tools/README.md, tools/cluster/README.md — what the project is
+  and what each stage does.
+- tools/cluster/rs_extract.py (404 lines), rs_pattern.py (795),
+  vectors_build.py (209), vectors_page.py (137) — the measurement.
+- tools/rs_capture.ps1 (424) — the device side.
+- tools/correlate.py (379), tools/sample_power.sh (64) — the open question.
+- CLAUDE.md — the governance in force.
+- .combobul/runs/audit-spec-genesis/contract.json and
+  .combobul/runs/audit-subfeature-spec/contract.json — the two audits this
+  list carries out, findings F1–F9 and S1–S11 with their classifications.
+
+
+===============================================================================
+ORDER
+===============================================================================
+
+  What remains, in this order (records 1 to 10 hold the decisions; each
+  prompt names the records it applies):
+    * the module and the two interfaces that already bite, with
+      INV-NO-SCENE-CLASS (/cb-green);
+    * the 71 scenes the page never shows, repaired (/cb-fix);
+    * the four parsing rules that each shipped as a defect (/cb-green);
+    * the vector invariants, two of them already satisfied (/cb-green);
+    * determinism and the tiebreak (/cb-green);
+    * the error vocabulary (/cb-green);
+    * the boundary and the artefact rules (/cb-green);
+    * the eleven algorithms (/cb-green);
+    * each threshold given a contract or deleted (/cb-green);
+    * correlate.py closed: the premise measured (/cb-green);
+    * the surface vector's collapse diagnosed (/cb-audit);
+    * the diagnosis brought to the human, the surface vector kept or
+      dropped (/cb-free).
+  After this list: whatever the correlation answers makes necessary. If
+  Ark-derived features do not predict power, the feature work is premature
+  and the component needs different features; nothing beyond this list is
+  planned until that is known.
+
+
+===============================================================================
+THE DECISIONS IN FORCE
+===============================================================================
+
+  Each record states a decision the items below carry out. Delete a record
+  when every item it names is done.
+
+  1. The scope. Decided by the human.
+       * The project measures the structure of what is on a display and
+         asks whether that measurement predicts power and frequency. It
+         reports composition; it decides no policy.
+       * The eventual deliverable is a system component: ArkUI is platform
+         code, so one patch reaches every app through the pre-warmed
+         appspawn fork. That component does not exist and this repository
+         is not it. What exists is a capture, two measured vectors, a
+         clustering, a page, and an unanswered question.
+       * The research is one mechanism: PowerShell stops at the device
+         boundary and Python owns everything after it. The device side
+         derives no feature and names nothing; it drives hdc, decides from
+         the raw text whether a scene has been seen, and writes files.
+       * The human cannot run the agent on the capture machine. Authoring
+         happens on the VM; the capture machine is a clone that pulls, runs
+         the capture and runs the pipeline against its own data.
+
+     Applied by: every item.
+
+  2. No scene classes. Decided by the human, this session.
+       * There is no taxonomy and none is to be reintroduced. Three were
+         deleted: ark_scene_class_t (20 members), the PowerShell classifier
+         (23 classes, hand-tuned thresholds, a -Separation report), and
+         describe() in rs_pattern.py (7 cell kinds crossed with 4
+         arrangements, gated by NAME_FLOOR).
+       * The clustering confirms nothing. It is given the vectors and
+         nothing else. A cluster is reported by its id, its size, its
+         cohesion and the median of its own columns. What the groups mean,
+         if anything, is read off the tiles by a person.
+       * No vector column holds a string label. A column whose value is a
+         name, rather than a measurement, does not exist.
+       * The discriminators the deleted classifier used are the sharpest
+         written statement of what separates these scenes and are worth
+         keeping as prose. They are not to be executable.
+
+     Applied by: the module and the two interfaces; the eleven algorithms;
+     each threshold given a contract.
+
+  3. The two vectors and their column contracts. Decided by the human.
+       * The pattern vector — what repeats in the layout, and how much of
+         the window it holds. Branches are grouped by a description of
+         their subtree, and the group covering the most area wins. Ties
+         break on vertical position, never on the nearly-tied area.
+
+           column         transform  weight  measures
+           pat1_cover     unit       1.0     share of the window that repeats
+           pat1_h         unit       1.0     the item's height, in display heights
+           pat1_aspect    logratio   1.0     its width / height
+           pat1_cols      clip6      1.2     distinct columns
+           pat1_n         log1p      0.7     members in the group
+           overlay_frac   unit       0.7     area drawn over the layout
+           pat_n_groups   log1p      0.7     how many repeating groups exist
+
+       * The surface vector — what the display is finally made of, after
+         occlusion. Every node that draws, and every externally composed
+         surface, walked topmost first, each claiming only the pixels
+         nothing above it claimed. Substrate is the complement.
+
+           column         transform  weight  measures
+           vis_xcomp      unit       1.0     externally composed surface
+           vis_image      unit       1.0     nodes tagged Image
+           vis_text       unit       1.0     nodes tagged Text
+           vis_content    unit       0.7     draws, but no tag names the type
+           vis_substrate  unit       0.7     claimed by nothing
+
+       * A second pattern group is measured into pat2_* with has_slot2 and
+         is not in the vector. pat, arr, cols, rows stay as measurements —
+         content-kind letters off node tags, geometric arrangement, column
+         count — and are not matches against a library.
+       * Both are measurements. Neither is a class.
+
+     Applied by: the module and the two interfaces; the vector invariants;
+     each threshold given a contract; the surface vector's collapse.
+
+  4. What is measured and what is not. Decided by the evidence; verified
+     2026-10-26 against the two capture sessions, 250 scenes.
+       * Holds: the five surface columns sum to one within 0.01 across all
+         250 rows, worst deviation 0.006. Every column declared unit lies
+         in [0,1], no violations. These two can be adopted as invariants
+         already satisfied.
+       * Holds: the reduction of rs_extract.py from 1,028 lines to 404 left
+         the output byte-identical on ten real dumps. Determinism is what
+         made that reduction checkable rather than arguable.
+       * Does not hold: 71 of 250 measured scenes never reach the page.
+         Every number the page publishes — 6 clusters, 11 percent fitting
+         none, silhouette 0.499 at min_cluster_size 9 — is over the
+         remaining 179 and over an undeclared subset.
+       * The cause is not missing data. All 250 scenes have a jpeg at
+         captures/<session>/<stem>.jpeg. vectors_build.py --reps requires a
+         flat directory named <session>__<stem>.jpeg that no code in this
+         repository builds; the directories used so far were made by hand
+         and were incomplete.
+       * Does not hold: the surface vector collapses towards a single axis
+         on this capture, substrate against content at about -0.8, and
+         clusters at 23 percent outliers with a silhouette of 0.455 that
+         rewards a split a person would not make. It separates an external
+         surface holding the display from everything else, which is real.
+         The rest is not settled.
+
+     Applied by: the 71 scenes repaired; the vector invariants; determinism
+     and the tiebreak; the surface vector's collapse.
+
+  5. The rules that already failed. Decided by the evidence; each was a
+     defect that shipped, was found, and was fixed at cost.
+       * Only a node whose shouldPaint_ is set may subtract area from
+         another. IsSubTreeSkipped means cached, not invisible — on one scene
+         75 of 77 content nodes were skipped — and must never be read as a
+         visibility test.
+       * Occlusion walks the real paint order, honouring ReverseChildren
+         and PositionZ, never the order the dump prints. One dump carries
+         34 reversed parents and PositionZ values from 1 to 2200.
+       * The oversize test applies to a node's own rect, never its clipped
+         rect. Without this the detector reported 30 scenes as a repeating
+         row of plain boxes, and the boxes were Rect nodes of 8359x8360 px
+         at (-2731,-3172): blur and shadow sources three displays wide.
+       * Node counts come from the main-thread pass of the RSTree dump; a
+         repeated node id marks where the second pass begins. Counting both
+         passes doubles every node.
+       * A measurement not taken is written empty, becomes nan, and is
+         imputed to the column mean. Writing 0.0 places an absent group at
+         the small end of every scale — the mistake an earlier column made
+         on 1,266 samples. rs_pattern.py and vectors_build.py must agree on
+         this and nothing holds them to it.
+       Each of these is a comment today. A comment does not survive an
+       edit that does not read it.
+
+     Applied by: the four parsing rules; the vector invariants.
+
+  6. Silence is the failure mode. Decided by the evidence.
+       * There is no error vocabulary at all. A missing display.txt falls
+         back to 1316x2832 at density 3.5 and says nothing. A missing
+         client dump drops a scene. A missing screenshot drops a row. No
+         owner window returns None. A capture that is 30 percent broken
+         reports exactly as a clean one does.
+       * The 71 lost scenes are one instance of this, not a separate
+         problem. The error vocabulary is the general case.
+       * A column with no variance over a capture contributes nothing to
+         any distance and should say so rather than sit in the vector.
+
+     Applied by: the 71 scenes repaired; the error vocabulary.
+
+  7. Reproducibility. Decided by the evidence, and by one near-loss.
+       * The same session must yield a byte-identical patterns.csv.
+       * Every generated artefact is produced by a tracked script from
+         declared inputs. The page generator existed only as an inline
+         fragment in a scratch directory; the 8 MB page it made could not
+         be rebuilt from a clone and was one sweep away from being lost. It
+         is tracked now as vectors_build.py, and the invariant is the
+         lesson rather than the commit that fixed it.
+       * No screenshot and no dump is ever tracked by git.
+       * The device side computes nothing. Its output is files plus an
+         index: <stem>.rstree.txt, <stem>.client.txt, <stem>.jpeg,
+         raw/<nnnn>.rstree.txt, samples.csv (raw, stem, sig, shot) and
+         display.txt.
+
+     Applied by: determinism and the tiebreak; the boundary and the
+     artefact rules.
+
+  8. The open question. Decided by the human, carried from the first audit
+     (finding F6, CRITICAL).
+       * correlate.py states the premise the whole component rests on — do
+         features derived from ArkUI carry information about power and
+         frequency that the schedule does not already have — and has never
+         been run. It has no input in this repository: no descriptor
+         stream, no power capture, no result.
+       * It names no classes, so it survived the deletion pass. Its
+         docstring is now the only definition of the record a producer must
+         emit, the C header that used to declare it having been deleted for
+         asserting a taxonomy.
+       * A lead check is part of the question, not a refinement of it: a
+         feature that correlates only at lag zero describes a present the
+         governor already sees from utilisation. A feature that correlates
+         with the next interval is predictive, and that is the only kind
+         worth putting in a scheduler.
+       * Everything after this list is downstream of the answer.
+
+     Applied by: correlate.py closed.
+
+  9. Names, proposed by this list and confirmed by the human before each
+     envelope.
+       * One module: SUB-FEATURE-RESEARCH, role neutral, containmentProfile
+         unrestricted. The authority / implementation / test split is not
+         taken: at 3,298 lines with no test harness it would create an
+         authority module with nothing in it. Split when the first test
+         algorithm is written.
+       * Interfaces: IF-CAPTURE-SESSION (language meta), IF-PATTERNS-ROW
+         (py). IF-PAGE-PAYLOAD and IF-SCENE-RECORD are held back — see
+         record 10.
+       * Invariants: INV-NO-SCENE-CLASS, INV-OCCLUDER-PAINTS,
+         INV-OCCLUSION-PAINT-ORDER, INV-OWN-RECT-BOUNDS,
+         INV-FIRST-PASS-COUNTS, INV-ABSENT-NOT-ZERO,
+         INV-SURFACE-SUMS-TO-ONE, INV-UNIT-COLUMNS-BOUNDED,
+         INV-SUBSTRATE-IS-COMPLEMENT, INV-NO-SILENT-SCENE-LOSS,
+         INV-DETERMINISTIC-MEASUREMENT, INV-TIEBREAK-NOT-ON-AREA,
+         INV-DEVICE-COMPUTES-NOTHING, INV-NO-CAPTURES-TRACKED,
+         INV-GENERATED-HAS-TRACKED-PRODUCER.
+       * Algorithms: ALG-CAPTURE-LOOP, ALG-QUICK-SIG (both language meta),
+         ALG-PARSE-RSTREE, ALG-PAINT-ORDER, ALG-OWNERSHIP,
+         ALG-OWNER-SELECT, ALG-BRANCH-GROUP, ALG-VISIBLE-SURFACE,
+         ALG-MEDIA-SURFACE, ALG-VECTOR-CLUSTER, ALG-CORRELATE.
+       * Error codes: ERR-SCENE-WITHOUT-REP (WARN),
+         ERR-DISPLAY-DUMP-MISSING (WARN), ERR-CLIENT-DUMP-MISSING (WARN),
+         ERR-NO-OWNER-WINDOW (ERROR), ERR-JOIN-KEY-UNMATCHED (ERROR),
+         ERR-COLUMN-CONSTANT (WARN), ERR-SURFACE-SUM-OFF (ERROR),
+         ERR-SHOT-COMMAND-ABSENT (FATAL).
+       * Code: tools/rs_capture.ps1; tools/cluster/{rs_extract,rs_pattern,
+         vectors_build,vectors_page}.py; tools/correlate.py;
+         tools/sample_power.sh.
+
+     Applied by: every /cb-green item.
+
+  10. What is deliberately not declared yet. Decided by the human.
+       * IF-SCENE-RECORD, the shape correlate.py expects, waits until
+         something produces it. An interface with no producer and no
+         consumer is how the deleted C header started.
+       * IF-PAGE-PAYLOAD waits with it: the payload's shape is settled only
+         once the 71 scenes are recovered and the surface vector is kept or
+         dropped.
+       * The surface vector keeps a caveat rather than an invariant
+         asserting it is meaningful. Asserting that would assert the thing
+         in doubt.
+       * The metamodel has no PowerShell: the language enum has 23 entries
+         and PowerShell is not among them, so the device side is declared
+         as meta. That costs nothing while its invariant is that it
+         computes nothing, and it is reported upstream rather than worked
+         around.
+
+     Applied by: the eleven algorithms; the surface vector's collapse; the
+     diagnosis brought to the human.
+
+
+===============================================================================
+PROMPTS
+===============================================================================
+
+/cb-green — the module and the two interfaces that already bite
+  - What: the smallest graph that makes rule 2 operable. One module over
+    the whole tracked tree; the two interfaces where the seam has already
+    broken; and the invariant that defines the project. Nothing else: an
+    algorithm node with no invariant over it is documentation, and this
+    item authors no algorithms.
+    IF-CAPTURE-SESSION is the session on disk as record 7 states it, and is
+    the contract rs_capture.ps1 writes and rs_pattern.py reads. Its index
+    columns are the ones the Python actually consumes: raw, stem, sig,
+    shot, and the context columns vsync, top_name, fps_scene, fps_pref,
+    surf, nodes, paint_px, reverse, posz, cutout, avail. Note in its
+    description that three of those are read under two spellings each
+    (vsync / rs_vsync, top_name / rs_top_name, fps_scene / rs_fps_scene),
+    the residue of two capture scripts, and that the interface names one
+    spelling.
+    INV-NO-SCENE-CLASS is enforcementBasis static-analysis, strength
+    strong: no tracked file defines a table, enum or function mapping
+    measurements onto scene names, and no vector column holds a string
+    label. Its predicate is a check that can run in CI.
+  - Read: records 1, 2, 3, 7 and 9; tools/rs_capture.ps1 and
+    tools/cluster/rs_pattern.py in full; rs_extract.py's session walk.
+  - Spec areas: the graph is empty; this item creates the first nodes.
+  - Spec work:
+      add module SUB-FEATURE-RESEARCH (role neutral, containmentProfile
+        unrestricted);
+      add interface IF-CAPTURE-SESSION (language meta, SUB-FEATURE-RESEARCH):
+        the session on disk, its files and its index columns; contains;
+      add interface IF-PATTERNS-ROW (language py, SUB-FEATURE-RESEARCH):
+        one row per scene, the seven pattern columns, pat2 with has_slot2,
+        the five surface columns, the context columns; contains;
+      add invariant INV-NO-SCENE-CLASS (SUB-FEATURE-RESEARCH): no tracked
+        file maps measurements onto scene names and no column holds a
+        string label; contains; protects IF-PATTERNS-ROW.
+  - Code path: no code changes. The invariant's check is authored with it
+    and named in the report.
+  - Test: npm run spec:check, no violations; the check for
+    INV-NO-SCENE-CLASS run against the tree and reported.
+  - BOUNDARY: combobul and ArkUI are two projects. combobul/spec/spec.db
+    holds the specification of this project's code, in combobul's ontology,
+    written only through combobul's ril. No rule, kind, check or store of
+    one is carried to the other. The engine is installed per machine and is
+    not published from this repository.
+
+  - IMPORTANT: The context you get is not hallucinated, its deterministically extracted.
+  - REFERENCE: If specification authoring details are needed, ask RIL for authoring rules.
+  - INVIOLABLE: SPECIFICATION SURFACE IS AUTHORITATIVE.
+  - INVIOLABLE: DO NOT EMIT P3_SKIPPED. If you do not need to modify the specification you must submit a reason.
+  - FORBIDDEN: MULTI-AGENT execution is not allowed. DO NOT SPAWN MULTIPLE AGENTS.
+  - WHEN TO COMMIT: Before "silk run finalize".
+  - DECISION PROTOCOL: If a decision must be made, ask for direct feedback. DO NOT DECIDE ALONE.
+  - AT THE END: update this list as the rule at the head of the list states.
+
+
+/cb-fix — the 71 scenes the page never shows
+  - What: vectors_build.py resolves each scene's screenshot from the
+    capture tree, at <captures>/<shot>, in place of the flat --reps
+    directory nothing builds. A scene with no screenshot is counted and
+    listed rather than dropped. The page is rebuilt and its numbers are
+    reported for all 250 scenes beside the 179 they were.
+    The reproduction is the measurement of record 4: 250 rows in
+    patterns.csv, 250 jpegs present in the capture tree, 179 matching the
+    flat form. It is written as a test before the fix.
+    INV-NO-SILENT-SCENE-LOSS is authored by this item in the state the code
+    is in — VIOLATED — and the fix moves it to satisfied. That order is
+    what rule 2 means.
+  - Read: record 4 and record 6; vectors_build.py in full; vectors_page.py;
+    rs_pattern.py's shot column.
+  - Spec areas: SUB-FEATURE-RESEARCH.
+  - Spec work:
+      add invariant INV-NO-SILENT-SCENE-LOSS (SUB-FEATURE-RESEARCH): every
+        row measured into patterns.csv either reaches the payload or is
+        reported with a count and a reason; contains; protects
+        IF-PATTERNS-ROW; emits ERR-SCENE-WITHOUT-REP;
+      add error-code ERR-SCENE-WITHOUT-REP (severity WARN, language py,
+        SUB-FEATURE-RESEARCH): contains.
+  - Code path: tools/cluster/vectors_build.py; its reproduction test.
+  - Test: the reproduction fails before the fix and passes after; the
+    pipeline run end to end on a real capture; the cluster count, outlier
+    rate and silhouette reported for 250 scenes and compared with the 179;
+    npm run spec:check, no violations.
+  - BOUNDARY: as above.
+
+  - IMPORTANT: The context you get is not hallucinated, its deterministically extracted.
+  - REFERENCE: If specification authoring details are needed, ask RIL for authoring rules.
+  - INVIOLABLE: A FIX WITHOUT A REPRODUCTION IS NOT A FIX.
+  - FORBIDDEN: MULTI-AGENT execution is not allowed. DO NOT SPAWN MULTIPLE AGENTS.
+  - DECISION PROTOCOL: If a decision must be made, ask for direct feedback. DO NOT DECIDE ALONE.
+  - AT THE END: update this list as the rule at the head of the list states.
+
+
+/cb-green — the four parsing rules that each shipped as a defect
+  - What: record 5's four rules authored as invariants over the parsing and
+    the occlusion walk, each with the defect it prevents named in its
+    description, because the cost of each is known and the comment holding
+    it today does not survive an edit that does not read it.
+  - Read: record 5; rs_extract.py's parse_tree and paint_order in full;
+    rs_pattern.py's visible_surface, media_surface, Scene and analyse.
+  - Spec areas: SUB-FEATURE-RESEARCH.
+  - Spec work:
+      add invariant INV-OCCLUDER-PAINTS (SUB-FEATURE-RESEARCH): only a node
+        whose shouldPaint_ is set may subtract area; IsSubTreeSkipped is a
+        caching flag and is never read as visibility; contains;
+      add invariant INV-OCCLUSION-PAINT-ORDER (SUB-FEATURE-RESEARCH): the
+        topmost-first walk uses the real paint order, honouring
+        ReverseChildren and PositionZ, never the dump's order; contains;
+      add invariant INV-OWN-RECT-BOUNDS (SUB-FEATURE-RESEARCH): the oversize
+        test applies to a node's own rect, never its clipped rect;
+        contains;
+      add invariant INV-FIRST-PASS-COUNTS (SUB-FEATURE-RESEARCH): counts and
+        properties come from the main-thread pass; a repeated node id marks
+        the second; contains;
+      add invariant INV-SUBSTRATE-IS-COMPLEMENT (SUB-FEATURE-RESEARCH):
+        substrate is the complement of claimed pixels and never competes in
+        the topmost-first walk; contains; protects IF-PATTERNS-ROW.
+  - Code path: no code changes expected; each invariant's check is authored
+    with it. Where a check finds the code does not hold the rule, the
+    finding is reported and the code fixed in this item, not the predicate
+    weakened.
+  - Test: each check run against the tree and against a real capture;
+    the pipeline output compared byte-for-byte with the run before the
+    item; npm run spec:check, no violations.
+  - BOUNDARY: as above.
+
+  - IMPORTANT: The context you get is not hallucinated, its deterministically extracted.
+  - REFERENCE: If specification authoring details are needed, ask RIL for authoring rules.
+  - INVIOLABLE: SPECIFICATION SURFACE IS AUTHORITATIVE.
+  - INVIOLABLE: DO NOT EMIT P3_SKIPPED. If you do not need to modify the specification you must submit a reason.
+  - INVIOLABLE: VIOLATED MEANS FIX THE CODE. NEVER WEAKEN A PREDICATE.
+  - FORBIDDEN: MULTI-AGENT execution is not allowed. DO NOT SPAWN MULTIPLE AGENTS.
+  - WHEN TO COMMIT: Before "silk run finalize".
+  - DECISION PROTOCOL: If a decision must be made, ask for direct feedback. DO NOT DECIDE ALONE.
+  - AT THE END: update this list as the rule at the head of the list states.
+
+
+/cb-green — the vector invariants, two of them already satisfied
+  - What: record 4's measured properties authored as invariants.
+    INV-SURFACE-SUMS-TO-ONE and INV-UNIT-COLUMNS-BOUNDED are adopted as
+    already satisfied — they were verified across all 250 rows, worst
+    deviation 0.006 — and an invariant that is already true is free to
+    keep. INV-ABSENT-NOT-ZERO is the cross-file agreement of record 5 that
+    nothing currently holds: rs_pattern.py writes empty and
+    vectors_build.py's transform() turns empty into nan, and both must
+    continue to.
+    The verification is re-run in this session against a real capture and
+    the figures written into the report; the 2026-10-26 figures are not
+    carried.
+  - Read: records 3, 4 and 5; vectors_build.py's transform() and VECTORS
+    table; rs_pattern.py's analyse and visible_surface.
+  - Spec areas: SUB-FEATURE-RESEARCH.
+  - Spec work:
+      add invariant INV-SURFACE-SUMS-TO-ONE (SUB-FEATURE-RESEARCH,
+        enforcementBasis runtime, strength strong): the five surface
+        columns sum to one within 0.01; contains; protects
+        IF-PATTERNS-ROW; emits ERR-SURFACE-SUM-OFF;
+      add invariant INV-UNIT-COLUMNS-BOUNDED (SUB-FEATURE-RESEARCH): every
+        column declared unit lies in [0,1]; contains; protects
+        IF-PATTERNS-ROW;
+      add invariant INV-ABSENT-NOT-ZERO (SUB-FEATURE-RESEARCH): a
+        measurement not taken is written empty, becomes nan, and is imputed
+        to the column mean; no column writes 0.0 for absence; contains;
+        protects IF-PATTERNS-ROW;
+      add error-code ERR-SURFACE-SUM-OFF (severity ERROR, language py,
+        SUB-FEATURE-RESEARCH): contains.
+  - Code path: tools/cluster/vectors_build.py and rs_pattern.py where a
+    check is added; no behaviour change expected.
+  - Test: the three checks run against a real capture, their figures in the
+    report; the pipeline output unchanged; npm run spec:check, no
+    violations.
+  - BOUNDARY: as above.
+
+  - IMPORTANT: The context you get is not hallucinated, its deterministically extracted.
+  - REFERENCE: If specification authoring details are needed, ask RIL for authoring rules.
+  - INVIOLABLE: SPECIFICATION SURFACE IS AUTHORITATIVE.
+  - INVIOLABLE: DO NOT EMIT P3_SKIPPED. If you do not need to modify the specification you must submit a reason.
+  - FORBIDDEN: MULTI-AGENT execution is not allowed. DO NOT SPAWN MULTIPLE AGENTS.
+  - WHEN TO COMMIT: Before "silk run finalize".
+  - DECISION PROTOCOL: If a decision must be made, ask for direct feedback. DO NOT DECIDE ALONE.
+  - AT THE END: update this list as the rule at the head of the list states.
+
+
+/cb-green — determinism and the tiebreak
+  - What: the two properties that make any later change to the measurement
+    checkable rather than arguable. Determinism is what let a 624-line
+    reduction of rs_extract.py be proved safe on ten real dumps. The
+    tiebreak is what stops two groups of near-equal coverage swapping slots
+    between samples and jumping the whole vector — the argmax failure, one
+    level up.
+  - Read: records 4 and 7; rs_pattern.py's group ordering in analyse.
+  - Spec areas: SUB-FEATURE-RESEARCH.
+  - Spec work:
+      add invariant INV-DETERMINISTIC-MEASUREMENT (SUB-FEATURE-RESEARCH,
+        enforcementBasis runtime): the same session yields a
+        byte-identical patterns.csv; contains; protects IF-PATTERNS-ROW;
+      add invariant INV-TIEBREAK-NOT-ON-AREA (SUB-FEATURE-RESEARCH):
+        pattern slots order by coverage with ties broken on vertical
+        position, never on the nearly-tied area; contains.
+  - Code path: tools/cluster/; the determinism check as a repeatable
+    target.
+  - Test: the same session measured twice, the two csv files identical;
+    npm run spec:check, no violations.
+  - BOUNDARY: as above.
+
+  - IMPORTANT: The context you get is not hallucinated, its deterministically extracted.
+  - REFERENCE: If specification authoring details are needed, ask RIL for authoring rules.
+  - INVIOLABLE: SPECIFICATION SURFACE IS AUTHORITATIVE.
+  - INVIOLABLE: DO NOT EMIT P3_SKIPPED. If you do not need to modify the specification you must submit a reason.
+  - FORBIDDEN: MULTI-AGENT execution is not allowed. DO NOT SPAWN MULTIPLE AGENTS.
+  - WHEN TO COMMIT: Before "silk run finalize".
+  - DECISION PROTOCOL: If a decision must be made, ask for direct feedback. DO NOT DECIDE ALONE.
+  - AT THE END: update this list as the rule at the head of the list states.
+
+
+/cb-green — the error vocabulary
+  - What: record 6's seven remaining error codes authored and emitted,
+    so a capture that is partly broken says so. ERR-SCENE-WITHOUT-REP was
+    authored with the fix and is not repeated here.
+    Each is emitted where the silence is today: the display.txt fallback to
+    1316x2832 at density 3.5; a scene whose client dump is absent; a
+    patterns row whose shot matches nothing; owner_of returning None; a
+    vector column with zero variance over a capture; the capture finding no
+    screenshot command on the device.
+  - Read: record 6; rs_extract.py's read_display and session walk;
+    rs_pattern.py's owner_of and main; vectors_build.py's row load;
+    rs_capture.ps1's Find-ShotCommand.
+  - Spec areas: SUB-FEATURE-RESEARCH.
+  - Spec work:
+      add error-code ERR-DISPLAY-DUMP-MISSING (WARN, py);
+      add error-code ERR-CLIENT-DUMP-MISSING (WARN, py);
+      add error-code ERR-NO-OWNER-WINDOW (ERROR, py);
+      add error-code ERR-JOIN-KEY-UNMATCHED (ERROR, py);
+      add error-code ERR-COLUMN-CONSTANT (WARN, py);
+      add error-code ERR-SHOT-COMMAND-ABSENT (FATAL, meta);
+      each contained by SUB-FEATURE-RESEARCH.
+  - Code path: tools/cluster/rs_extract.py, rs_pattern.py,
+    vectors_build.py; tools/rs_capture.ps1.
+  - Test: each code provoked once on a constructed input and its emission
+    observed; a full run on a real capture reporting its counts; the
+    measured output otherwise unchanged; npm run spec:check, no violations.
+  - BOUNDARY: as above.
+
+  - IMPORTANT: The context you get is not hallucinated, its deterministically extracted.
+  - REFERENCE: If specification authoring details are needed, ask RIL for authoring rules.
+  - INVIOLABLE: SPECIFICATION SURFACE IS AUTHORITATIVE.
+  - INVIOLABLE: DO NOT EMIT P3_SKIPPED. If you do not need to modify the specification you must submit a reason.
+  - FORBIDDEN: MULTI-AGENT execution is not allowed. DO NOT SPAWN MULTIPLE AGENTS.
+  - WHEN TO COMMIT: Before "silk run finalize".
+  - DECISION PROTOCOL: If a decision must be made, ask for direct feedback. DO NOT DECIDE ALONE.
+  - AT THE END: update this list as the rule at the head of the list states.
+
+
+/cb-green — the boundary and the artefact rules
+  - What: record 7's three structural rules. The device side computes
+    nothing; no capture is ever tracked; every generated artefact has a
+    tracked producer and declared inputs. All three are checkable from the
+    tree alone, and the third is the one that was nearly lost.
+  - Read: record 7; tools/rs_capture.ps1 in full; .gitignore; the
+    producers of every artefact the repository expects.
+  - Spec areas: SUB-FEATURE-RESEARCH.
+  - Spec work:
+      add invariant INV-DEVICE-COMPUTES-NOTHING (SUB-FEATURE-RESEARCH,
+        enforcementBasis static-analysis): the capture derives no feature
+        and writes no name; its output is files plus an index; contains;
+        protects IF-CAPTURE-SESSION;
+      add invariant INV-NO-CAPTURES-TRACKED (SUB-FEATURE-RESEARCH,
+        enforcementBasis structural): no screenshot and no dump is tracked
+        by git; contains;
+      add invariant INV-GENERATED-HAS-TRACKED-PRODUCER (SUB-FEATURE-RESEARCH):
+        every generated artefact is produced by a tracked script from
+        declared inputs; contains.
+  - Code path: no code changes expected; the three checks are authored with
+    their invariants.
+  - Test: the three checks run against the tree; npm run spec:check, no
+    violations.
+  - BOUNDARY: as above.
+
+  - IMPORTANT: The context you get is not hallucinated, its deterministically extracted.
+  - REFERENCE: If specification authoring details are needed, ask RIL for authoring rules.
+  - INVIOLABLE: SPECIFICATION SURFACE IS AUTHORITATIVE.
+  - INVIOLABLE: DO NOT EMIT P3_SKIPPED. If you do not need to modify the specification you must submit a reason.
+  - FORBIDDEN: MULTI-AGENT execution is not allowed. DO NOT SPAWN MULTIPLE AGENTS.
+  - WHEN TO COMMIT: Before "silk run finalize".
+  - DECISION PROTOCOL: If a decision must be made, ask for direct feedback. DO NOT DECIDE ALONE.
+  - AT THE END: update this list as the rule at the head of the list states.
+
+
+/cb-green — the eleven algorithms
+  - What: the named procedures of the pipeline authored as algorithm nodes,
+    each carrying the invariants it satisfies and the error codes it emits.
+    Only now, with the invariants in place: an algorithm node with no
+    invariant over it is documentation.
+    The two device-side algorithms are declared language meta, because the
+    enum has 23 entries and PowerShell is not among them (record 10). That
+    costs nothing while their invariant is that they compute nothing, and
+    the gap is reported upstream rather than worked around.
+  - Read: records 2, 9 and 10; every file named under Code path, in full.
+  - Spec areas: SUB-FEATURE-RESEARCH.
+  - Spec work:
+      add algorithm ALG-CAPTURE-LOOP (meta): the capture loop; contains;
+        output-of IF-CAPTURE-SESSION; satisfies
+        INV-DEVICE-COMPUTES-NOTHING; emits ERR-SHOT-COMMAND-ABSENT;
+      add algorithm ALG-QUICK-SIG (meta): the signature off the raw dump
+        text; contains; called by ALG-CAPTURE-LOOP;
+      add algorithm ALG-PARSE-RSTREE (py): contains; input-of
+        IF-CAPTURE-SESSION; satisfies INV-FIRST-PASS-COUNTS;
+      add algorithm ALG-PAINT-ORDER (py): contains; satisfies
+        INV-OCCLUSION-PAINT-ORDER;
+      add algorithm ALG-OWNERSHIP (py): contains;
+      add algorithm ALG-OWNER-SELECT (py): contains; calls ALG-OWNERSHIP;
+        emits ERR-NO-OWNER-WINDOW;
+      add algorithm ALG-BRANCH-GROUP (py): the pattern vector; contains;
+        output-of IF-PATTERNS-ROW; satisfies INV-OWN-RECT-BOUNDS,
+        INV-TIEBREAK-NOT-ON-AREA, INV-ABSENT-NOT-ZERO, INV-NO-SCENE-CLASS;
+      add algorithm ALG-VISIBLE-SURFACE (py): the surface vector; contains;
+        output-of IF-PATTERNS-ROW; calls ALG-PAINT-ORDER; satisfies
+        INV-OCCLUDER-PAINTS, INV-SUBSTRATE-IS-COMPLEMENT,
+        INV-SURFACE-SUMS-TO-ONE;
+      add algorithm ALG-MEDIA-SURFACE (py): contains; calls ALG-PAINT-ORDER;
+        satisfies INV-OCCLUDER-PAINTS, INV-OWN-RECT-BOUNDS;
+      add algorithm ALG-VECTOR-CLUSTER (py): standardise, weight, cluster;
+        contains; input-of IF-PATTERNS-ROW; satisfies INV-ABSENT-NOT-ZERO,
+        INV-NO-SILENT-SCENE-LOSS, INV-NO-SCENE-CLASS; emits
+        ERR-SCENE-WITHOUT-REP, ERR-COLUMN-CONSTANT;
+      add algorithm ALG-CORRELATE (py): contains.
+  - Code path: tools/rs_capture.ps1; tools/cluster/rs_extract.py,
+    rs_pattern.py, vectors_build.py; tools/correlate.py.
+  - Test: npm run spec:check, no violations; the pipeline run end to end on
+    a real capture, its output unchanged.
+  - BOUNDARY: as above.
+
+  - IMPORTANT: The context you get is not hallucinated, its deterministically extracted.
+  - REFERENCE: If specification authoring details are needed, ask RIL for authoring rules.
+  - INVIOLABLE: SPECIFICATION SURFACE IS AUTHORITATIVE.
+  - INVIOLABLE: DO NOT EMIT P3_SKIPPED. If you do not need to modify the specification you must submit a reason.
+  - FORBIDDEN: MULTI-AGENT execution is not allowed. DO NOT SPAWN MULTIPLE AGENTS.
+  - WHEN TO COMMIT: Before "silk run finalize".
+  - DECISION PROTOCOL: If a decision must be made, ask for direct feedback. DO NOT DECIDE ALONE.
+  - AT THE END: update this list as the rule at the head of the list states.
+
+
+/cb-green — each threshold given a contract or deleted
+  - What: the fourteen tuned constants given the contract each lacks, as
+    preconditions of the algorithm they belong to: what the constant
+    separates, what capture it was fitted on, and what changing it would
+    break. A constant that cannot state its contract is deleted rather than
+    specified.
+    The constants: COINCIDENT 0.90, OVERLAY_IN 0.80, OVERLAY_MAX 0.40,
+    POS_TOL 40px, BUDGET 8, OVERSIZE 1.5, SURF_MIN 0.25, FULLBLEED_H 0.80,
+    SURF_BANDS (0.25, 0.50, 0.75, 1.00), SLOT_CONTENT 28, SLOT_CHILDREN 29,
+    and the three drawable-slot sets; the capture's Tol 650 and ShotEvery
+    5; the clustering's min_cluster_size 9.
+    The drawable-slot numbers carry a caveat the contract must state: the
+    device emits slot 50 while the longest published OpenHarmony enum ends
+    at 46, so the mapping was recovered by bracket-pair alignment and is an
+    inference about this build, not a published fact.
+  - Read: record 3; rs_pattern.py in full; vectors_build.py's VECTORS
+    table; rs_capture.ps1's parameters.
+  - Spec areas: SUB-FEATURE-RESEARCH.
+  - Spec work: the algorithm nodes of the previous item modified
+    (preconditions) to carry their constants' contracts; a constant with no
+    contract removed from the code and the removal reported. No node is
+    added. The list of constants and their disposition is given to the
+    human before the envelope is written.
+  - Code path: tools/cluster/rs_pattern.py, vectors_build.py;
+    tools/rs_capture.ps1.
+  - Test: the pipeline run on a real capture; any constant removed, its
+    effect on the output measured and reported; npm run spec:check, no
+    violations.
+  - BOUNDARY: as above.
+
+  - IMPORTANT: The context you get is not hallucinated, its deterministically extracted.
+  - REFERENCE: If specification authoring details are needed, ask RIL for authoring rules.
+  - INVIOLABLE: SPECIFICATION SURFACE IS AUTHORITATIVE.
+  - INVIOLABLE: DO NOT EMIT P3_SKIPPED. If you do not need to modify the specification you must submit a reason.
+  - FORBIDDEN: MULTI-AGENT execution is not allowed. DO NOT SPAWN MULTIPLE AGENTS.
+  - WHEN TO COMMIT: Before "silk run finalize".
+  - DECISION PROTOCOL: If a decision must be made, ask for direct feedback. DO NOT DECIDE ALONE.
+  - AT THE END: update this list as the rule at the head of the list states.
+
+
+/cb-green — correlate.py closed: the premise measured
+  - What: record 8's question answered. One capture session on the device
+    carrying, on one clock, a scene record per interval and a
+    sample_power.sh capture of cpufreq and cpuidle; the join run; the
+    answer attached to the spec as evidence.
+    The record a producer must emit is IF-SCENE-RECORD, authored by this
+    item because this item produces it: the interval counters correlate.py
+    derives features from, plus the two measured vectors. The three fields
+    its docstring enforces — vsyncs, visible, seq — are part of the
+    interface, and the lead check is part of the question.
+    This item is the cheapest decisive experiment in the repository and it
+    has never been run. A negative answer changes what the rest of the work
+    is for, and that is reported as the result, not worked around.
+  - Read: record 8; tools/correlate.py and tools/sample_power.sh in full;
+    tools/rs_capture.ps1's loop.
+  - Spec areas: SUB-FEATURE-RESEARCH.
+  - Spec work:
+      add interface IF-SCENE-RECORD (py, SUB-FEATURE-RESEARCH): one record
+        per interval, its counters and the two vectors; contains;
+      add invariant INV-SCENE-RECORD-CLOCK (SUB-FEATURE-RESEARCH): a record
+        and a power sample joined only where they share CLOCK_MONOTONIC;
+        contains; protects IF-SCENE-RECORD;
+      modify ALG-CORRELATE: input-of IF-SCENE-RECORD; satisfies
+        INV-SCENE-RECORD-CLOCK.
+  - Code path: tools/correlate.py; tools/rs_capture.ps1 where the record is
+    emitted; tools/sample_power.sh.
+  - Test: the join run on a real session; the integrity report and the
+    feature ranking with the lead column in the item's report; npm run
+    spec:check, no violations.
+  - BOUNDARY: as above.
+
+  - IMPORTANT: The context you get is not hallucinated, its deterministically extracted.
+  - IMPORTANT: Report the answer the data gives, including a negative one.
+  - REFERENCE: If specification authoring details are needed, ask RIL for authoring rules.
+  - INVIOLABLE: SPECIFICATION SURFACE IS AUTHORITATIVE.
+  - INVIOLABLE: DO NOT EMIT P3_SKIPPED. If you do not need to modify the specification you must submit a reason.
+  - FORBIDDEN: MULTI-AGENT execution is not allowed. DO NOT SPAWN MULTIPLE AGENTS.
+  - WHEN TO COMMIT: Before "silk run finalize".
+  - DECISION PROTOCOL: If a decision must be made, ask for direct feedback. DO NOT DECIDE ALONE.
+  - AT THE END: update this list as the rule at the head of the list states.
+
+
+/cb-audit — the surface vector's collapse diagnosed
+  - What: why the surface vector collapses towards one axis on this
+    capture, and whether it carries information the pattern vector does
+    not. Each of the five columns examined over the full capture: its
+    distribution, its correlation with the other four, its variance, and
+    the scenes at each extreme with their screenshots. The substrate
+    against content correlation of about -0.8 traced to its cause — whether
+    it is arithmetic (five reals summing to one, with three of them usually
+    near zero), a property of the capture (two sessions of one device), or
+    a defect in the occlusion walk.
+    vis_text is examined specifically: over the 250 scenes measured it
+    reaches 0.312 at most, its mean is 0.045, and it dominates no scene at
+    all — 0 of 250. A text-dominant reading is unreachable, and whether
+    that is the device, the capture or the measurement is a finding.
+    The untyped vis_content bucket is examined: how much of it is nodes
+    absent from the client dump entirely, how much is nodes the client dump
+    names with a tag the mapping does not cover, and whether the geometry
+    fallback already in the code can split it.
+    Each finding with its evidence and a recommendation; nothing decided.
+  - Read: records 3, 4 and 10; rs_pattern.py's visible_surface, vis_kind,
+    mark_kind and the slot sets, in full; the full patterns.csv of a real
+    capture; the page.
+  - Spec work: none; an audit changes nothing.
+  - BOUNDARY: as above.
+
+  - IMPORTANT: Read every file in full. A grep hit is a pointer, not a finding.
+  - IMPORTANT: Every figure is measured in this session against a real capture and written into the report.
+  - FORBIDDEN: MULTI-AGENT execution is not allowed. DO NOT SPAWN MULTIPLE AGENTS.
+  - DECISION PROTOCOL: If a decision must be made, ask for direct feedback. DO NOT DECIDE ALONE.
+  - AT THE END: the list update this audit owes is done by the /cb-free session after it.
+
+
+/cb-free — the diagnosis brought to the human, the surface vector kept or dropped
+  - What: each finding of the audit brought to the human one at a time,
+    with its evidence and a recommendation. The human rules on the one
+    question the list cannot answer for itself: whether the surface vector
+    stays as a second measurement, is repaired, or is dropped and the
+    pattern vector left alone. The ruling is written into record 3, which
+    then states the vectors in the form they keep, and record 10's caveat
+    is deleted or restated.
+    If the surface vector stays, IF-PAGE-PAYLOAD is planned by this session
+    and placed in the order; if it is dropped, every later reference to it
+    in this list is removed.
+  - Read: the audit's report; records 3, 4 and 10.
+  - Spec work: none; the session writes this list and changes no node.
+  - BOUNDARY: as above.
+
+  - DECISION PROTOCOL: If a decision must be made, ask for direct feedback. DO NOT DECIDE ALONE.
+  - AT THE END: update this list as the rule at the head of the list states.
