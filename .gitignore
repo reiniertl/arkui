@@ -53,3 +53,21 @@ tools/cluster/pat_payload.json
 tools/cluster/patterns.csv
 tools/cluster/surf_payload.json
 tools/cluster/vis_payload.json
+
+# combobul: the engine is installed per machine, not published from here.
+# The spec graph's source of truth is combobul/spec/{mutations,snapshots,
+# associations} - those stay tracked so a clone can rebuild spec.db with
+# `ril rebuild`. The engine, the catalogs and the local cache do not.
+# Mirrors know_kernel's rule shape.
+combobul/*
+!combobul/spec/
+combobul/spec/*
+!combobul/spec/mutations/
+!combobul/spec/snapshots/
+!combobul/spec/associations/
+.combobul/
+
+node_modules/
+# the skills, agents and hooks come from know_kernel and stay per
+# machine, like the engine they drive
+.claude/

@@ -1,0 +1,31 @@
+{
+  "name": "arkui-scene-signals",
+  "version": "1.0.0",
+  "description": "ArkUI scene classification signals — combobul-specified",
+  "main": "index.js",
+  "directories": {
+    "doc": "docs"
+  },
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "ril": "node combobul/cli/ril.mjs",
+    "silk": "node combobul/cli/silk.mjs",
+    "spec:check": "node combobul/cli/ril.mjs validate-delta --json"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/reiniertl/arkui.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/reiniertl/arkui/issues"
+  },
+  "homepage": "https://github.com/reiniertl/arkui#readme",
+  "type": "module",
+  "private": "true",
+  "dependencies": {
+    "better-sqlite3": "^13.0.3"
+  }
+}
