@@ -399,8 +399,12 @@ reported separately as <code>overlay_frac</code>.
 <br>&nbsp;&nbsp;<b>tiling</b> — siblings sharing edges rather than area. The layout, and the only
 candidates for a repeat.
 
-Each remaining branch is described by the content kinds in its subtree, sorted: <code>I</code> image,
-<code>T</code> text, <code>S</code> glyph, <code>V</code> video surface. Where the tag is a wrapper —
+Each remaining branch is described by the MARKS in its subtree, sorted: <code>I</code> image,
+<code>T</code> text, <code>S</code> glyph, <code>V</code> video surface. A mark is a node that
+actually puts something on the screen — see the three states on the rs_vis_* card. This replaced
+"a node with no children", which was wrong in both directions: 73% of leaves draw nothing and 16%
+of marks are containers painting their own background. On one scene the walk read 131 leaves of
+which 2 drew anything. Where the tag is a wrapper —
 on this app 103 of 135 leaves are tagged Custom or Stack — the kind is inferred from geometry instead:
 a small square is <code>i</code>, a wide thin box <code>t</code>. Siblings sharing a description are a
 repeating group; the group covering the most area wins, and its arrangement comes from the distinct x
@@ -438,7 +442,11 @@ Below 0.1 they were all full-screen video, named after whatever small thing repe
 action rail became "icon and label list", the caption became "text list". So the name is withheld
 below 0.15 and reads "no dominant repeat" - 81 of 250 scenes, median cover 0.04. Overlay density does
 not help separate those (r = +0.10 against cover), so coverage is the only gate used.
-<br><br>Still open: 20 of 250 scenes produce no pattern at all, the <code>b</code> kind is still
+<br><br><b>Reclustered after the three-state fix.</b> Slot 1 alone went from 8–20% of scenes
+fitting no cluster to <b>7–13%</b>, at equal or better silhouette: the overlay-versus-tiling split
+had been counting nodes the renderer never drew, and keying cells on childless-ness rather than on
+marks. It remains the best single block measured.
+<br><br>Still open: 28 of 250 scenes produce no pattern at all, the <code>b</code> kind is still
 a third of the alphabet on this app, and nothing here has been weighted or clustered yet.""")
 
 f(name="rs_pat1_* / rs_pat2_* (two pattern slots)", group="Repeat shape", status="prototype",
@@ -525,3 +533,61 @@ box. 167 scenes of that were the window's background fill or a blurred backdrop 
 full-window Image leaf, all reporting cover 1.00 on comment pages, shopping pages and list screens
 alike. Two rules were tried to tell a backdrop from content — counting painting descendants, and
 measuring what is painted on top — and neither worked, so the kind comes from the tag alone.""")
+
+f(name="rs_vis_* (visible surface by content)", group="Composition", status="prototype",
+  weight="not yet in the vector", rng="six fractions of the display, summing to 1",
+  origin="RSTree pass 1 for rects and paint order, pass 2 for <code>DrawableVec</code> and <code>shouldPaint_</code>, <code>client</code> for the type",
+  raw="""XComponent  DrawableVec:[11, 12, 24, 29, 31, 47]   shouldPaint_[1]   <- composed, no 28
+Image       DrawableVec:[0, 3, 11, 12, 22, 23, 24, 28, 31, 50]              <- drawn
+Stack       DrawableVec:[24, 29, 31]                                        <- structural
+Image       DrawableVec:[24, 28, 31]  shouldPaint_[0]  IsSubTreeSkipped: 1  <- not drawn this frame""",
+  extract="""<b>Three states, which the code previously collapsed to two.</b>
+<br>&nbsp;&nbsp;<b>structural</b> — slot 29, the children-only pass. It positions and clips and draws
+nothing. The skeleton, never a mark.
+<br>&nbsp;&nbsp;<b>drawn</b> — slot 28, the content pass, with <code>shouldPaint_</code> true. A mark,
+whether it is a leaf or a container painting its own background.
+<br>&nbsp;&nbsp;<b>composed</b> — an external surface, which carries no slot 28 at all because the
+compositor draws it rather than the render pass.
+
+Every mark and every composed surface is walked in paint order, topmost first, each claiming only the
+area nothing above it has already claimed. The display is then reported as fractions of video, image,
+text, glyph, plain fill, and bare. An Image inside a container that also paints wins the pixels it
+covers, because it is above its container — the nesting case resolved by construction rather than by a
+rule.
+
+Rasterised at 4 px rather than unioned rectangle by rectangle: the incremental union is quadratic in
+sweep-line calls and would cost more than the whole rest of the extractor. The area error is under a
+percent.""",
+  why="""Coverage by one number says how much of the window a surface occupies and nothing about what
+the window shows. Two scenes at the same coverage can be a photo wall and a form. The type of drawing
+and the area it finally holds are both part of what the scene is, and only the second was measured.""",
+  tells="""What the display actually shows, after occlusion: how much is playback, how much is decoded
+image, how much is text, how much is flat UI. The fractions sum to one, so it is a composition rather
+than a set of independent measures.""",
+  cost_script="O(N) to classify, one raster pass per mark. Dominated by the dump parse as everything else is.",
+  cost_tree="Free and exact inside ArkUI: the draw state and the component type are known without a dump, an id join, or a raster.",
+  norm="All six as <code>unit</code>. They sum to 1, so like the item-height bands they are correlated by construction and should be held out of any correlation prune.",
+  example="""a player above a recommendation grid
+  marks walked top-down: text runs, card images, the grid, the XComponent
+  vis_video 0.263   vis_image 0.386   vis_text 0.118
+  vis_glyph 0.005   vis_fill  0.233   vis_bare  0.000""",
+  extra="""<b>Two errors this exposed, both of which I had got the wrong way round.</b>
+<br><br><code>IsSubTreeSkipped</code> is NOT invisibility. It means the subtree was not re-traversed,
+which is caching: on one scene 75 of 77 content nodes are skipped while the screen is plainly full of
+images. An earlier fix proposed filtering by it would have discarded most of the content.
+<code>shouldPaint_</code> is the real verdict and fires on one or two nodes a scene. Cached-ness
+became its own column, <code>draw_cached_frac</code>, because a cached image costs composition but
+not rasterisation.
+<br><br>And an 8198x8198 blur source clips to exactly the window, so it passed a clipped-area size
+test. Five of them were painted over a video and read the display as 87% plain fill. Size is judged
+on a node's own rect everywhere now.
+<br><br><b>Measured over 250 scenes:</b> the rows sum to 1.00 on every one. Alone, five of these
+columns reach <b>silhouette 0.640</b>, the highest figure measured anywhere in this work — with
+30–42% of scenes fitting no cluster. Added to the pattern block it drags the outlier rate from 9% to
+35% and the silhouette does not improve. Every block so far is good alone and none of them add, which
+is the signature of 179 scenes being too few for the dimensions rather than of bad features.
+<br><br><b>The open gap:</b> 88 of 250 scenes are dominated by <code>vis_bare</code> — area claimed by
+nothing this counts, meaning there is drawn content the mark test still misses. On one scene the whole
+comment list is absent. Until that falls, the decomposition describes an incomplete picture of a
+third of the capture, and the 0.640 should not be banked. <code>vis_glyph</code> is also effectively
+dead: mean 0.001, two distinct values, never above 0.10.""")

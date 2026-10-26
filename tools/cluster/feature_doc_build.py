@@ -6,7 +6,8 @@ SHAPES = _j.load(open("shapes.json", encoding="utf-8"))
 REPS = _j.load(open("reps_payload.json", encoding="utf-8"))
 PATS = _j.load(open("pat_payload.json", encoding="utf-8"))
 SURF = _j.load(open("surf_payload.json", encoding="utf-8"))
-payload = {"features": data.F, "common": data.COMMON, "shapes": SHAPES, "reps": REPS, "pats": PATS, "surf": SURF}
+VIS  = _j.load(open("vis_payload.json", encoding="utf-8"))
+payload = {"features": data.F, "common": data.COMMON, "shapes": SHAPES, "reps": REPS, "pats": PATS, "surf": SURF, "vis": VIS}
 
 HTML = """<!doctype html>
 <html lang="en">
@@ -316,6 +317,35 @@ var DATA = __DATA__;
     h += "</div></div>";
     return h;
   }
+  // Every scene grouped by what wins most of the display.
+  function visible() {
+    var V = DATA.vis, h = "<div class='fld'><div class='k'>"
+      + t("What wins the display") + "</div><div class='v'>"
+      + "<p style='font-size:13px;color:var(--dim);margin:0 0 6px'>"
+      + t("All 250 scenes grouped by the content type holding the most area once "
+        + "everything above it has claimed its own. Every pictured scene is shown, "
+        + "ordered by how much that type holds. The caption gives that share, then "
+        + "the scene's video share and how much of it is cached.") + "</p>";
+    V.groups.forEach(function (g) {
+      var weak = g.kind === "bare" || g.kind === "fill";
+      h += "<div class='rgrp'><div class='hd'><div class='t'>" + esc(g.name)
+         + " \u00b7 " + g.n + " " + t("scenes") + "</div><div class='s'>"
+         + t("median share") + " <span class='" + (weak ? "flag" : "") + "'>"
+         + g.cover.toFixed(2) + "</span> \u00b7 " + t("median cached") + " " + g.over
+         + (g.kind === "bare" ? " \u00b7 <span class='flag'>"
+            + t("content the mark test is missing") + "</span>" : "")
+         + "</div></div><div class='desc'>" + t(g.desc) + "</div><div class='pics'>";
+      g.reps.forEach(function (r) {
+        h += "<div class='pic'><img loading='lazy' src='" + r.img + "'>"
+           + "<div class='cap'>share " + r.cover
+           + "<br>video " + r.h + " \u00b7 cached " + r.over
+           + "<br>" + esc(String(r.slot1).slice(0, 20)) + "</div></div>";
+      });
+      h += "</div></div>";
+    });
+    h += "</div></div>";
+    return h;
+  }
   function overview() {
     mark(document.getElementById("nav-overview"));
     var c = DATA.common, h = "<h2>" + t("How it fits together") + "</h2>"
@@ -365,6 +395,7 @@ var DATA = __DATA__;
     if (f.name.indexOf("rs_item_h0") === 0) { h += gallery() + observed(); }
     if (f.name.indexOf("rs_pat_") === 0) { h += motifs(); }
     if (f.name.indexOf("rs_surf_") === 0) { h += surfaces(); }
+    if (f.name.indexOf("rs_vis_") === 0) { h += visible(); }
     h += fld("Worth knowing", "<p>" + t(f.extra) + "</p>");
     document.getElementById("pane").innerHTML = h;
   }
