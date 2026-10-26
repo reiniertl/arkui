@@ -95,7 +95,6 @@ ORDER
 
   What remains, in this order (records 1 to 9 hold the decisions; each
   prompt names the records it applies):
-    * determinism and the tiebreak (/cb-green);
     * the error vocabulary (/cb-green);
     * the boundary and the artefact rules (/cb-green);
     * the eleven algorithms (/cb-green);
@@ -212,6 +211,19 @@ THE DECISIONS IN FORCE
          declared unit - overlay_frac, pat1_cover, pat1_h and the six vis_*
          - and over 250 rows none leaves [0,1]. pat1_cover and pat1_h carry
          28 empty fields, which is a measurement not taken and is allowed.
+       * Holds, and is now INV-DETERMINISTIC-MEASUREMENT: a session measured
+         three times in separate processes under PYTHONHASHSEED 1, 7 and
+         4242 gives one sha256. Checked across hash seeds rather than by
+         running twice in one interpreter, because the realistic way for it
+         to break is a set or dict iteration order reaching the output and
+         two runs in one process share a seed.
+       * Did not hold, and does now: the slot ordering sorted on the
+         unclamped coverage while pat1_cover reports min(1.0, ratio). On
+         20261022_123014/0090 two groups both overflowed the window, both
+         reported 1.0, and the lower one took slot 1 because it overflowed
+         further - so the file could not explain its own ordering. The sort
+         clamps now, which is INV-TIEBREAK-NOT-ON-AREA. One row of 250
+         changed; the pattern silhouette moved 0.467 to 0.468.
        * Holds, and is now INV-ABSENT-NOT-ZERO: those same 28 scenes have
          no repeating group and none of them writes a zero. transform('')
          and transform(None) are nan, transform('0') is 0.0, and a nan
@@ -290,7 +302,7 @@ THE DECISIONS IN FORCE
          picture could be given one. raw/ is about 60 MB per 25 seconds and
          whether to keep that is still open.
 
-     Applied by: determinism and the tiebreak; the boundary and the
+     Applied by: the boundary and the
      artefact rules.
 
   7. The open question. Decided by the human, carried from the first audit
@@ -384,38 +396,6 @@ THE DECISIONS IN FORCE
 ===============================================================================
 PROMPTS
 ===============================================================================
-
-/cb-green — determinism and the tiebreak
-  - What: the two properties that make any later change to the measurement
-    checkable rather than arguable. Determinism is what let a 624-line
-    reduction of rs_extract.py be proved safe on ten real dumps. The
-    tiebreak is what stops two groups of near-equal coverage swapping slots
-    between samples and jumping the whole vector — the argmax failure, one
-    level up.
-  - Read: records 4 and 6; rs_pattern.py's group ordering in analyse.
-  - Spec areas: SUB-FEATURE-RESEARCH.
-  - Spec work:
-      add invariant INV-DETERMINISTIC-MEASUREMENT (SUB-FEATURE-RESEARCH,
-        enforcementBasis runtime): the same session yields a
-        byte-identical patterns.csv; contains; protects IF-PATTERNS-ROW;
-      add invariant INV-TIEBREAK-NOT-ON-AREA (SUB-FEATURE-RESEARCH):
-        pattern slots order by coverage with ties broken on vertical
-        position, never on the nearly-tied area; contains.
-  - Code path: tools/cluster/; the determinism check as a repeatable
-    target.
-  - Test: the same session measured twice, the two csv files identical;
-    npm run spec:check, no violations.
-  - BOUNDARY: as above.
-
-  - IMPORTANT: The context you get is not hallucinated, its deterministically extracted.
-  - REFERENCE: If specification authoring details are needed, ask RIL for authoring rules.
-  - INVIOLABLE: SPECIFICATION SURFACE IS AUTHORITATIVE.
-  - INVIOLABLE: DO NOT EMIT P3_SKIPPED. If you do not need to modify the specification you must submit a reason.
-  - FORBIDDEN: MULTI-AGENT execution is not allowed. DO NOT SPAWN MULTIPLE AGENTS.
-  - WHEN TO COMMIT: Before "silk run finalize".
-  - DECISION PROTOCOL: If a decision must be made, ask for direct feedback. DO NOT DECIDE ALONE.
-  - AT THE END: update this list as the rule at the head of the list states.
-
 
 /cb-green — the error vocabulary
   - What: record 5's seven remaining error codes authored and emitted,

@@ -664,7 +664,16 @@ def analyse(tree, owner, density, dw, dh):
     # on the quantity that is nearly tied. Two groups of similar size would
     # otherwise swap slots between samples and the whole vector would jump -
     # the argmax failure, one level up.
-    groups.sort(key=lambda g: (-round(g["area"] / own_area, 1), g["top"]))
+    #
+    # Clamped, so the number that decides the order is the number the row
+    # reports. Without the clamp two groups that both fill the window were
+    # separated by how far each spilled past it, which is an artefact of
+    # groups extending beyond the viewport and not a difference in what
+    # repeats: on one scene of 250 it put the lower group in slot 1 while
+    # the row showed both at cover 1.0, so the file could not explain its
+    # own ordering.
+    groups.sort(key=lambda g: (-round(min(1.0, g["area"] / own_area), 1),
+                               g["top"]))
 
     used = set()
     for g in pages:
