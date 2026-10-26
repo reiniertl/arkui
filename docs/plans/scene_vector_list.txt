@@ -43,6 +43,15 @@ same session, before the gate is cleared:
 An audit cannot write; the list update an audit owes is done by the /cb-free
 session after it, which names it in its report.
 
+An item pushes before its gate is cleared. Authoring happens on the VM and
+the list is read on the capture machine, so a committed-but-unpushed update
+leaves the next item to be chosen from a list that is behind the work. That
+happened once: the first item was executed, deleted from this list, and
+committed, and because nothing was pushed the same item was read and run a
+second time against a graph that already held its nodes. The item is not
+finished when the list is written; it is finished when the list the human
+reads says so.
+
 Every prompt carries a Spec work section naming its specification work node
 by node: each node it adds (id, kind, module, and every edge it carries),
 each node it modifies (id and the fields written), each node and each edge
@@ -182,6 +191,11 @@ THE DECISIONS IN FORCE
          content-kind letters off node tags, geometric arrangement, column
          count — and are not matches against a library.
        * Both are measurements. Neither is a class.
+       * patterns.csv is 61 columns wide, of which these 12 are the vectors
+         and 4 identify the scene. The other 45 are measured and carried for
+         inspection, not clustered. IF-PATTERNS-ROW names every one and says
+         which is which; this record states the vectors alone, and the node
+         is where the full width is settled.
 
      Applied by: the vector invariants;
      each threshold given a contract; the surface vector's collapse.
