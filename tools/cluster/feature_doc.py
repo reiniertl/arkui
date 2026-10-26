@@ -535,59 +535,50 @@ alike. Two rules were tried to tell a backdrop from content — counting paintin
 measuring what is painted on top — and neither worked, so the kind comes from the tag alone.""")
 
 f(name="rs_vis_* (visible surface by content)", group="Composition", status="prototype",
-  weight="not in the vector", rng="eight fractions of the display, summing to 1",
+  weight="not in the vector", rng="six fractions of the display, summing to 1",
   origin="RSTree pass 1 for rects and paint order, pass 2 for <code>DrawableVec</code> and <code>shouldPaint_</code>, <code>client</code> for the type",
-  raw="""XComponent  DrawableVec:[11, 12, 24, 29, 31, 47]  shouldPaint_[1]   <- composed, no content slot
-Image       DrawableVec:[0, 3, 11, 12, 22, 23, 24, 28, 31, 50]             <- background + content
-Stack       DrawableVec:[24, 29, 31]                                       <- structural
-Image       DrawableVec:[24, 28, 31]  shouldPaint_[0]                      <- not drawn this frame""",
-  extract="""<b>The slot meanings were recovered, not guessed.</b> The device's drawable vector is longer
-than any published OpenHarmony release — it emits slot 50 where master's <code>RSDrawableSlot</code>
-ends at <code>MAX = 46</code> and 5.0's at 43 — so the mapping came from alignment: slots 24 and 31
-occur together 3,570 times and alone never once, which identifies the <code>SAVE_FRAME</code> /
-<code>RESTORE_FRAME</code> pair. Anchoring there puts the content region at master's numbering plus
-four:
-<br>&nbsp;&nbsp;<code>28</code> CONTENT_STYLE &nbsp; <code>29</code> CHILDREN &nbsp;
-<code>10–14</code> background colour, shader, image, filter &nbsp; <code>43</code> BORDER
-<br><br><b>Three node states</b>, which the code previously collapsed to two: <b>structural</b>
-(children pass only), <b>drawn</b> (a content, background or border slot, with
-<code>shouldPaint_</code>), <b>composed</b> (an external surface, which carries no content slot at all
-because the compositor draws it).
+  raw="""XComponent  DrawableVec:[11, 12, 24, 29, 31, 47]   <- composed; 11+12 and 24+31 are brackets
+Image       DrawableVec:[0, 3, 11, 12, 22, 23, 24, 28, 31, 50]  <- 28 is the content slot
+Stack       DrawableVec:[24, 29, 31]                       <- structural: frame bracket + children
+Image       DrawableVec:[24, 28, 31]  shouldPaint_[0]      <- not drawn this frame""",
+  extract="""<b>The slot numbers were recovered from the dumps, not read.</b> The device's drawable
+vector is longer than any published OpenHarmony release — it emits slot 50 where master's
+<code>RSDrawableSlot</code> ends at <code>MAX&nbsp;=&nbsp;46</code> — so the mapping came from
+structure. Four pairs occur that <b>never</b> appear apart: <code>(0,50)</code>, <code>(3,22)</code>,
+<code>(11,12)</code> and <code>(24,31)</code>, matching the enum's four save/restore pairs. Content
+and children sit inside the <code>(24,31)</code> bracket, which fixes <code>28</code> as
+CONTENT_STYLE and <code>29</code> as CHILDREN — 3,506 of 3,805 vectors carry exactly one of the two,
+and the 51 carrying both are drawing containers.
 
-Every mark and composed surface is walked in paint order, topmost first, each claiming only what
-nothing above it has claimed. An Image inside a container that also paints wins the pixels it covers,
-because it is above its container. The display is then reported as fractions of xcomp, image, text,
-glyph, untyped content, background, border and residual. Rasterised at 4&nbsp;px; the incremental
-union is quadratic and would cost more than the rest of the extractor.""",
-  why="""Coverage by one number says how much of the window something occupies and nothing about what
-the window shows. Two scenes at the same coverage can be a photo wall and a form.""",
-  tells="""What the display is made of after occlusion. In principle. In practice see below — on this
-capture it mostly tells you that the app draws through components nothing can name.""",
+<b>Only content competes for pixels.</b> Every node with the content slot, plus every composed
+surface, is walked in paint order, topmost first, each claiming what nothing above it claimed. The
+display is reported as xcomp, image, text, glyph and untyped content — and everything unclaimed as
+<b>substrate</b>. Rasterised at 4&nbsp;px.""",
+  why="""Coverage by one number says how much of a window something fills and nothing about what the
+window shows. Two scenes at the same coverage can be a photo wall and a form.""",
+  tells="Whether the display is held by playback, by imagery, by text, or by drawing the tags cannot name.",
   cost_script="O(N) to classify, one raster pass per mark. Dominated by the dump parse.",
   cost_tree="Free and exact inside ArkUI: draw state and component type are known without a dump, an id join, or a raster.",
   norm="All as <code>unit</code>. They sum to 1, so they are correlated by construction and must be held out of any correlation prune.",
   example="""a player above a recommendation grid
-  marks walked top-down: text runs, card images, the grid, the XComponent
   vis_xcomp 0.263   vis_image 0.386   vis_text 0.118
-  vis_content 0.000  vis_background 0.233   vis_residual 0.000""",
-  extra="""<b>Reading the slots closed the residual.</b> 32% of nodes draw a background and no tag
-reports it; they were all landing in one bucket that averaged 0.39 of the display and meant nothing.
-With backgrounds named, scenes with more than 0.3 unaccounted fell from <b>93 to 4</b>.
-<br><br><b>But the composition as built is wrong, and the shape of the failure says why.</b> A
-background is the substrate: it claims every pixel no more specific mark covered, so it wins the
-remainder <i>by construction</i>. It reads 0.95 at the median and dominates 195 of 250 scenes. It
-cannot be a peer class in a vector meant to say what a scene is.
-<br><br>A second error compounds it. Slots 10–14 were treated as one family, but
-<code>BACKGROUND_IMAGE</code> and <code>BACKGROUND_SHADER</code> draw real visible imagery while
-<code>BACKGROUND_COLOR</code> is a flat fill. A feed card's photo rendered through the background slot
-is content filed as substrate — which is why <code>vis_image</code> reads 0.035 on screens full of
-photographs, a figure that is not credible. The family needs splitting.
-<br><br><b>And the type resolution is tag-limited regardless.</b> <code>vis_content</code> — drawn,
-but carrying no type any tag can read — dominates 40 scenes at a median of 0.90, because this app
-builds from <code>Custom</code> components. The slots say <i>that</i> a node draws; only the tag could
-say <i>what</i>, and mostly it does not.
-<br><br><b>Clustering:</b> alone these reach silhouette 0.73–0.91, with 44–65% of scenes fitting
-nothing and only 3 clusters. <code>background</code> correlates <b>−0.80</b> with
-<code>content</code>; the points lie near a line, HDBSCAN finds a few knots on it and rejects two
-thirds of the data. That silhouette is the metric rewarding a degenerate embedding, not a result. The
-block is out of the vector and stays out until the background family is split.""")
+  vis_content 0.000   vis_substrate 0.233""",
+  extra="""<b>Two mistakes produced the version that read nonsense, and both are worth stating.</b>
+<br><br>Slots 11 and 12 were the first two members of the background family. They are a
+<i>bracket</i> — they never occur apart, and they sit on 31.6% of all nodes, i.e. every clipping
+container. The feature was reading a clip bracket as a painted background, which is why background
+claimed the remainder of nearly every scene and dominated 195 of 250.
+<br><br>Removing them was not enough: background still dominated 164 of 250, 87% of it from slot 14
+on <code>Stack</code> and <code>Row</code> containers. The real error was structural. <b>A substrate
+cannot compete for pixels.</b> It is what you see where nothing was drawn, so letting it claim the
+remainder makes it dominant by construction and tells you nothing about any scene. It is now the
+complement — the same number, without the pretence that it won a contest.
+<br><br><b>Where it stands:</b> content 0.39, substrate 0.31, image 0.13, xcomp 0.12, text 0.05 on
+average, with content total at 0.69 of the display. The largest class is <i>untyped</i> content,
+dominating 108 of 250 scenes, because this app builds from <code>Custom</code> components. The slots
+say a node draws; only the tag could say what, and mostly it does not. That is a limit of the source,
+not of the measurement, and it is why the composition still cannot produce the
+<code>{image .3, text .6}</code> reading it should on a page of prose.
+<br><br><b>Clustering, on the 179 pictured scenes:</b> composition alone gives 4 to 6 clusters at
+22–47% fitting nothing; the pattern vector gives 6 at 9–13%. Together they are worse than the pattern
+alone, 31–45%. The block stays out of the vector.""")

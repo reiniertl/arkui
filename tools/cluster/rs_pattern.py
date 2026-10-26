@@ -103,10 +103,30 @@ def surface_kind(n):
 # the SAVE_FRAME / RESTORE_FRAME pair. See parse_tree for the derivation.
 SLOT_CONTENT = 28           # CONTENT_STYLE
 SLOT_CHILDREN = 29          # CHILDREN
-SLOTS_BACKGROUND = frozenset((10, 11, 12, 13, 14))   # colour, shader, image, filter
-SLOTS_BORDER = frozenset((6, 43))                    # OUTLINE, BORDER
+# Brackets, not paints. Four pairs occur in the dumps that NEVER appear
+# apart - (0,50), (3,22), (11,12) and (24,31) - which is the signature of
+# the enum's four save/restore pairs: SAVE_ALL/RESTORE_ALL,
+# BG_SAVE_BOUNDS/BG_RESTORE_BOUNDS, SAVE_FRAME/RESTORE_FRAME and the
+# bounds pair around them. A bracket sets up or tears down a clip; it puts
+# nothing on the screen.
+#
+# 11 and 12 were the first two members of the background family here, and
+# they sit on 31.6% of all nodes - every clipping container. That is why
+# "background" claimed the remainder of nearly every scene and dominated
+# 195 of 250: the feature was reading a clip bracket as a painted
+# background. The actual paint slots are rare, as paints should be: 10 at
+# 0.2% of nodes, 13 at 1.0%, 14 at 6.1%, 15 at 0.7%, 18 at 0.3%.
+SLOTS_BRACKET = frozenset((0, 3, 11, 12, 22, 24, 31, 50))
+SLOTS_BACKGROUND = frozenset((10, 13, 14, 15, 17, 18))
+SLOTS_BORDER = frozenset((43,))
 
-VIS_KINDS = ("xcomp", "image", "text", "glyph", "content", "background", "border")
+# Only content competes for pixels. A background is the substrate: it is
+# what you see where nothing else was drawn, so letting it claim the
+# remainder makes it dominant BY CONSTRUCTION - it read 0.95 at the median
+# and won 195 of 250 scenes, which says nothing about any of them. It is
+# reported as the complement instead, which is the same number without the
+# pretence that it competed for it.
+VIS_KINDS = ("xcomp", "image", "text", "glyph", "content")
 
 
 def is_composed(n):
@@ -129,7 +149,7 @@ def is_drawn(n):
     if not n.get("should", True):
         return False
     sl = n.get("slotset") or frozenset()
-    return bool(sl & ({SLOT_CONTENT} | SLOTS_BACKGROUND | SLOTS_BORDER))
+    return SLOT_CONTENT in sl
 
 
 def is_structural(n):
@@ -189,11 +209,8 @@ def vis_kind(n):
         if "SymbolGlyph" in t or "Divider" in t:
             return "glyph"
         return "content"          # draws, but nothing says what
-    if sl & SLOTS_BACKGROUND:
-        return "background"
-    if sl & SLOTS_BORDER:
-        return "border"
-    return ""                      # structural: draws nothing
+    return ""                      # background, border, or structural:
+                                   # none of them compete for pixels
 
 
 def visible_surface(sc, dw, dh, own_area, order, step=4):
@@ -242,7 +259,8 @@ def visible_surface(sc, dw, dh, own_area, order, step=4):
     out = {}
     for k in VIS_KINDS:
         out["vis_" + k] = round(min(1.0, int((grid == idx[k]).sum()) * cell / tot), 3)
-    out["vis_residual"] = round(max(0.0, 1.0 - sum(out.values())), 3)
+    # everything no content mark claimed: substrate, chrome, blur, blank
+    out["vis_substrate"] = round(max(0.0, 1.0 - sum(out.values())), 3)
     out["vis_marks"] = len(marks)
     return out
 
