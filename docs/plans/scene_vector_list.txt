@@ -86,8 +86,6 @@ ORDER
 
   What remains, in this order (records 1 to 10 hold the decisions; each
   prompt names the records it applies):
-    * the module and the two interfaces that already bite, with
-      INV-NO-SCENE-CLASS (/cb-green);
     * the 71 scenes the page never shows, repaired (/cb-fix);
     * the four parsing rules that each shipped as a defect (/cb-green);
     * the vector invariants, two of them already satisfied (/cb-green);
@@ -95,6 +93,8 @@ ORDER
     * the error vocabulary (/cb-green);
     * the boundary and the artefact rules (/cb-green);
     * the eleven algorithms (/cb-green);
+    * the two interfaces given fields, so they are structure and not prose
+      (/cb-green);
     * each threshold given a contract or deleted (/cb-green);
     * correlate.py closed: the premise measured (/cb-green);
     * the surface vector's collapse diagnosed (/cb-audit);
@@ -148,8 +148,7 @@ THE DECISIONS IN FORCE
          written statement of what separates these scenes and are worth
          keeping as prose. They are not to be executable.
 
-     Applied by: the module and the two interfaces; the eleven algorithms;
-     each threshold given a contract.
+     Applied by: the eleven algorithms; each threshold given a contract.
 
   3. The two vectors and their column contracts. Decided by the human.
        * The pattern vector — what repeats in the layout, and how much of
@@ -184,7 +183,7 @@ THE DECISIONS IN FORCE
          count — and are not matches against a library.
        * Both are measurements. Neither is a class.
 
-     Applied by: the module and the two interfaces; the vector invariants;
+     Applied by: the vector invariants;
      each threshold given a contract; the surface vector's collapse.
 
   4. What is measured and what is not. Decided by the evidence; verified
@@ -265,8 +264,12 @@ THE DECISIONS IN FORCE
        * No screenshot and no dump is ever tracked by git.
        * The device side computes nothing. Its output is files plus an
          index: <stem>.rstree.txt, <stem>.client.txt, <stem>.jpeg,
-         raw/<nnnn>.rstree.txt, samples.csv (raw, stem, sig, shot) and
-         display.txt.
+         display.txt. It also writes samples.csv (ts, sig, stem, shot, raw,
+         nsig, ms), dwell.csv and raw/, which no tracked consumer reads:
+         rs_pattern.py discovers scenes by globbing *.rstree.txt and derives
+         session, stem and shot from the filesystem. IF-CAPTURE-SESSION names
+         them without asserting a reader. Whether the capture should keep
+         writing them is open - raw/ alone is about 60 MB per 25 seconds.
 
      Applied by: determinism and the tiebreak; the boundary and the
      artefact rules.
@@ -301,6 +304,21 @@ THE DECISIONS IN FORCE
        * Interfaces: IF-CAPTURE-SESSION (language meta), IF-PATTERNS-ROW
          (py). IF-PAGE-PAYLOAD and IF-SCENE-RECORD are held back — see
          record 10.
+       * Automatons: AUT-TREE-CHECK, the gate where tree-level static checks
+         run. Every invariant needs exactly one checked-at edge to an
+         automaton (AUTH-008, AUTH-012), so the static family shares this
+         one. Authored 2026-10-26 with order=1.
+       * Authoring facts the engine dictates, learned by proposing against
+         it rather than by reading the template, which does not list them:
+         an invariant needs a core `predicate` field, with `predicateNL`
+         beside it or AUTH-016 warns; `predicateAuthority` is engine-owned
+         and is refused on an add (AUTH-ERR-VERIFICATION-ESCALATION); an
+         automaton a checked-at edge points at must be variant
+         `totally-ordered-dfa`, not `singleton-state` (AUTH-031), and must
+         carry an `order` attribute or RI-L-006 fails at the L2 gate;
+         `protects` targets a relation, never an interface, and `assumes`
+         runs interface → invariant, not the reverse. Use `ril propose-batch`
+         to find these before `apply-batch`.
        * Invariants: INV-NO-SCENE-CLASS, INV-OCCLUDER-PAINTS,
          INV-OCCLUSION-PAINT-ORDER, INV-OWN-RECT-BOUNDS,
          INV-FIRST-PASS-COUNTS, INV-ABSENT-NOT-ZERO,
@@ -347,59 +365,6 @@ THE DECISIONS IN FORCE
 ===============================================================================
 PROMPTS
 ===============================================================================
-
-/cb-green — the module and the two interfaces that already bite
-  - What: the smallest graph that makes rule 2 operable. One module over
-    the whole tracked tree; the two interfaces where the seam has already
-    broken; and the invariant that defines the project. Nothing else: an
-    algorithm node with no invariant over it is documentation, and this
-    item authors no algorithms.
-    IF-CAPTURE-SESSION is the session on disk as record 7 states it, and is
-    the contract rs_capture.ps1 writes and rs_pattern.py reads. Its index
-    columns are the ones the Python actually consumes: raw, stem, sig,
-    shot, and the context columns vsync, top_name, fps_scene, fps_pref,
-    surf, nodes, paint_px, reverse, posz, cutout, avail. Note in its
-    description that three of those are read under two spellings each
-    (vsync / rs_vsync, top_name / rs_top_name, fps_scene / rs_fps_scene),
-    the residue of two capture scripts, and that the interface names one
-    spelling.
-    INV-NO-SCENE-CLASS is enforcementBasis static-analysis, strength
-    strong: no tracked file defines a table, enum or function mapping
-    measurements onto scene names, and no vector column holds a string
-    label. Its predicate is a check that can run in CI.
-  - Read: records 1, 2, 3, 7 and 9; tools/rs_capture.ps1 and
-    tools/cluster/rs_pattern.py in full; rs_extract.py's session walk.
-  - Spec areas: the graph is empty; this item creates the first nodes.
-  - Spec work:
-      add module SUB-FEATURE-RESEARCH (role neutral, containmentProfile
-        unrestricted);
-      add interface IF-CAPTURE-SESSION (language meta, SUB-FEATURE-RESEARCH):
-        the session on disk, its files and its index columns; contains;
-      add interface IF-PATTERNS-ROW (language py, SUB-FEATURE-RESEARCH):
-        one row per scene, the seven pattern columns, pat2 with has_slot2,
-        the five surface columns, the context columns; contains;
-      add invariant INV-NO-SCENE-CLASS (SUB-FEATURE-RESEARCH): no tracked
-        file maps measurements onto scene names and no column holds a
-        string label; contains; protects IF-PATTERNS-ROW.
-  - Code path: no code changes. The invariant's check is authored with it
-    and named in the report.
-  - Test: npm run spec:check, no violations; the check for
-    INV-NO-SCENE-CLASS run against the tree and reported.
-  - BOUNDARY: combobul and ArkUI are two projects. combobul/spec/spec.db
-    holds the specification of this project's code, in combobul's ontology,
-    written only through combobul's ril. No rule, kind, check or store of
-    one is carried to the other. The engine is installed per machine and is
-    not published from this repository.
-
-  - IMPORTANT: The context you get is not hallucinated, its deterministically extracted.
-  - REFERENCE: If specification authoring details are needed, ask RIL for authoring rules.
-  - INVIOLABLE: SPECIFICATION SURFACE IS AUTHORITATIVE.
-  - INVIOLABLE: DO NOT EMIT P3_SKIPPED. If you do not need to modify the specification you must submit a reason.
-  - FORBIDDEN: MULTI-AGENT execution is not allowed. DO NOT SPAWN MULTIPLE AGENTS.
-  - WHEN TO COMMIT: Before "silk run finalize".
-  - DECISION PROTOCOL: If a decision must be made, ask for direct feedback. DO NOT DECIDE ALONE.
-  - AT THE END: update this list as the rule at the head of the list states.
-
 
 /cb-fix — the 71 scenes the page never shows
   - What: vectors_build.py resolves each scene's screenshot from the
@@ -676,6 +641,47 @@ PROMPTS
   - Test: npm run spec:check, no violations; the pipeline run end to end on
     a real capture, its output unchanged.
   - BOUNDARY: as above.
+
+  - IMPORTANT: The context you get is not hallucinated, its deterministically extracted.
+  - REFERENCE: If specification authoring details are needed, ask RIL for authoring rules.
+  - INVIOLABLE: SPECIFICATION SURFACE IS AUTHORITATIVE.
+  - INVIOLABLE: DO NOT EMIT P3_SKIPPED. If you do not need to modify the specification you must submit a reason.
+  - FORBIDDEN: MULTI-AGENT execution is not allowed. DO NOT SPAWN MULTIPLE AGENTS.
+  - WHEN TO COMMIT: Before "silk run finalize".
+  - DECISION PROTOCOL: If a decision must be made, ask for direct feedback. DO NOT DECIDE ALONE.
+  - AT THE END: update this list as the rule at the head of the list states.
+
+
+/cb-green — the two interfaces given fields, so they are structure and not prose
+  - What: AUTH-024 warns that IF-CAPTURE-SESSION and IF-PATTERNS-ROW have no
+    fields, no type relationships and no I/O contracts: both describe
+    themselves in prose, and the graph cannot read prose. The warning stood
+    from the moment they were authored and is the honest signal that a first
+    graph is a sketch.
+    Two ways close it and the cheaper one is chosen in this item, not before:
+    defines-field edges to relation nodes, one per declared column, which is
+    61 nodes for IF-PATTERNS-ROW alone; or the input-of and output-of edges
+    the algorithms carry, which exist once the eleven algorithms are
+    authored and may discharge AUTH-024 on their own. Check the warning
+    after the algorithms land before authoring any relation node.
+    Where relation nodes are authored, the twelve vector columns come first
+    and carry their transform and weight from record 3; the other columns
+    follow only if the warning persists.
+  - Read: record 3 and record 9; the AUTH-024 text from
+    `npm run ril -- template interface`; the graph as the algorithms item
+    leaves it.
+  - Spec areas: SUB-FEATURE-RESEARCH, IF-CAPTURE-SESSION, IF-PATTERNS-ROW.
+  - Spec work: determined by which way closes the warning; the node list is
+    given to the human before the envelope is written. If the algorithms'
+    edges already discharge it, this item adds no node and says so.
+  - Code path: no code changes.
+  - Test: npm run spec:check reports no AUTH-024 warning for either
+    interface; no new error.
+  - BOUNDARY: combobul and ArkUI are two projects. combobul/spec/spec.db
+    holds the specification of this project's code, in combobul's ontology,
+    written only through combobul's ril. No rule, kind, check or store of
+    one is carried to the other. The engine is installed per machine and is
+    not published from this repository.
 
   - IMPORTANT: The context you get is not hallucinated, its deterministically extracted.
   - REFERENCE: If specification authoring details are needed, ask RIL for authoring rules.
