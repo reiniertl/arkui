@@ -8,8 +8,11 @@
 #   python -m venv .venv
 #   .venv/bin/pip install --only-binary=:all: -r requirements.txt
 #
-# scipy is not imported directly; scikit-learn requires it. pillow was dropped
-# with the thumbnail code - screenshots are embedded as bytes, never decoded.
+# scipy is not imported directly; scikit-learn requires it. pillow is back:
+# vectors_build.py resolves screenshots from the capture tree, where a frame
+# is about 390 KB, and embeds each one once per vector. Embedding them as
+# taken put the page at 139 MB; thumbnailing on the way in keeps it near 10.
 numpy==2.1.3
 scikit-learn==1.5.2
 scipy==1.14.1
+pillow==11.0.0

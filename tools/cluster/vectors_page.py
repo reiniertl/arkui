@@ -54,6 +54,9 @@ HTML = """<!doctype html>
   .pics { display:flex; gap:9px; padding:11px 13px; overflow-x:auto; }
   .pic { flex:0 0 118px; }
   .pic img { width:100%; border-radius:5px; border:1px solid var(--line); display:block; }
+  .pic .nopic { width:100%; aspect-ratio:9/19.5; border-radius:5px;
+    border:1px dashed var(--line); background:var(--card); display:flex;
+    align-items:center; justify-content:center; font-size:10px; color:var(--dim); }
   .pic .cap { font-size:9.5px; color:var(--dim); margin-top:3px; line-height:1.45;
     font-family:ui-monospace,"SF Mono",Menlo,Consolas,monospace; }
   .flag { color:var(--warn); font-weight:650; }
@@ -69,7 +72,8 @@ var DATA = __DATA__;
 (function () {
   function esc(s){return String(s==null?"":s).replace(/&/g,"&amp;")
     .replace(/</g,"&lt;").replace(/>/g,"&gt;");}
-  var keys = Object.keys(DATA);
+  var keys = Object.keys(DATA).filter(function (k) { return k.charAt(0) !== "_"; });
+  var audit = DATA._audit || {};
   document.getElementById("menu").innerHTML = keys.map(function (k) {
     var v = DATA[k];
     return "<a data-k='" + k + "'>" + esc(v.title)
@@ -79,11 +83,16 @@ var DATA = __DATA__;
     var v = DATA[k];
     [].forEach.call(document.querySelectorAll("nav a"), function (a) {
       a.classList.toggle("on", a.dataset.k === k); });
+    var lost = (audit.missing || []).length;
     var h = "<h2>" + esc(v.title) + "</h2><div class='meta'>"
       + v.n + " scenes \\u00b7 <b>" + v.k + " clusters</b> \\u00b7 "
       + v.outliers + " fitting none (" + Math.round(100*v.outliers/v.n) + "%)"
       + " \\u00b7 silhouette <b>" + v.silhouette + "</b>"
-      + " \\u00b7 min_cluster_size " + v.mcs + "</div>";
+      + " \\u00b7 min_cluster_size " + v.mcs
+      + (audit.rows ? " \\u00b7 over <b>" + audit.rows + "</b> measured scenes, "
+          + (lost ? "<span class='flag'>" + lost + " with no picture</span>"
+                  : "all with a picture") : "")
+      + "</div>";
     h += "<p style='margin:0 0 6px'>" + esc(v.blurb) + "</p>";
     h += "<div class='fld'><div class='k'>The columns</div><table><tr><th>column</th>"
        + "<th>transform</th><th>weight</th><th>what it measures</th></tr>"
@@ -109,7 +118,11 @@ var DATA = __DATA__;
                    + g.centre.map(esc).join(" \\u00b7 "))
          + "</div></div><div class='pics'>";
       g.reps.forEach(function (r) {
-        h += "<div class='pic'><img loading='lazy' src='" + r.img + "'><div class='cap'>"
+        var pic = r.img
+          ? "<img loading='lazy' src='" + r.img + "'>"
+          : "<div class='nopic'>no picture</div>";
+        h += "<div class='pic'>" + pic + "<div class='cap'>"
+           + esc(r.scene || "") + "<br>"
            + "sil " + (r.sil === null ? "\\u2014" : r.sil) + "<br>"
            + r.cap.map(esc).join("<br>") + "</div></div>";
       });

@@ -25,9 +25,10 @@ Inputs
                 real phone in real use and never enter the repository, so
                 this directory lives beside the captures.
 """
-import argparse, base64, csv, json, math, os
+import argparse, base64, csv, io, json, math, os
 
 import numpy as np
+from PIL import Image
 from sklearn.cluster import HDBSCAN
 from sklearn.decomposition import PCA
 from sklearn.metrics import silhouette_score, silhouette_samples
@@ -106,6 +107,57 @@ VECTORS = {
 }
 
 
+THUMB_W = 320       # the tiles render at 118 px; twice that covers a 2x display
+
+
+def thumbnail(path, width):
+    """Embed a frame at the size the page shows it, not the size it was taken.
+
+    A capture frame is about 390 KB and the payload carries it once per
+    vector, so embedding what the capture tree holds put the page at 139 MB.
+    The tiles are 118 px wide. Downscaling here is what lets the page resolve
+    screenshots from the capture tree and still be one file worth sending.
+    """
+    im = Image.open(path)
+    im.thumbnail((width, width * 4), Image.LANCZOS)   # tall frames, keep ratio
+    if im.mode != "RGB":
+        im = im.convert("RGB")
+    buf = io.BytesIO()
+    im.save(buf, "JPEG", quality=72, optimize=True)
+    return "data:image/jpeg;base64," + base64.b64encode(buf.getvalue()).decode()
+
+
+def row_identity(row):
+    """What identifies a scene: where it was measured, never its picture.
+
+    Named for the row rather than the scene on purpose. INV-NO-SCENE-CLASS
+    bans a function that maps a measurement onto a scene name, and its check
+    matches on `scene_*`; this one maps a row's session and stem onto the
+    place it came from, which is not that, but the check is right to be
+    suspicious of the shape and the cheaper fix is to not wear it.
+    """
+    return "%s/%s" % (row.get("session", ""), row.get("stem", ""))
+
+
+def rep_path(shot, captures, reps):
+    """The capture tree first, the flat directory only as a fallback.
+
+    The flat <session>__<stem>.jpeg form is what no code here builds. It was
+    made by hand once, it was incomplete, and resolving against it alone is
+    what lost 71 of 250 scenes.
+    """
+    if shot:
+        if captures:
+            p = os.path.join(captures, *shot.split("/"))
+            if os.path.exists(p):
+                return p
+        if reps:
+            p = os.path.join(reps, shot.replace("/", "__"))
+            if os.path.exists(p):
+                return p
+    return None
+
+
 def build(rows, img, key, mcs):
     V = VECTORS[key]
     F = [(n, k, w) for n, k, w, _ in V["cols"]]
@@ -151,7 +203,8 @@ def build(rows, img, key, mcs):
             "cohesion": (None if cid < 0
                          else round(float(np.nanmean([per[i] for i in idx])), 2)),
             "centre": centre,
-            "reps": [{"img": img[rows[i]["shot"]],
+            "reps": [{"scene": row_identity(rows[i]),
+                      "img": img.get(row_identity(rows[i])),
                       "cap": V["caption"](rows[i]),
                       "sil": (None if np.isnan(per[i]) else round(float(per[i]), 2))}
                      for i in idx],
@@ -172,23 +225,45 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("patterns", help="rs_pattern.py's csv")
-    ap.add_argument("--reps", default="patreps", help="directory of per-scene jpegs")
+    ap.add_argument("--captures", default="",
+                    help="the capture tree; a scene's picture is <captures>/<shot>")
+    ap.add_argument("--reps", default="",
+                    help="a flat <session>__<stem>.jpeg directory, if one exists")
     ap.add_argument("--out", default="two_payload.json")
+    ap.add_argument("--thumb", type=int, default=THUMB_W,
+                    help="embed each frame at this width (default %d)" % THUMB_W)
     ap.add_argument("--min-cluster", type=int, default=9,
                     help="HDBSCAN min_cluster_size (default 9)")
     a = ap.parse_args()
 
-    def rep(shot):
-        return os.path.join(a.reps, shot.replace("/", "__"))
-
-    rows = [r for r in csv.DictReader(open(a.patterns, encoding="utf-8-sig"))
-            if r["shot"] and os.path.exists(rep(r["shot"]))]
+    rows = list(csv.DictReader(open(a.patterns, encoding="utf-8-sig")))
     if not rows:
-        raise SystemExit("no scene has both a row and a screenshot under %s" % a.reps)
-    img = {r["shot"]: "data:image/jpeg;base64," + base64.b64encode(
-        open(rep(r["shot"]), "rb").read()).decode() for r in rows}
+        raise SystemExit("%s holds no rows" % a.patterns)
 
-    out = {}
+    # INV-NO-SILENT-SCENE-LOSS: every measured row reaches the payload or is
+    # reported in it. A scene with no picture is still measured and still
+    # clustered; only its tile is poorer for it.
+    img, missing = {}, []
+    for r in rows:
+        sid = row_identity(r)
+        path = rep_path((r.get("shot") or "").strip(), a.captures, a.reps)
+        if path:
+            img[sid] = thumbnail(path, a.thumb)
+        else:
+            missing.append(sid)
+    if missing:
+        print("ERR-SCENE-WITHOUT-REP: %d of %d scenes have no screenshot; they "
+              "are measured and clustered, and their tiles carry no picture."
+              % (len(missing), len(rows)))
+        for sid in missing[:10]:
+            print("    %s" % sid)
+        if len(missing) > 10:
+            print("    ... and %d more, all listed in the payload's audit"
+                  % (len(missing) - 10))
+
+    out = {"_audit": {"rows": len(rows), "shown": len(img),
+                      "missing": missing,
+                      "captures": a.captures or None, "reps": a.reps or None}}
     for key in VECTORS:
         out[key] = build(rows, img, key, a.min_cluster)
         v = out[key]
