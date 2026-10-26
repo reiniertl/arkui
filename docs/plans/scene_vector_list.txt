@@ -95,7 +95,6 @@ ORDER
 
   What remains, in this order (records 1 to 10 hold the decisions; each
   prompt names the records it applies):
-    * the four parsing rules that each shipped as a defect (/cb-green);
     * the vector invariants, two of them already satisfied (/cb-green);
     * determinism and the tiebreak (/cb-green);
     * the error vocabulary (/cb-green);
@@ -203,10 +202,17 @@ THE DECISIONS IN FORCE
 
   4. What is measured and what is not. Decided by the evidence; verified
      2026-10-26 against the two capture sessions, 250 scenes.
-       * Holds: the five surface columns sum to one within 0.01 across all
-         250 rows, worst deviation 0.006. Every column declared unit lies
-         in [0,1], no violations. These two can be adopted as invariants
-         already satisfied.
+       * Holds: the surface columns sum to one. Stated as five columns here
+         and measured as five, which was loose: visible_surface computes
+         substrate as the complement of FIVE content kinds - xcomp, image,
+         text, glyph and content - so the sum that is exactly one is over
+         six columns. vis_glyph was left out of the vector and out of the
+         measurement, and the 0.006 worst deviation recorded here is the
+         glyph fraction plus the rounding, not slack in the arithmetic.
+         INV-SUBSTRATE-IS-COMPLEMENT states the six-column relation; the
+         vector invariants item states what the five in the vector sum to.
+       * Holds: every column declared unit lies in [0,1], no violations.
+         This can be adopted as an invariant already satisfied.
        * Holds: the reduction of rs_extract.py from 1,028 lines to 404 left
          the output byte-identical on ten real dumps. Determinism is what
          made that reduction checkable rather than arguable.
@@ -267,10 +273,25 @@ THE DECISIONS IN FORCE
          the small end of every scale — the mistake an earlier column made
          on 1,266 samples. rs_pattern.py and vectors_build.py must agree on
          this and nothing holds them to it.
-       Each of these is a comment today. A comment does not survive an
-       edit that does not read it.
+       Each of these was a comment. All five are now invariants with a
+       check that runs over real dumps rather than over the source, because
+       a regex can be satisfied by code that does the wrong thing and every
+       one of these failures was visible in the output long before it was
+       visible in the source. Measured over 40 dumps of the full capture:
+       all 40 carry a second pass and 23,939 node rects match their
+       first-pass line; all 40 carry a reversed parent and a PositionZ and
+       all 40 rank differently from the file; 2,897 of 5,771 admitted marks
+       are IsSubTreeSkipped, which is what proves skipped is not read as
+       invisibility; the 8359x8360 blur source is rejected at 18.8 windows
+       while its clipped rect is exactly 1.00, which is what a clipped test
+       would have let through.
+       One of the checks was weak when first written and passed a parse
+       that deliberately read both passes: the two passes carry the same
+       node ids, so comparing id sets cannot detect a leak. It compares
+       each node's rect against its first-pass line instead, and fails on
+       that parse.
 
-     Applied by: the four parsing rules; the vector invariants.
+     Applied by: the vector invariants.
 
   6. Silence is the failure mode. Decided by the evidence.
        * There is no error vocabulary at all. A missing display.txt falls
@@ -400,50 +421,6 @@ THE DECISIONS IN FORCE
 ===============================================================================
 PROMPTS
 ===============================================================================
-
-/cb-green — the four parsing rules that each shipped as a defect
-  - What: record 5's four rules authored as invariants over the parsing and
-    the occlusion walk, each with the defect it prevents named in its
-    description, because the cost of each is known and the comment holding
-    it today does not survive an edit that does not read it.
-  - Read: record 5; rs_extract.py's parse_tree and paint_order in full;
-    rs_pattern.py's visible_surface, media_surface, Scene and analyse.
-  - Spec areas: SUB-FEATURE-RESEARCH.
-  - Spec work:
-      add invariant INV-OCCLUDER-PAINTS (SUB-FEATURE-RESEARCH): only a node
-        whose shouldPaint_ is set may subtract area; IsSubTreeSkipped is a
-        caching flag and is never read as visibility; contains;
-      add invariant INV-OCCLUSION-PAINT-ORDER (SUB-FEATURE-RESEARCH): the
-        topmost-first walk uses the real paint order, honouring
-        ReverseChildren and PositionZ, never the dump's order; contains;
-      add invariant INV-OWN-RECT-BOUNDS (SUB-FEATURE-RESEARCH): the oversize
-        test applies to a node's own rect, never its clipped rect;
-        contains;
-      add invariant INV-FIRST-PASS-COUNTS (SUB-FEATURE-RESEARCH): counts and
-        properties come from the main-thread pass; a repeated node id marks
-        the second; contains;
-      add invariant INV-SUBSTRATE-IS-COMPLEMENT (SUB-FEATURE-RESEARCH):
-        substrate is the complement of claimed pixels and never competes in
-        the topmost-first walk; contains; protects IF-PATTERNS-ROW.
-  - Code path: no code changes expected; each invariant's check is authored
-    with it. Where a check finds the code does not hold the rule, the
-    finding is reported and the code fixed in this item, not the predicate
-    weakened.
-  - Test: each check run against the tree and against a real capture;
-    the pipeline output compared byte-for-byte with the run before the
-    item; npm run spec:check, no violations.
-  - BOUNDARY: as above.
-
-  - IMPORTANT: The context you get is not hallucinated, its deterministically extracted.
-  - REFERENCE: If specification authoring details are needed, ask RIL for authoring rules.
-  - INVIOLABLE: SPECIFICATION SURFACE IS AUTHORITATIVE.
-  - INVIOLABLE: DO NOT EMIT P3_SKIPPED. If you do not need to modify the specification you must submit a reason.
-  - INVIOLABLE: VIOLATED MEANS FIX THE CODE. NEVER WEAKEN A PREDICATE.
-  - FORBIDDEN: MULTI-AGENT execution is not allowed. DO NOT SPAWN MULTIPLE AGENTS.
-  - WHEN TO COMMIT: Before "silk run finalize".
-  - DECISION PROTOCOL: If a decision must be made, ask for direct feedback. DO NOT DECIDE ALONE.
-  - AT THE END: update this list as the rule at the head of the list states.
-
 
 /cb-green — the vector invariants, two of them already satisfied
   - What: record 4's measured properties authored as invariants.
