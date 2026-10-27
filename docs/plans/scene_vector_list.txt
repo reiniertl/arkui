@@ -256,7 +256,7 @@ WHAT IS DONE
     required, so a hardcoded implementation cannot meet it again.
 
   2026-10-27  /cb-green  every viewer names the cell, and what falls outside
-    <commit>.  THE ITEM'S PREMISE WAS HALF WRONG and checking it before
+    247d964.  THE ITEM'S PREMISE WAS HALF WRONG and checking it before
     authoring is what caught it. It assumed both spaces have a
     none-of-the-above cell and that the undescribed and the unplaced are
     distinct populations in each. Neither holds. In the pattern space a
