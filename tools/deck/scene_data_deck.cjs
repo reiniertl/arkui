@@ -2,7 +2,7 @@
 // no footer and no slide numbers, so each one drops into another deck
 // without carrying our chrome in with it.
 const pptxgen = require("pptxgenjs");
-const { EN, ZH } = require("./scene_data_strings.js");
+const { EN, ZH } = require("./scene_data_strings.cjs");
 
 const INK = "0E1117", MUTE = "5E6C82", LINE = "D7DEE8", SOFT = "F4F7FA";
 const TEAL = "2FA8A0", AMBER = "D98A24", DIM = "9AA7B8";
@@ -192,6 +192,12 @@ function build(T, out) {
   return pres.writeFile({ fileName: out }).then(() => console.log("  " + out));
 }
 
-build(EN, "scene_data_en.pptx")
-  .then(() => build(ZH, "scene_data_zh.pptx"))
-  .catch((e) => { console.error(e); process.exit(1); });
+module.exports = { build };
+
+// Still runnable on its own, which is how it was used before build.js
+// existed; build.js imports it rather than replacing it.
+if (require.main === module) {
+  build(EN, "scene_data_en.pptx")
+    .then(() => build(ZH, "scene_data_zh.pptx"))
+    .catch((e) => { console.error(e); process.exit(1); });
+}

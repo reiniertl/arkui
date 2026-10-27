@@ -1,7 +1,7 @@
 {
   "name": "arkui-scene-signals",
   "version": "1.0.0",
-  "description": "ArkUI scene classification signals — combobul-specified",
+  "description": "ArkUI scene classification signals \u2014 combobul-specified",
   "main": "index.js",
   "directories": {
     "doc": "docs"
@@ -10,7 +10,8 @@
     "test": "echo \"Error: no test specified\" && exit 1",
     "ril": "node combobul/cli/ril.mjs",
     "silk": "node combobul/cli/silk.mjs",
-    "spec:check": "node combobul/cli/ril.mjs validate-delta --json"
+    "spec:check": "node combobul/cli/ril.mjs validate-delta --json",
+    "deck": "node tools/deck/build.cjs"
   },
   "repository": {
     "type": "git",
@@ -26,6 +27,7 @@
   "type": "module",
   "private": "true",
   "dependencies": {
-    "better-sqlite3": "^13.0.3"
+    "better-sqlite3": "^13.0.3",
+    "pptxgenjs": "^3.12.0"
   }
 }

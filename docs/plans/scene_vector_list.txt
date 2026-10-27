@@ -56,7 +56,7 @@ Every prompt carries a Spec work section naming its specification work node
 by node: each node it adds (id, kind, module, and every edge it carries),
 each node it modifies (id and the fields written), each node and each edge
 it removes. An item that changes no node says so and gives the reason. The
-names a prompt gives are record 7's; the human confirms them before the
+names a prompt gives are record 6's; the human confirms them before the
 envelope is written.
 
 Every prompt carries the BOUNDARY clause: combobul and ArkUI are two
@@ -93,9 +93,8 @@ The baseline the executions read (read each file in full):
 ORDER
 ===============================================================================
 
-  What remains, in this order (records 1 to 8 hold the decisions; each
+  What remains, in this order (records 1 to 7 hold the decisions; each
   prompt names the records it applies):
-    * the boundary and the artefact rules (/cb-green);
     * the eleven algorithms (/cb-green);
     * the two interfaces given fields, so they are structure and not prose
       (/cb-green);
@@ -267,31 +266,7 @@ THE DECISIONS IN FORCE
      Applied by: determinism
      and the tiebreak; the surface vector's collapse.
 
-  5. Reproducibility. Decided by the evidence, and by one near-loss.
-       * The same session must yield a byte-identical patterns.csv.
-       * Every generated artefact is produced by a tracked script from
-         declared inputs. The page generator existed only as an inline
-         fragment in a scratch directory; the 8 MB page it made could not
-         be rebuilt from a clone and was one sweep away from being lost. It
-         is tracked now as vectors_build.py, and the invariant is the
-         lesson rather than the commit that fixed it.
-       * No screenshot and no dump is ever tracked by git.
-       * The device side computes nothing. Its output is files plus an
-         index: <stem>.rstree.txt, <stem>.client.txt, <stem>.jpeg,
-         display.txt. It also writes samples.csv (ts, sig, stem, shot, raw,
-         nsig, ms), dwell.csv and raw/, which no tracked consumer reads:
-         rs_pattern.py discovers scenes by globbing *.rstree.txt and derives
-         session, stem and shot from the filesystem. IF-CAPTURE-SESSION names
-         them without asserting a reader. samples.csv is not spare weight:
-         it relates a stem to the picture taken for it, the periodic shots
-         included, so it is the index by which a scene with no per-scene
-         picture could be given one. raw/ is about 60 MB per 25 seconds and
-         whether to keep that is still open.
-
-     Applied by: the boundary and the
-     artefact rules.
-
-  6. The open question. Decided by the human, carried from the first audit
+  5. The open question. Decided by the human, carried from the first audit
      (finding F6, CRITICAL).
        * correlate.py states the premise the whole component rests on — do
          features derived from ArkUI carry information about power and
@@ -311,7 +286,7 @@ THE DECISIONS IN FORCE
 
      Applied by: correlate.py closed.
 
-  7. Names, proposed by this list and confirmed by the human before each
+  6. Names, proposed by this list and confirmed by the human before each
      envelope.
        * One module: SUB-FEATURE-RESEARCH, role neutral, containmentProfile
          unrestricted. The authority / implementation / test split is not
@@ -320,7 +295,7 @@ THE DECISIONS IN FORCE
          algorithm is written.
        * Interfaces: IF-CAPTURE-SESSION (language meta), IF-PATTERNS-ROW
          (py). IF-PAGE-PAYLOAD and IF-SCENE-RECORD are held back — see
-         record 8.
+         record 7.
        * Automatons: AUT-TREE-CHECK, the gate where tree-level static checks
          run. Every invariant needs exactly one checked-at edge to an
          automaton (AUTH-008, AUTH-012), so the static family shares this
@@ -359,7 +334,7 @@ THE DECISIONS IN FORCE
 
      Applied by: every /cb-green item.
 
-  8. What is deliberately not declared yet. Decided by the human.
+  7. What is deliberately not declared yet. Decided by the human.
        * IF-SCENE-RECORD, the shape correlate.py expects, waits until
          something produces it. An interface with no producer and no
          consumer is how the deleted C header started.
@@ -383,41 +358,6 @@ THE DECISIONS IN FORCE
 PROMPTS
 ===============================================================================
 
-/cb-green — the boundary and the artefact rules
-  - What: record 5's three structural rules. The device side computes
-    nothing; no capture is ever tracked; every generated artefact has a
-    tracked producer and declared inputs. All three are checkable from the
-    tree alone, and the third is the one that was nearly lost.
-  - Read: record 5; tools/rs_capture.ps1 in full; .gitignore; the
-    producers of every artefact the repository expects.
-  - Spec areas: SUB-FEATURE-RESEARCH.
-  - Spec work:
-      add invariant INV-DEVICE-COMPUTES-NOTHING (SUB-FEATURE-RESEARCH,
-        enforcementBasis static-analysis): the capture derives no feature
-        and writes no name; its output is files plus an index; contains;
-        protects IF-CAPTURE-SESSION;
-      add invariant INV-NO-CAPTURES-TRACKED (SUB-FEATURE-RESEARCH,
-        enforcementBasis structural): no screenshot and no dump is tracked
-        by git; contains;
-      add invariant INV-GENERATED-HAS-TRACKED-PRODUCER (SUB-FEATURE-RESEARCH):
-        every generated artefact is produced by a tracked script from
-        declared inputs; contains.
-  - Code path: no code changes expected; the three checks are authored with
-    their invariants.
-  - Test: the three checks run against the tree; npm run spec:check, no
-    violations.
-  - BOUNDARY: as above.
-
-  - IMPORTANT: The context you get is not hallucinated, its deterministically extracted.
-  - REFERENCE: If specification authoring details are needed, ask RIL for authoring rules.
-  - INVIOLABLE: SPECIFICATION SURFACE IS AUTHORITATIVE.
-  - INVIOLABLE: DO NOT EMIT P3_SKIPPED. If you do not need to modify the specification you must submit a reason.
-  - FORBIDDEN: MULTI-AGENT execution is not allowed. DO NOT SPAWN MULTIPLE AGENTS.
-  - WHEN TO COMMIT: Before "silk run finalize".
-  - DECISION PROTOCOL: If a decision must be made, ask for direct feedback. DO NOT DECIDE ALONE.
-  - AT THE END: update this list as the rule at the head of the list states.
-
-
 /cb-green — the eleven algorithms
   - What: the named procedures of the pipeline authored as algorithm nodes,
     each carrying the invariants it satisfies and the error codes it emits.
@@ -430,10 +370,10 @@ PROMPTS
     noise. Every one of the eight codes must carry an emitter when this
     item finishes.
     The two device-side algorithms are declared language meta, because the
-    enum has 23 entries and PowerShell is not among them (record 8). That
+    enum has 23 entries and PowerShell is not among them (record 7). That
     costs nothing while their invariant is that they compute nothing, and
     the gap is reported upstream rather than worked around.
-  - Read: records 2, 7 and 8; every file named under Code path, in full.
+  - Read: records 2, 6 and 7; every file named under Code path, in full.
   - Spec areas: SUB-FEATURE-RESEARCH.
   - Spec work:
       add algorithm ALG-CAPTURE-LOOP (meta): the capture loop; contains;
@@ -494,7 +434,7 @@ PROMPTS
     Where relation nodes are authored, the twelve vector columns come first
     and carry their transform and weight from record 3; the other columns
     follow only if the warning persists.
-  - Read: record 3 and record 7; the AUTH-024 text from
+  - Read: record 3 and record 6; the AUTH-024 text from
     `npm run ril -- template interface`; the graph as the algorithms item
     leaves it.
   - Spec areas: SUB-FEATURE-RESEARCH, IF-CAPTURE-SESSION, IF-PATTERNS-ROW.
@@ -561,7 +501,7 @@ PROMPTS
 
 
 /cb-green — correlate.py closed: the premise measured
-  - What: record 6's question answered. One capture session on the device
+  - What: record 5's question answered. One capture session on the device
     carrying, on one clock, a scene record per interval and a
     sample_power.sh capture of cpufreq and cpuidle; the join run; the
     answer attached to the spec as evidence.
@@ -573,7 +513,7 @@ PROMPTS
     This item is the cheapest decisive experiment in the repository and it
     has never been run. A negative answer changes what the rest of the work
     is for, and that is reported as the result, not worked around.
-  - Read: record 6; tools/correlate.py and tools/sample_power.sh in full;
+  - Read: record 5; tools/correlate.py and tools/sample_power.sh in full;
     tools/rs_capture.ps1's loop.
   - Spec areas: SUB-FEATURE-RESEARCH.
   - Spec work:
@@ -664,7 +604,7 @@ PROMPTS
     names with a tag the mapping does not cover, and whether the geometry
     fallback already in the code can split it.
     Each finding with its evidence and a recommendation; nothing decided.
-  - Read: records 3, 4 and 8; rs_pattern.py's visible_surface, vis_kind,
+  - Read: records 3, 4 and 7; rs_pattern.py's visible_surface, vis_kind,
     mark_kind and the slot sets, in full; the full patterns.csv of a real
     capture; the page.
   - Spec work: none; an audit changes nothing.
@@ -683,12 +623,12 @@ PROMPTS
     question the list cannot answer for itself: whether the surface vector
     stays as a second measurement, is repaired, or is dropped and the
     pattern vector left alone. The ruling is written into record 3, which
-    then states the vectors in the form they keep, and record 8's caveat
+    then states the vectors in the form they keep, and record 7's caveat
     is deleted or restated.
     If the surface vector stays, IF-PAGE-PAYLOAD is planned by this session
     and placed in the order; if it is dropped, every later reference to it
     in this list is removed.
-  - Read: the audit's report; records 3, 4 and 8.
+  - Read: the audit's report; records 3, 4 and 7.
   - Spec work: none; the session writes this list and changes no node.
   - BOUNDARY: as above.
 
