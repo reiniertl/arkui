@@ -89,15 +89,18 @@ The baseline the executions read (read each file in full):
 ORDER
 ===============================================================================
 
-  What remains, in this order (records 1 to 5 hold the decisions; each
+  What remains, in this order (records 1 to 6 hold the decisions; each
   prompt names the records it applies):
-    * the surface vector's collapse diagnosed, and what a composition can
-      be expected to look like (/cb-audit);
-    * the diagnosis brought to the human, the surface vector kept, bounded
-      or dropped (/cb-free);
-    * the pattern motif drawn again, from measured medians (/cb-green);
-    * every viewer names what fits nothing (/cb-green);
-    * the two vectors clustered together, beside the two alone (/cb-green).
+    * the surface mapping gap closed, containers read as substrate
+      (/cb-green);
+    * the two feature spaces formalized, PHI and PSI declared with the four
+      properties PSI must satisfy (/cb-green);
+    * PSI for the pattern vector: the motif derived, named and drawn
+      (/cb-green);
+    * PSI for the surface vector: the composition cells derived (/cb-green);
+    * every viewer names the cell, and what falls outside one (/cb-green);
+    * the two vectors together, and whether their patterns are independent
+      (/cb-green).
   After this list: nothing is planned.
 
 
@@ -186,23 +189,9 @@ THE DECISIONS IN FORCE
          which is which; this record states the vectors alone, and the node
          is where the full width is settled.
 
-       * The surface vector measures its own failure more than it measures
-         a display, found 2026-10-27 over 299 scenes. vis_content - "draws,
-         but no tag names the type" - is the largest of the six columns in
-         131 scenes, 44 percent. vis_substrate - "claimed by nothing" - is
-         largest in another 110, 37 percent. So 81 percent of scenes are
-         dominated by a column that says nothing about what is on the
-         display. vis_text is never the largest in any scene and never
-         exceeds 0.312; vis_glyph never exceeds 0.006 and is, for every
-         practical purpose, always zero. The clustering calls 132 scenes
-         outliers, 44 percent, which is the same figure as the content-
-         dominated count and almost certainly the same scenes.
-       * That is a measurement problem before it is a vector problem. A
-         scene whose surface is 96 percent "we could not tell" has not been
-         measured, and no transform or weight on that column recovers it.
 
-     Applied by: the surface vector's collapse; the diagnosis brought to
-     the human.
+     Applied by: the surface mapping gap closed; the two feature spaces
+     formalized; PSI for the pattern vector; PSI for the surface vector.
 
   3. What is measured and what is not. Decided by the evidence; verified
      2026-10-26 against the two capture sessions, 250 scenes.
@@ -313,8 +302,54 @@ THE DECISIONS IN FORCE
          scene whose surface is 96 percent "we could not tell" has not been
          measured, and no transform or weight on that column recovers it.
 
-     Applied by: the surface vector's collapse; the diagnosis brought to
-     the human.
+       * The collapse was diagnosed on 2026-10-27 and the cause is a
+         mapping gap, not the display. Across every client dump of the
+         capture, 95,430 tagged nodes: 21,705 recognised by vis_kind (Image
+         9,617, Text 8,677, SymbolGlyph/Divider 2,791, SURF_TAGS 620) and
+         73,725 not - 77.3 percent. Only 1,370 carry an empty tag, so
+         absence from the client dump is NOT the cause: about 98 percent of
+         what feeds vis_content is a node the dump named, with a tag the
+         mapping does not cover. The device emits 60 distinct tag values and
+         vis_kind tests four families.
+       * The unrecognised set is dominated by layout containers - Stack
+         2,863, Row 1,734, Column 935, RelativeContainer 254, ListItem 173,
+         Swiper 133, FlowItem 131, Flex 119 - plus the generics __Common__
+         1,173 and Custom 926. A container that paints is painting a
+         background, and background is substrate. vis_content at mean 0.393
+         is substrate misfiled as content.
+       * vis_kind does not read TAG_KIND. TAG_KIND serves mark_kind and the
+         pattern vector; the surface vector does its own substring test over
+         four families. The two halves of the measurement disagree about
+         what a tag means, and nothing said so.
+       * The substrate/content anti-correlation is arithmetic. Over 299
+         scenes corr(substrate, content) = -0.679, with content 0.393/0.391
+         and substrate 0.320/0.356 against xcomp 0.121/0.221, image
+         0.119/0.188, text 0.047/0.058, glyph 0.001/0.001. substrate is the
+         complement and content is the largest and most variable term, so
+         the two are near-mirrors by construction. Of the three causes the
+         audit was asked to separate - arithmetic, the capture, a defect in
+         the occlusion walk - the variance structure selects the first, and
+         no occlusion defect was found.
+       * Five columns, about three effective dimensions: content and
+         substrate hold 0.713 of the display between them as one axis, glyph
+         is a constant (max 0.006, largest in 0 of 299), text is bounded at
+         0.312 and largest in 0 of 299. Only xcomp and image vary freely.
+         132 of 299 scenes outside every cluster is the symptom of that, not
+         a property of the scenes.
+       * Not obtained by the audit: the area-weighted split of vis_content
+         by tag. cb-audit's forbidden set denied every route to running it,
+         and encoding the script to get it through was refused as a bypass.
+         The node-level vocabulary settles WHY content is large; the area
+         split settles HOW MUCH the fix recovers, and is the before/after of
+         the item that closes the gap.
+       * Decided by the human, 2026-10-27: the surface vector is NOT
+         dropped. Its collapse has a cause the data says is fixable, and no
+         judgement of it is sound until it has been measured with the gap
+         closed. The "kept or dropped" framing was written into this list by
+         the agent in 10b5f72 and was never the human's; it is removed
+         wherever it appears.
+
+     Applied by: the surface mapping gap closed; PSI for the surface vector.
 
   4. Names, proposed by this list and confirmed by the human before each
      envelope.
@@ -378,155 +413,134 @@ THE DECISIONS IN FORCE
          input-of and output-of edges to both interfaces, which is what
          AUTH-024 asks for, so the warnings cleared on their own and the
          item had nothing left to do. The relation nodes were never needed.
-       * IF-PAGE-PAYLOAD is held back: the payload's shape is settled only
-         once the surface vector is kept or dropped. The 71 are no longer
-         part of that wait - they were tested on 2026-10-27 and all but 2
-         are unrecoverable, because their frames were never taken.
-         Three items now press on this. The motif schematic, the listing of
-         what fits nothing, and the joint view each change what the payload
-         carries, and the first of them to run is where the hold is lifted
-         or restated. An interface authored while three items are about to
-         rewrite its shape would be authored three times; an interface the
-         page has already changed twice without one is the gap the hold was
-         meant to avoid. The call is the human's, at that item.
+       * IF-PAGE-PAYLOAD is held back, and the hold now has an end. The
+         payload's shape is settled once PSI exists for both vectors, since
+         a payload that carries a cell assignment is a different shape from
+         one that carries a cluster id. The 71 are no longer part of that
+         wait - they were tested on 2026-10-27 and all but 2 are
+         unrecoverable, because their frames were never taken.
+         The item "PSI for the pattern vector" is where the hold is lifted
+         or restated, because it is the first to change what the payload
+         carries. An interface authored while later items are about to
+         rewrite its shape would be authored twice; an interface the page
+         has already changed without one is the gap the hold exists to
+         avoid. The call is the human's, at that item.
        * The surface vector keeps a caveat rather than an invariant
          asserting it is meaningful. Asserting that would assert the thing
          in doubt, and the 2026-10-27 measurement is why: it is dominated by
-         a column that names nothing in 81 percent of scenes.
+         a column that names nothing in 81 percent of scenes. The caveat is
+         lifted by measurement, not by decision - the mapping gap closed,
+         then PSI derived, then the cells counted. It is not lifted by
+         dropping the vector, which was never asked for.
        * The metamodel has no PowerShell: the language enum has 23 entries
          and PowerShell is not among them, so the device side is declared
          as meta. That costs nothing while its invariant is that it
          computes nothing, and it is reported upstream rather than worked
          around.
 
-       * The surface vector measures its own failure more than it measures
-         a display, found 2026-10-27 over 299 scenes. vis_content - "draws,
-         but no tag names the type" - is the largest of the six columns in
-         131 scenes, 44 percent. vis_substrate - "claimed by nothing" - is
-         largest in another 110, 37 percent. So 81 percent of scenes are
-         dominated by a column that says nothing about what is on the
-         display. vis_text is never the largest in any scene and never
-         exceeds 0.312; vis_glyph never exceeds 0.006 and is, for every
-         practical purpose, always zero. The clustering calls 132 scenes
-         outliers, 44 percent, which is the same figure as the content-
-         dominated count and almost certainly the same scenes.
-       * That is a measurement problem before it is a vector problem. A
-         scene whose surface is 96 percent "we could not tell" has not been
-         measured, and no transform or weight on that column recovers it.
 
-     Applied by: the surface vector's collapse; the diagnosis brought to
-     the human.
+     Applied by: PSI for the pattern vector; every viewer names the cell.
+
+  6. The two mappings, and what a pattern set must satisfy. Decided by the
+     human, 2026-10-27.
+       * The pipeline is two mappings, not one:
+
+             component tree --extract--> measurements --PHI--> feature vector
+             feature vector --PSI--> pattern
+
+         PHI exists and is rs_pattern.py. PSI does not: it was deleted along
+         with the asserted name tables and nothing replaced it. That is why
+         both vectors stop at stage 1, why "which pattern is this scene" has
+         no answer, and why the page could only ever report clusters.
+       * PSI is DERIVED, never asserted. The deleted sets - a C enum of 20,
+         a PowerShell classifier of 23, a naming function of 28 shapes, a
+         DESC table of 13 - were lists written first and matched against the
+         data afterwards. The pattern set is instead derived from the
+         structure of the measurement space, so that it can be written down
+         without looking at a single screenshot. That is the test which
+         keeps it a function rather than a class list, and it is why
+         INV-NO-SCENE-CLASS permits it: a partition of a space is a
+         function; a library of named shapes matched against data is not.
+       * PSI must be demonstrated to be all four of:
+           total       every feature vector maps to exactly one pattern. A
+                       scene fits nothing only by landing in a declared
+                       cell, never by falling through.
+           disjoint    no feature vector maps to two.
+           minimal     no two patterns are indistinguishable under PHI, and
+                       no cell is empty by construction.
+           orthogonal  the axes defining the cells are independent, so a
+                       pattern is a point in a product rather than an
+                       overlapping description.
+         A demonstration is the deliverable. An implementation whose mapping
+         is not shown to have all four has not done this work.
+       * The spaces have shapes, and the formalization starts from them:
+           surface   a simplex. Five non-negative columns summing to one, so
+                     the space is the standard 4-simplex. A partition of a
+                     simplex by dominant component and concentration is
+                     exhaustive and disjoint by construction. "What can be
+                     expected from a composition" is then the question of
+                     which cells are reachable, which the data answers
+                     rather than the author.
+           pattern   a product. arrangement is one axis and is closed
+                     because arrangement() can emit nothing but grid, row,
+                     column and stack; content signature is a second; scale
+                     and coverage bands a third. The pattern set is the
+                     realizable subset of that product.
+       * The number is not the target. The human recalls about 16 patterns
+         in the deleted set, and four arrangements by four signature classes
+         is also 16. That coincidence is worth noticing and is not evidence.
+         Whether that factorization is the right one is precisely what the
+         formalization has to establish.
+       * Orthogonality is also the test ACROSS the two vectors. If PSI of
+         the pattern vector and PSI of the surface vector produce outcomes
+         that are independent, the two vectors are measuring different
+         things and the joint view is worth building. If they do not, that
+         is the finding.
+
+     Applied by: the two feature spaces formalized; PSI for the pattern
+     vector; PSI for the surface vector; the viewers.
 
 
 ===============================================================================
 PROMPTS
 ===============================================================================
 
-/cb-audit — the surface vector's collapse diagnosed, and what a composition
-            can be expected to look like
-  - What: why the surface vector collapses towards one axis on this
-    capture, and whether it carries information the pattern vector does
-    not. Each of the five columns examined over the full capture: its
-    distribution, its correlation with the other four, its variance, and
-    the scenes at each extreme with their screenshots. The substrate
-    against content correlation of about -0.8 traced to its cause — whether
-    it is arithmetic (five reals summing to one, with three of them usually
-    near zero), a property of the capture (two sessions of one device), or
-    a defect in the occlusion walk.
-    vis_text is examined specifically: over the 299 scenes now measured it
-    reaches 0.312 at most and dominates no scene at all — 0 of 299. A
-    text-dominant reading is unreachable, and whether that is the device,
-    the capture or the measurement is a finding. vis_glyph never exceeds
-    0.006 and is examined for whether it can ever be anything but zero.
-    The untyped vis_content bucket is the centre of this audit, because it
-    is the largest of the six columns in 131 of 299 scenes — 44 percent,
-    the same figure as the clustering's outlier rate and almost certainly
-    the same scenes. vis_substrate is largest in another 110, so 81 percent
-    of scenes are dominated by a column that names nothing on the display.
-    How much of vis_content is nodes absent from the client dump entirely,
-    how much is nodes the client dump names with a tag the mapping does not
-    cover, and whether the geometry fallback already in the code can split
-    it. A scene whose surface is 96 percent "we could not tell" has not
-    been measured, and no transform or weight on that column recovers it.
-    And the question the vector cannot currently answer: WHAT SHOULD A
-    COMPOSITION LOOK LIKE. Not a class list - the expected shape of the
-    six columns, derived from the data: which columns carry information and
-    which record a failure to identify, what range each occupies on scenes
-    where the tags did resolve, and therefore what makes a composition
-    well-formed and what makes one unreadable. The answer is the thing the
-    surface vector is missing, and without it "fits no cluster" cannot be
-    told apart from "was never measured".
-    Each finding with its evidence and a recommendation; nothing decided.
-  - Read: records 2, 3 and 5; rs_pattern.py's visible_surface, vis_kind,
-    mark_kind, TAG_KIND and the slot sets, in full; the full patterns.csv
-    of a real capture; a client dump in full, to see what tags the device
-    actually emits against what TAG_KIND covers; the page.
-  - Spec work: none; an audit changes nothing.
-  - BOUNDARY: as above.
-
-  - IMPORTANT: Read every file in full. A grep hit is a pointer, not a finding.
-  - IMPORTANT: Every figure is measured in this session against a real capture and written into the report.
-  - FORBIDDEN: MULTI-AGENT execution is not allowed. DO NOT SPAWN MULTIPLE AGENTS.
-  - DECISION PROTOCOL: If a decision must be made, ask for direct feedback. DO NOT DECIDE ALONE.
-  - AT THE END: the list update this audit owes is done by the /cb-free session after it.
-
-
-/cb-free — the diagnosis brought to the human, the surface vector kept,
-           bounded or dropped
-  - What: each finding of the audit brought to the human one at a time,
-    with its evidence and a recommendation. The human rules on the one
-    question the list cannot answer for itself: whether the surface vector
-    stays as a second measurement, is repaired, or is dropped and the
-    pattern vector left alone. The ruling is written into record 2, which
-    then states the vectors in the form they keep, and record 5's caveat
-    is deleted or restated.
-    If the surface vector stays, IF-PAGE-PAYLOAD is planned by this session
-    and placed in the order; if it is dropped, every later reference to it
-    in this list is removed.
-  - Read: the audit's report; records 2, 3 and 5.
-  - Spec work: none; the session writes this list and changes no node.
-  - BOUNDARY: as above.
-
-  - DECISION PROTOCOL: If a decision must be made, ask for direct feedback. DO NOT DECIDE ALONE.
-  - AT THE END: update this list as the rule at the head of the list states.
-
-
-/cb-green — the pattern motif drawn again, from measured medians
-  - What: the page shows what a repeating group looks like, not only the
-    numbers describing it. feature_motifs.py drew this before deletion in
-    4421f9b: schematic() laid cells into a phone-shaped SVG from cols,
-    rows, h, aspect and arr, a cell cut off at the bottom edge drawn
-    dashed, a stack drawn as an offset outline. That function is recovered
-    from git history and is the starting point.
-    What is NOT recovered is the DESC table beside it - 13 names with prose
-    for each, part of the 28-shape taxonomy deleted with it. The drawing is
-    made from the group's own median numbers and nothing else. A schematic
-    is a measurement rendered; a name for it is a class, and
-    INV-NO-SCENE-CLASS forbids the second and not the first.
-    One schematic per cluster, from that cluster's medians, in the cluster
-    header beside its cohesion and centre. Per scene the tile also carries
-    its own pat1_arr and pat1_pat - grid, row, column or stack, and the
-    content-kind signature such as IIITTT for three images and three texts
-    repeating. Those two columns are measured into patterns.csv today and
-    reach nothing: 93 grid, 88 row, 83 column, 4 stack and 31 with no group
-    over 299 scenes, computed and then discarded. They are the answer to
-    "which pattern is this scene", which is the pattern vector's point.
-  - Read: record 2; git show 4421f9b^:tools/cluster/feature_motifs.py in
-    full; vectors_build.py where it builds a cluster's groups; the tile and
-    cluster-header markup in vectors_page.py.
-  - Spec areas: SUB-FEATURE-RESEARCH, IF-PAGE-PAYLOAD.
-  - Spec work: decided with the human before the envelope. The candidate is
-    one algorithm ALG-MOTIF-SCHEMATIC (py) - render a repeating group as an
-    SVG from its median geometry - contained, runs-at AUT-PIPELINE-RUN,
-    satisfying INV-NO-SCENE-CLASS, with IF-PATTERNS-ROW as input-of. Whether
-    IF-PAGE-PAYLOAD is authored now rather than held back is part of that
-    decision, since this item changes the payload's shape.
-  - Code path: tools/cluster/vectors_build.py; tools/cluster/vectors_page.py.
-  - Test: the page rebuilt on a real capture, its size reported, and the
-    number of clusters carrying a schematic against the number of clusters;
-    tools/checks/no_scene_class.py over the tree, which must still hold -
-    it is the check that would catch a name creeping back in; npm run
-    spec:check, no violations.
+/cb-green — the surface mapping gap closed, containers read as substrate
+  - What: vis_kind recognises four tag families out of the sixty the device
+    emits, and files the other 77.3 percent as content it could not name.
+    Measured 2026-10-27 over every client dump of the capture: 95,430 tagged
+    nodes, 21,705 recognised, 73,725 not, of which only 1,370 carry an empty
+    tag - so this is a mapping gap and not missing data. The unrecognised
+    set is dominated by layout containers, and a container that paints is
+    painting a background.
+    So the tag vocabulary becomes explicit. A declared set says which tags
+    name content, which name a composed surface, and which are containers
+    whose paint is background; a container that paints is routed to
+    substrate rather than to content. A tag in none of those three is
+    counted and named, not absorbed - that is the defect being repaired, and
+    it must not be reintroduced by a catch-all.
+    This is a measurement correction, not a class list: every entry is read
+    off the tag the device emits, exactly as Image and Text already are.
+  - Read: record 3 and record 6; rs_pattern.py's vis_kind, mark_kind,
+    TAG_KIND, is_drawn, is_composed, is_structural and visible_surface in
+    full; one client dump in full; the audit's report in the contract
+    surfvec-audit-01.
+  - Spec areas: SUB-FEATURE-RESEARCH, ALG-VISIBLE-SURFACE, IF-PATTERNS-ROW.
+  - Spec work: decided with the human before the envelope. The candidates
+    are one invariant INV-TAG-VOCABULARY-DECLARED - every tag the device
+    emits is in the declared set or is reported with a count, never silently
+    bucketed - contained, checked-at AUT-PIPELINE-RUN, emitting a new
+    error-code ERR-TAG-UNRECOGNISED (WARN); and modifications to
+    ALG-VISIBLE-SURFACE's description and preconditions stating the three
+    tag roles. Whether the vocabulary itself is an interface node of its own
+    is part of that decision.
+  - Code path: tools/cluster/rs_pattern.py; a check under tools/checks/.
+  - Test: THE MEASUREMENT THE AUDIT COULD NOT TAKE. The painter pass
+    instrumented to attribute claimed pixels per tag, before and after, so
+    the item reports exactly how much of vis_content moves and where it
+    goes. Plus the six-column means and the outlier rate for both vectors
+    before and after; INV-SURFACE-SUMS-TO-ONE still holds; the pipeline run
+    end to end; npm run spec:check, no violations.
   - BOUNDARY: combobul and ArkUI are two projects. combobul/spec/spec.db
     holds the specification of this project's code, in combobul's ontology,
     written only through combobul's ril. No rule, kind, check or store of
@@ -534,51 +548,216 @@ PROMPTS
     not published from this repository.
 
   - IMPORTANT: The context you get is not hallucinated, its deterministically extracted.
+  - IMPORTANT: Every figure is measured in this session against a real capture and written into the report.
   - REFERENCE: If specification authoring details are needed, ask RIL for authoring rules.
-  - INVIOLABLE: SPECIFICATION SURFACE IS AUTHORITATIVE.
-  - INVIOLABLE: NO SCENE CLASSES. A drawing or a grouping made from measured numbers is a
-    measurement. A name, a description or a library of expected shapes matched against the
-    data is a taxonomy, and INV-NO-SCENE-CLASS forbids it.
+  - INVIOLABLE: SPECIFICATION SURFACE IS AUTHORITATIVE. Every function this item adds is specified
+    in the DAG before it is written: the algorithm, its preconditions, and the invariants it must hold.
+  - INVIOLABLE: NO SCENE CLASSES. A set derived from the structure of the measurement space, writable
+    without looking at a screenshot, is a function. A list of names matched against data is a class,
+    and INV-NO-SCENE-CLASS forbids it. If you cannot derive it, you may not assert it.
   - INVIOLABLE: DO NOT EMIT P3_SKIPPED. If you do not need to modify the specification you must submit a reason.
   - FORBIDDEN: MULTI-AGENT execution is not allowed. DO NOT SPAWN MULTIPLE AGENTS.
   - WHEN TO COMMIT: Before "silk run finalize".
+  - AFTER COMMIT: the item is not finished until it is pushed. git push is /cb-ops only, so end
+    FINAL_STATUS with an explicit NOT PUSHED line naming /cb-ops.
   - DECISION PROTOCOL: If a decision must be made, ask for direct feedback. DO NOT DECIDE ALONE.
   - AT THE END: update this list as the rule at the head of the list states.
 
-/cb-green — every viewer names what fits nothing
+/cb-green — the two feature spaces formalized, PHI and PSI declared
+  - What: the design record 6 calls for, written down and specified before
+    any pattern is computed. Two deliverables and they are different things:
+    the reasoning goes in docs/ as prose, and the contract goes in the DAG
+    as nodes, because a pre/postcondition written in a document is not a
+    specification.
+    For each vector: the measurement space PHI maps into, with its shape
+    stated - the surface space is the standard 4-simplex because five
+    non-negative columns sum to one; the pattern space is a product whose
+    arrangement axis is closed at four values because arrangement() can emit
+    no others. Then the partition PSI, defined as a function on that space,
+    with the demonstration that it is total, disjoint, minimal and
+    orthogonal in the senses record 6 gives.
+    Where a property cannot be shown, the item says so and says which cell
+    or axis fails it. A formalization that quietly weakens a property to
+    make itself true is worse than none.
+    No pattern is computed and no page changes here. This item produces the
+    definition the next two implement against.
+  - Read: record 2 and record 6; the audit report; rs_pattern.py's analyse,
+    arrangement, pattern and visible_surface in full; the full patterns.csv.
+  - Spec areas: SUB-FEATURE-RESEARCH.
+  - Spec work: decided with the human before the envelope. The candidates
+    are two interfaces IF-PATTERN-SPACE and IF-SURFACE-SPACE (py) carrying
+    each space's shape and coordinates; two algorithms ALG-PSI-PATTERN and
+    ALG-PSI-SURFACE declared with their preconditions and postconditions but
+    implemented by the items after; and four invariants over them -
+    INV-PSI-TOTAL, INV-PSI-DISJOINT, INV-PSI-MINIMAL, INV-PSI-ORTHOGONAL -
+    each with a predicate that a check can evaluate rather than a sentence
+    that reads well. Whether the four are one invariant per property per
+    vector, or one family shared by both, is part of the decision.
+  - Code path: docs/design/ for the reasoning; no tools/ code in this item.
+  - Test: the four properties argued for each space, with the argument
+    written out; the cells enumerated and their reachability over the real
+    299 scenes reported as counts, including every cell that is empty;
+    npm run spec:check, no violations.
+  - BOUNDARY: combobul and ArkUI are two projects. combobul/spec/spec.db
+    holds the specification of this project's code, in combobul's ontology,
+    written only through combobul's ril. No rule, kind, check or store of
+    one is carried to the other. The engine is installed per machine and is
+    not published from this repository.
+
+  - IMPORTANT: The context you get is not hallucinated, its deterministically extracted.
+  - IMPORTANT: Every figure is measured in this session against a real capture and written into the report.
+  - REFERENCE: If specification authoring details are needed, ask RIL for authoring rules.
+  - INVIOLABLE: SPECIFICATION SURFACE IS AUTHORITATIVE. Every function this item adds is specified
+    in the DAG before it is written: the algorithm, its preconditions, and the invariants it must hold.
+  - INVIOLABLE: NO SCENE CLASSES. A set derived from the structure of the measurement space, writable
+    without looking at a screenshot, is a function. A list of names matched against data is a class,
+    and INV-NO-SCENE-CLASS forbids it. If you cannot derive it, you may not assert it.
+  - INVIOLABLE: DO NOT EMIT P3_SKIPPED. If you do not need to modify the specification you must submit a reason.
+  - FORBIDDEN: MULTI-AGENT execution is not allowed. DO NOT SPAWN MULTIPLE AGENTS.
+  - WHEN TO COMMIT: Before "silk run finalize".
+  - AFTER COMMIT: the item is not finished until it is pushed. git push is /cb-ops only, so end
+    FINAL_STATUS with an explicit NOT PUSHED line naming /cb-ops.
+  - DECISION PROTOCOL: If a decision must be made, ask for direct feedback. DO NOT DECIDE ALONE.
+  - AT THE END: update this list as the rule at the head of the list states.
+
+/cb-green — PSI for the pattern vector: the motif derived, named and drawn
+  - What: the pattern space's partition implemented, so a scene has a
+    pattern and not only seven numbers. The axes are measured already and
+    reach nothing: pat1_arr holds 93 grid, 88 row, 83 column, 4 stack and 31
+    with no repeating group over 299 scenes, and pat1_pat holds the content
+    signature such as IIITTT for three images and three texts repeating.
+    Both are computed into patterns.csv and then discarded before the
+    vector. This item is where they become the feature.
+    The motif is drawn again. feature_motifs.py did this before deletion in
+    4421f9b: schematic() laid cells into a phone-shaped SVG from cols, rows,
+    h, aspect and arr, a cell cut off at the bottom drawn dashed, a stack as
+    an offset outline. That function is recovered from git history. What is
+    NOT recovered is the DESC table beside it - 13 names with prose, part of
+    the deleted taxonomy. A schematic drawn from a cell's own numbers is a
+    measurement rendered; a name for it is a class.
+    A pattern's label is its coordinates, not a word: the arrangement, the
+    signature and the band it falls in, which is readable and derived.
+  - Read: records 2, 5 and 6; the formalization from the item before;
+    git show 4421f9b^:tools/cluster/feature_motifs.py in full;
+    vectors_build.py and vectors_page.py in full.
+  - Spec areas: SUB-FEATURE-RESEARCH, IF-PATTERNS-ROW, IF-PAGE-PAYLOAD.
+  - Spec work: implement ALG-PSI-PATTERN against the contract the previous
+    item authored, and satisfy INV-PSI-* for the pattern space. One
+    algorithm ALG-MOTIF-SCHEMATIC (py) renders a cell from its medians,
+    satisfying INV-NO-SCENE-CLASS. Whether IF-PAGE-PAYLOAD is authored here
+    rather than held back is decided with the human, since this item changes
+    the payload's shape - see record 5.
+  - Code path: tools/cluster/vectors_build.py; tools/cluster/vectors_page.py;
+    a check under tools/checks/ that evaluates the four PSI properties.
+  - Test: every one of the 299 scenes assigned to exactly one cell, with the
+    per-cell counts reported and every empty cell named; the four properties
+    checked by the check, not asserted in prose;
+    tools/checks/no_scene_class.py still holds; the page rebuilt and its
+    size reported; npm run spec:check, no violations.
+  - BOUNDARY: combobul and ArkUI are two projects. combobul/spec/spec.db
+    holds the specification of this project's code, in combobul's ontology,
+    written only through combobul's ril. No rule, kind, check or store of
+    one is carried to the other. The engine is installed per machine and is
+    not published from this repository.
+
+  - IMPORTANT: The context you get is not hallucinated, its deterministically extracted.
+  - IMPORTANT: Every figure is measured in this session against a real capture and written into the report.
+  - REFERENCE: If specification authoring details are needed, ask RIL for authoring rules.
+  - INVIOLABLE: SPECIFICATION SURFACE IS AUTHORITATIVE. Every function this item adds is specified
+    in the DAG before it is written: the algorithm, its preconditions, and the invariants it must hold.
+  - INVIOLABLE: NO SCENE CLASSES. A set derived from the structure of the measurement space, writable
+    without looking at a screenshot, is a function. A list of names matched against data is a class,
+    and INV-NO-SCENE-CLASS forbids it. If you cannot derive it, you may not assert it.
+  - INVIOLABLE: DO NOT EMIT P3_SKIPPED. If you do not need to modify the specification you must submit a reason.
+  - FORBIDDEN: MULTI-AGENT execution is not allowed. DO NOT SPAWN MULTIPLE AGENTS.
+  - WHEN TO COMMIT: Before "silk run finalize".
+  - AFTER COMMIT: the item is not finished until it is pushed. git push is /cb-ops only, so end
+    FINAL_STATUS with an explicit NOT PUSHED line naming /cb-ops.
+  - DECISION PROTOCOL: If a decision must be made, ask for direct feedback. DO NOT DECIDE ALONE.
+  - AT THE END: update this list as the rule at the head of the list states.
+
+/cb-green — PSI for the surface vector: the composition cells derived
+  - What: the surface space's partition implemented, so a composition is a
+    feature and not five loose fractions. Ordered after the mapping gap is
+    closed, deliberately: until containers stop being filed as content, the
+    simplex coordinates are 0.393 mean content and the cells would be a
+    partition of a measurement error.
+    The partition comes from the simplex, as record 6 states: dominant
+    component and concentration give exhaustive, disjoint cells by
+    construction. Which cells are REACHABLE is the question the data
+    answers, and the item reports the count in each over the real capture,
+    naming every cell that is empty and saying whether it is empty because
+    the device never produces it or because the measurement cannot express
+    it. Those are different findings.
+    The columns that cannot carry information are named as such rather than
+    partitioned: vis_glyph has mean 0.001 and max 0.006 over 299 scenes and
+    is largest in none of them, and vis_text is bounded at 0.312 and largest
+    in none. Whether they are coordinates of the space or are excluded from
+    PSI is decided from the post-fix measurement, not from this text.
+  - Read: records 2, 3 and 6; the formalization; the before/after from the
+    mapping-gap item; rs_pattern.py's visible_surface in full; the full
+    patterns.csv after the fix.
+  - Spec areas: SUB-FEATURE-RESEARCH, IF-PATTERNS-ROW, IF-PAGE-PAYLOAD.
+  - Spec work: implement ALG-PSI-SURFACE against the authored contract and
+    satisfy INV-PSI-* for the surface space. If a column is excluded from
+    PSI, that exclusion is written into IF-PATTERNS-ROW with its measured
+    reason.
+  - Test: every scene assigned to exactly one cell; per-cell counts with
+    every empty cell named and explained; the four properties checked by the
+    check; the outlier rate compared with the figure before the mapping fix;
+    npm run spec:check, no violations.
+  - BOUNDARY: combobul and ArkUI are two projects. combobul/spec/spec.db
+    holds the specification of this project's code, in combobul's ontology,
+    written only through combobul's ril. No rule, kind, check or store of
+    one is carried to the other. The engine is installed per machine and is
+    not published from this repository.
+
+  - IMPORTANT: The context you get is not hallucinated, its deterministically extracted.
+  - IMPORTANT: Every figure is measured in this session against a real capture and written into the report.
+  - REFERENCE: If specification authoring details are needed, ask RIL for authoring rules.
+  - INVIOLABLE: SPECIFICATION SURFACE IS AUTHORITATIVE. Every function this item adds is specified
+    in the DAG before it is written: the algorithm, its preconditions, and the invariants it must hold.
+  - INVIOLABLE: NO SCENE CLASSES. A set derived from the structure of the measurement space, writable
+    without looking at a screenshot, is a function. A list of names matched against data is a class,
+    and INV-NO-SCENE-CLASS forbids it. If you cannot derive it, you may not assert it.
+  - INVIOLABLE: DO NOT EMIT P3_SKIPPED. If you do not need to modify the specification you must submit a reason.
+  - FORBIDDEN: MULTI-AGENT execution is not allowed. DO NOT SPAWN MULTIPLE AGENTS.
+  - WHEN TO COMMIT: Before "silk run finalize".
+  - AFTER COMMIT: the item is not finished until it is pushed. git push is /cb-ops only, so end
+    FINAL_STATUS with an explicit NOT PUSHED line naming /cb-ops.
+  - DECISION PROTOCOL: If a decision must be made, ask for direct feedback. DO NOT DECIDE ALONE.
+  - AT THE END: update this list as the rule at the head of the list states.
+
+/cb-green — every viewer names the cell, and what falls outside one
   - What: a scene the vectors cannot place is shown as such, in the page,
-    rather than being absent from the reader's attention. Two populations,
-    and they are not the same thing:
-      the unmeasurable - a scene with no repeating group at all, which is
-        31 of 299 and leaves pat1_* empty by design, and for the surface
-        vector a scene whose composition is dominated by vis_content or
-        vis_substrate, which is 241 of 299 and means the tags did not
-        resolve;
-      the unclustered - a scene HDBSCAN assigns to no cluster, which is 50
-        of 299 on the pattern vector and 132 on the surface vector.
+    with the two reasons kept apart because they are not the same thing:
+      the unmeasurable - a scene PHI could not describe. 31 of 299 have no
+        repeating group at all and leave pat1_* empty by design;
+      the unplaced - a scene PHI described and PSI puts in a cell declared
+        as "none of the above", which after the two PSI items should be a
+        named cell and not an accident.
     A scene can be both and the page must not merge them: the first is the
-    measurement saying it found nothing, the second is the clustering
-    saying this scene is unlike the others. Each vector's section gets its
-    own listing with counts, the scenes named, and their tiles.
-    The counts are stated against the total on the page itself, so a reader
-    sees what fraction of the capture the clustering actually speaks for.
-    That is the defect this repairs: the page publishes a cluster count and
-    a silhouette with no indication that 44 percent of the surface vector's
-    scenes sit outside all of it.
-  - Read: records 2 and 3; vectors_build.py's build(), where lab < 0 marks
-    an outlier; vectors_page.py; the audit block in the payload.
+    measurement saying it found nothing, the second is the partition saying
+    this composition is its own thing.
+    Each vector's section carries its cell listing with counts, the cells
+    named by their coordinates, and the tiles. The counts are stated against
+    the total on the page itself, so a reader sees what fraction of the
+    capture each cell speaks for. That is the defect this repairs: the page
+    published a cluster count and a silhouette with no indication that 132
+    of 299 surface scenes sat outside all of it.
+  - Read: records 3, 5 and 6; both PSI implementations; vectors_build.py and
+    vectors_page.py in full.
   - Spec areas: SUB-FEATURE-RESEARCH, IF-PAGE-PAYLOAD.
   - Spec work: decided with the human before the envelope. The candidate is
-    one invariant INV-UNPLACED-SCENES-NAMED - every scene the measurement
-    could not describe, and every scene the clustering did not place, is
+    one invariant INV-UNPLACED-SCENES-NAMED - every scene PHI could not
+    describe and every scene PSI placed in a none-of-the-above cell is
     counted and named in the payload and on the page, with the two kept
-    apart - contained, checked-at AUT-PIPELINE-RUN, emitting an error code
-    which may be ERR-SCENE-WITHOUT-REP's sibling or may be new.
+    apart - contained, checked-at AUT-PIPELINE-RUN, emitting an error code.
   - Code path: tools/cluster/vectors_build.py; tools/cluster/vectors_page.py;
     a check under tools/checks/.
-  - Test: the counts reported for both vectors before and after, measured
-    on a real capture; the check failing on a payload with the listing
-    removed and passing with it present; npm run spec:check, no violations.
+  - Test: the counts reported for both vectors; the check failing on a
+    payload with the listing removed and passing with it present; the page
+    rebuilt and its size reported; npm run spec:check, no violations.
   - BOUNDARY: combobul and ArkUI are two projects. combobul/spec/spec.db
     holds the specification of this project's code, in combobul's ontology,
     written only through combobul's ril. No rule, kind, check or store of
@@ -586,46 +765,49 @@ PROMPTS
     not published from this repository.
 
   - IMPORTANT: The context you get is not hallucinated, its deterministically extracted.
+  - IMPORTANT: Every figure is measured in this session against a real capture and written into the report.
   - REFERENCE: If specification authoring details are needed, ask RIL for authoring rules.
-  - INVIOLABLE: SPECIFICATION SURFACE IS AUTHORITATIVE.
-  - INVIOLABLE: NO SCENE CLASSES. A drawing or a grouping made from measured numbers is a
-    measurement. A name, a description or a library of expected shapes matched against the
-    data is a taxonomy, and INV-NO-SCENE-CLASS forbids it.
+  - INVIOLABLE: SPECIFICATION SURFACE IS AUTHORITATIVE. Every function this item adds is specified
+    in the DAG before it is written: the algorithm, its preconditions, and the invariants it must hold.
+  - INVIOLABLE: NO SCENE CLASSES. A set derived from the structure of the measurement space, writable
+    without looking at a screenshot, is a function. A list of names matched against data is a class,
+    and INV-NO-SCENE-CLASS forbids it. If you cannot derive it, you may not assert it.
   - INVIOLABLE: DO NOT EMIT P3_SKIPPED. If you do not need to modify the specification you must submit a reason.
   - FORBIDDEN: MULTI-AGENT execution is not allowed. DO NOT SPAWN MULTIPLE AGENTS.
   - WHEN TO COMMIT: Before "silk run finalize".
+  - AFTER COMMIT: the item is not finished until it is pushed. git push is /cb-ops only, so end
+    FINAL_STATUS with an explicit NOT PUSHED line naming /cb-ops.
   - DECISION PROTOCOL: If a decision must be made, ask for direct feedback. DO NOT DECIDE ALONE.
   - AT THE END: update this list as the rule at the head of the list states.
 
-/cb-green — the two vectors clustered together, beside the two alone
-  - What: a third view, over both vectors at once - the pattern vector's
-    seven columns and the surface vector's five, in one space, clustered as
-    the other two are and shown beside them in the same page. The two
-    vectors describe different things about one scene, and nothing has yet
-    asked whether a scene's layout and its composition agree.
-    The weights are the question this item must answer rather than assume:
-    twelve columns of two different kinds, with the existing per-column
-    weights fitted for each vector on its own. Whether those weights carry
-    over, whether each vector's block is normalised before being joined,
-    and whether the joint space is dominated by whichever vector has more
-    columns - all of it measured and reported, not chosen.
-    Ordered after the surface diagnosis deliberately. If the surface vector
-    is dropped or bounded by the decision before it, this item changes with
-    it, and clustering on a vector that measures its own failure 44 percent
-    of the time would produce a joint view built on it.
-  - Read: records 2 and 3 and the surface diagnosis; vectors_build.py's
-    VECTORS table and build() in full; vectors_page.py's section rendering.
-  - Spec areas: SUB-FEATURE-RESEARCH.
+/cb-green — the two vectors together, and whether their patterns are independent
+  - What: the question record 6 ends on. If PSI of the pattern vector and
+    PSI of the surface vector place scenes independently, the two vectors
+    measure different things and a joint view is worth building; if a
+    scene's surface cell is predictable from its pattern cell, one of them
+    is redundant and that is the finding.
+    Measured, not asserted: the contingency table of the two cell
+    assignments over the real capture, with a stated measure of association
+    and what it would read if they were independent. The number is reported
+    whichever way it falls.
+    Then the joint view, if it is warranted: both vectors in one space,
+    shown beside the two alone. The weights are the question this item must
+    answer rather than assume - twelve columns of two kinds, with per-column
+    weights fitted for each vector on its own. Whether those carry over,
+    whether each block is normalised before joining, and whether the space
+    is dominated by whichever vector has more columns - all measured and
+    reported.
+  - Read: records 2, 3 and 6; both PSI implementations; vectors_build.py's
+    VECTORS table and build() in full.
+  - Spec areas: SUB-FEATURE-RESEARCH, ALG-VECTOR-CLUSTER.
   - Spec work: decided with the human before the envelope. The candidate is
-    to modify ALG-VECTOR-CLUSTER rather than add a node, since the joint
-    view is the same algorithm over a different column set; a new node is
-    authored only if the joining itself needs one.
-  - Code path: tools/cluster/vectors_build.py; tools/cluster/vectors_page.py.
-  - Test: the three views built on one real capture with their cluster
-    counts, outlier rates and silhouettes side by side; whether the joint
-    view agrees with either vector alone reported as a number, not an
-    impression; the page rebuilt and its size reported; npm run spec:check,
-    no violations.
+    to modify ALG-VECTOR-CLUSTER, since the joint view is the same algorithm
+    over a different column set; a node is added only if the joining itself
+    needs one.
+  - Test: the association between the two cell assignments reported as a
+    number with its independence baseline; the three views built on one real
+    capture with their counts and outlier rates side by side; the page
+    rebuilt and its size reported; npm run spec:check, no violations.
   - BOUNDARY: combobul and ArkUI are two projects. combobul/spec/spec.db
     holds the specification of this project's code, in combobul's ontology,
     written only through combobul's ril. No rule, kind, check or store of
@@ -633,13 +815,17 @@ PROMPTS
     not published from this repository.
 
   - IMPORTANT: The context you get is not hallucinated, its deterministically extracted.
+  - IMPORTANT: Every figure is measured in this session against a real capture and written into the report.
   - REFERENCE: If specification authoring details are needed, ask RIL for authoring rules.
-  - INVIOLABLE: SPECIFICATION SURFACE IS AUTHORITATIVE.
-  - INVIOLABLE: NO SCENE CLASSES. A drawing or a grouping made from measured numbers is a
-    measurement. A name, a description or a library of expected shapes matched against the
-    data is a taxonomy, and INV-NO-SCENE-CLASS forbids it.
+  - INVIOLABLE: SPECIFICATION SURFACE IS AUTHORITATIVE. Every function this item adds is specified
+    in the DAG before it is written: the algorithm, its preconditions, and the invariants it must hold.
+  - INVIOLABLE: NO SCENE CLASSES. A set derived from the structure of the measurement space, writable
+    without looking at a screenshot, is a function. A list of names matched against data is a class,
+    and INV-NO-SCENE-CLASS forbids it. If you cannot derive it, you may not assert it.
   - INVIOLABLE: DO NOT EMIT P3_SKIPPED. If you do not need to modify the specification you must submit a reason.
   - FORBIDDEN: MULTI-AGENT execution is not allowed. DO NOT SPAWN MULTIPLE AGENTS.
   - WHEN TO COMMIT: Before "silk run finalize".
+  - AFTER COMMIT: the item is not finished until it is pushed. git push is /cb-ops only, so end
+    FINAL_STATUS with an explicit NOT PUSHED line naming /cb-ops.
   - DECISION PROTOCOL: If a decision must be made, ask for direct feedback. DO NOT DECIDE ALONE.
   - AT THE END: update this list as the rule at the head of the list states.
