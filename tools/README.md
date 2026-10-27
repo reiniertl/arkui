@@ -6,8 +6,6 @@ Two steps. The device side pulls files; everything after that is Python.
 |---|---|---|
 | `rs_capture.ps1` | host | Pull RenderService dumps and screenshots. Computes nothing |
 | `cluster/` | anywhere | Measure the two vectors, cluster each, build the page |
-| `correlate.py` | host | Join scene records to power, integrity-check, rank features |
-| `sample_power.sh` | device | Sample cpufreq / cpuidle on the shared clock |
 | `deck/` | — | Slides: what the data is, where it comes from, what came out |
 
 ## Prerequisites
@@ -55,8 +53,3 @@ python cluster/vectors_build.py patterns.csv --reps patreps --out payload.json
 python cluster/vectors_page.py  payload.json --out vectors.html
 ```
 
-## Correlate
-
-`correlate.py` is the measurement the project rests on and has not been run.
-It needs a descriptor stream and a `sample_power.sh` capture sharing
-CLOCK_MONOTONIC with it. Its docstring defines the record shape.

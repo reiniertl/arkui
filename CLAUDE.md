@@ -1,10 +1,14 @@
-# ArkUI scene signals — combobul-specified
+# ArkUI scene extraction — combobul-specified
 
-A system component for HarmonyOS NEXT that patches ArkUI to emit **scene
-classification signals**: what kind of scene is on the display, so that
-aggregation, power attribution and scheduling elsewhere have structure to
-work from. This project reports scene composition. It does not decide
-policy.
+**This project extracts scenes from ArkUI data. That is its whole scope.**
+It measures what is on a HarmonyOS display, from RenderService dumps, and
+reports that structure.
+
+It reports scene composition and nothing else. It does not decide policy
+and it does not ask a consumer's question: aggregation, power attribution
+and scheduling happen elsewhere, in something that is not this repository.
+Code whose reason for existing is one of those questions does not belong
+here, however long it has been present.
 
 The spec graph is empty as of this commit. Code under `tools/` predates
 combobul and is not yet bound to spec nodes; binding it is the work ahead.

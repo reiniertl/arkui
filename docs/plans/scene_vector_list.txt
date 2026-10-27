@@ -1,12 +1,9 @@
 SCENE VECTOR LIST — THE FEATURE RESEARCH BROUGHT UNDER SPECIFICATION
 
 This list is the work that puts the scene-vector research under a
-specification. The project measures what is on a HarmonyOS display, from
-RenderService dumps, and asks whether that measurement carries information
-about power draw and CPU frequency that the scheduler does not already
-have. It reports structure. It decides no policy: aggregation, power
-attribution and scheduling are elsewhere, and what is decided here is the
-quality of the data they read.
+specification. The project does two things: it collects ArkUI data off a
+HarmonyOS device, and it clusters the scenes it finds in that data. What is
+decided here is the quality of that collection and that clustering.
 
 Two things make this list what it is, and both were decided in the session
 that preceded it. The first: there are no scene classes, and three attempts
@@ -56,7 +53,7 @@ Every prompt carries a Spec work section naming its specification work node
 by node: each node it adds (id, kind, module, and every edge it carries),
 each node it modifies (id and the fields written), each node and each edge
 it removes. An item that changes no node says so and gives the reason. The
-names a prompt gives are record 5's; the human confirms them before the
+names a prompt gives are record 4's; the human confirms them before the
 envelope is written.
 
 Every prompt carries the BOUNDARY clause: combobul and ArkUI are two
@@ -82,7 +79,6 @@ The baseline the executions read (read each file in full):
 - tools/cluster/rs_extract.py (404 lines), rs_pattern.py (795),
   vectors_build.py (209), vectors_page.py (137) — the measurement.
 - tools/rs_capture.ps1 (424) — the device side.
-- tools/correlate.py (379), tools/sample_power.sh (64) — the open question.
 - CLAUDE.md — the governance in force.
 - .combobul/runs/audit-spec-genesis/contract.json and
   .combobul/runs/audit-subfeature-spec/contract.json — the two audits this
@@ -93,18 +89,14 @@ The baseline the executions read (read each file in full):
 ORDER
 ===============================================================================
 
-  What remains, in this order (records 1 to 6 hold the decisions; each
+  What remains, in this order (records 1 to 5 hold the decisions; each
   prompt names the records it applies):
-    * correlate.py closed: the premise measured (/cb-green);
     * the 71 scenes given a picture from the periodic shots, by the index
       samples.csv already holds (/cb-green);
     * the surface vector's collapse diagnosed (/cb-audit);
     * the diagnosis brought to the human, the surface vector kept or
       dropped (/cb-free).
-  After this list: whatever the correlation answers makes necessary. If
-  Ark-derived features do not predict power, the feature work is premature
-  and the component needs different features; nothing beyond this list is
-  planned until that is known.
+  After this list: nothing is planned.
 
 
 ===============================================================================
@@ -114,15 +106,18 @@ THE DECISIONS IN FORCE
   Each record states a decision the items below carry out. Delete a record
   when every item it names is done.
 
-  1. The scope. Decided by the human.
-       * The project measures the structure of what is on a display and
-         asks whether that measurement predicts power and frequency. It
-         reports composition; it decides no policy.
-       * The eventual deliverable is a system component: ArkUI is platform
-         code, so one patch reaches every app through the pre-warmed
-         appspawn fork. That component does not exist and this repository
-         is not it. What exists is a capture, two measured vectors, a
-         clustering, a page, and an unanswered question.
+  1. The scope. Decided by the human, restated 2026-10-27.
+       * This project collects ArkUI data and clusters the scenes in it.
+         That is the whole of it.
+       * Nothing else goes in: no measurement of anything the device does
+         in response to a scene, no joining of a scene to any other series,
+         and no code whose reason for existing is a question somebody
+         downstream of this data would ask.
+       * The test for a proposed item is whether it improves the collection
+         or the clustering. If it does not, it does not belong here, and no
+         item in this list can widen that.
+       * What exists is a capture, two measured vectors, a clustering and
+         a page.
        * The research is one mechanism: PowerShell stops at the device
          boundary and Python owns everything after it. The device side
          derives no feature and names nothing; it drives hdc, decides from
@@ -261,27 +256,7 @@ THE DECISIONS IN FORCE
      Applied by: the 71 scenes given a picture; the surface vector's
      collapse; the diagnosis brought to the human.
 
-  4. The open question. Decided by the human, carried from the first audit
-     (finding F6, CRITICAL).
-       * correlate.py states the premise the whole component rests on — do
-         features derived from ArkUI carry information about power and
-         frequency that the schedule does not already have — and has never
-         been run. It has no input in this repository: no descriptor
-         stream, no power capture, no result.
-       * It names no classes, so it survived the deletion pass. Its
-         docstring is now the only definition of the record a producer must
-         emit, the C header that used to declare it having been deleted for
-         asserting a taxonomy.
-       * A lead check is part of the question, not a refinement of it: a
-         feature that correlates only at lag zero describes a present the
-         governor already sees from utilisation. A feature that correlates
-         with the next interval is predictive, and that is the only kind
-         worth putting in a scheduler.
-       * Everything after this list is downstream of the answer.
-
-     Applied by: correlate.py closed.
-
-  5. Names, proposed by this list and confirmed by the human before each
+  4. Names, proposed by this list and confirmed by the human before each
      envelope.
        * One module: SUB-FEATURE-RESEARCH, role neutral, containmentProfile
          unrestricted. The authority / implementation / test split is not
@@ -289,8 +264,7 @@ THE DECISIONS IN FORCE
          authority module with nothing in it. Split when the first test
          algorithm is written.
        * Interfaces: IF-CAPTURE-SESSION (language meta), IF-PATTERNS-ROW
-         (py). IF-PAGE-PAYLOAD and IF-SCENE-RECORD are held back — see
-         record 6.
+         (py). IF-PAGE-PAYLOAD is held back — see record 5.
        * Automatons: AUT-CAPTURE-RUN at order 0, the stage on the device;
          AUT-TREE-CHECK at order 1, the gate where tree-level static checks
          run; AUT-PIPELINE-RUN at order 2, the offline run. Every algorithm
@@ -323,19 +297,18 @@ THE DECISIONS IN FORCE
        * Algorithms: ALG-CAPTURE-LOOP, ALG-QUICK-SIG (both language meta),
          ALG-PARSE-RSTREE, ALG-PAINT-ORDER, ALG-OWNERSHIP,
          ALG-OWNER-SELECT, ALG-BRANCH-GROUP, ALG-VISIBLE-SURFACE,
-         ALG-MEDIA-SURFACE, ALG-VECTOR-CLUSTER, ALG-CORRELATE.
+         ALG-MEDIA-SURFACE, ALG-VECTOR-CLUSTER.
        * Error codes: ERR-SCENE-WITHOUT-REP (WARN),
          ERR-DISPLAY-DUMP-MISSING (WARN), ERR-CLIENT-DUMP-MISSING (WARN),
          ERR-NO-OWNER-WINDOW (ERROR), ERR-JOIN-KEY-UNMATCHED (ERROR),
          ERR-COLUMN-CONSTANT (WARN), ERR-SURFACE-SUM-OFF (ERROR),
          ERR-SHOT-COMMAND-ABSENT (FATAL).
        * Code: tools/rs_capture.ps1; tools/cluster/{rs_extract,rs_pattern,
-         vectors_build,vectors_page}.py; tools/correlate.py;
-         tools/sample_power.sh.
+         vectors_build,vectors_page}.py.
 
      Applied by: every /cb-green item.
 
-  6. What is deliberately not declared yet. Decided by the human.
+  5. What is deliberately not declared yet. Decided by the human.
        * One item left this list without being run. "The two interfaces
          given fields" existed to clear the two AUTH-024 warnings, and its
          own prompt said to re-check the warning after the algorithms
@@ -343,10 +316,7 @@ THE DECISIONS IN FORCE
          input-of and output-of edges to both interfaces, which is what
          AUTH-024 asks for, so the warnings cleared on their own and the
          item had nothing left to do. The relation nodes were never needed.
-       * IF-SCENE-RECORD, the shape correlate.py expects, waits until
-         something produces it. An interface with no producer and no
-         consumer is how the deleted C header started.
-       * IF-PAGE-PAYLOAD waits with it: the payload's shape is settled only
+       * IF-PAGE-PAYLOAD is held back: the payload's shape is settled only
          once the 71 scenes are recovered and the surface vector is kept or
          dropped.
        * The surface vector keeps a caveat rather than an invariant
@@ -366,48 +336,6 @@ THE DECISIONS IN FORCE
 PROMPTS
 ===============================================================================
 
-/cb-green — correlate.py closed: the premise measured
-  - What: record 4's question answered. One capture session on the device
-    carrying, on one clock, a scene record per interval and a
-    sample_power.sh capture of cpufreq and cpuidle; the join run; the
-    answer attached to the spec as evidence.
-    The record a producer must emit is IF-SCENE-RECORD, authored by this
-    item because this item produces it: the interval counters correlate.py
-    derives features from, plus the two measured vectors. The three fields
-    its docstring enforces — vsyncs, visible, seq — are part of the
-    interface, and the lead check is part of the question.
-    This item is the cheapest decisive experiment in the repository and it
-    has never been run. A negative answer changes what the rest of the work
-    is for, and that is reported as the result, not worked around.
-  - Read: record 4; tools/correlate.py and tools/sample_power.sh in full;
-    tools/rs_capture.ps1's loop.
-  - Spec areas: SUB-FEATURE-RESEARCH.
-  - Spec work:
-      add interface IF-SCENE-RECORD (py, SUB-FEATURE-RESEARCH): one record
-        per interval, its counters and the two vectors; contains;
-      add invariant INV-SCENE-RECORD-CLOCK (SUB-FEATURE-RESEARCH): a record
-        and a power sample joined only where they share CLOCK_MONOTONIC;
-        contains; protects IF-SCENE-RECORD;
-      modify ALG-CORRELATE: input-of IF-SCENE-RECORD; satisfies
-        INV-SCENE-RECORD-CLOCK.
-  - Code path: tools/correlate.py; tools/rs_capture.ps1 where the record is
-    emitted; tools/sample_power.sh.
-  - Test: the join run on a real session; the integrity report and the
-    feature ranking with the lead column in the item's report; npm run
-    spec:check, no violations.
-  - BOUNDARY: as above.
-
-  - IMPORTANT: The context you get is not hallucinated, its deterministically extracted.
-  - IMPORTANT: Report the answer the data gives, including a negative one.
-  - REFERENCE: If specification authoring details are needed, ask RIL for authoring rules.
-  - INVIOLABLE: SPECIFICATION SURFACE IS AUTHORITATIVE.
-  - INVIOLABLE: DO NOT EMIT P3_SKIPPED. If you do not need to modify the specification you must submit a reason.
-  - FORBIDDEN: MULTI-AGENT execution is not allowed. DO NOT SPAWN MULTIPLE AGENTS.
-  - WHEN TO COMMIT: Before "silk run finalize".
-  - DECISION PROTOCOL: If a decision must be made, ask for direct feedback. DO NOT DECIDE ALONE.
-  - AT THE END: update this list as the rule at the head of the list states.
-
-
 /cb-green — the 71 scenes given a picture from the periodic shots
   - What: 71 of 250 scenes have no per-scene picture, because the capture
     photographs a scene when a pair settles and those never settled. The
@@ -420,10 +348,9 @@ PROMPTS
     scene that still has none keeps its empty tile and its
     ERR-SCENE-WITHOUT-REP; the count should fall well below 71 and the
     report says what it fell to.
-    This is also what decides record 4's open question: if samples.csv is
-    read, it stops being an output with no consumer and
-    IF-CAPTURE-SESSION is modified to say so.
-  - Read: record 3 and record 4; IF-CAPTURE-SESSION as it stands;
+    Reading samples.csv also settles its status: it stops being an output
+    nothing reads, and IF-CAPTURE-SESSION is modified to say so.
+  - Read: record 3; IF-CAPTURE-SESSION as it stands;
     vectors_build.py; one session's samples.csv in full; rs_capture.ps1
     where it decides to photograph.
   - Spec areas: SUB-FEATURE-RESEARCH, IF-CAPTURE-SESSION.
@@ -470,7 +397,7 @@ PROMPTS
     names with a tag the mapping does not cover, and whether the geometry
     fallback already in the code can split it.
     Each finding with its evidence and a recommendation; nothing decided.
-  - Read: records 2, 3 and 6; rs_pattern.py's visible_surface, vis_kind,
+  - Read: records 2, 3 and 5; rs_pattern.py's visible_surface, vis_kind,
     mark_kind and the slot sets, in full; the full patterns.csv of a real
     capture; the page.
   - Spec work: none; an audit changes nothing.
@@ -489,12 +416,12 @@ PROMPTS
     question the list cannot answer for itself: whether the surface vector
     stays as a second measurement, is repaired, or is dropped and the
     pattern vector left alone. The ruling is written into record 2, which
-    then states the vectors in the form they keep, and record 6's caveat
+    then states the vectors in the form they keep, and record 5's caveat
     is deleted or restated.
     If the surface vector stays, IF-PAGE-PAYLOAD is planned by this session
     and placed in the order; if it is dropped, every later reference to it
     in this list is removed.
-  - Read: the audit's report; records 2, 3 and 6.
+  - Read: the audit's report; records 2, 3 and 5.
   - Spec work: none; the session writes this list and changes no node.
   - BOUNDARY: as above.
 

@@ -1,15 +1,18 @@
-# arkui — scene signals for power work
+# arkui — scene extraction from ArkUI data
 
 Research. The question is whether the structure of what is on a HarmonyOS
-display can be measured cheaply enough to be worth reporting, and whether that
-measurement carries information about power draw and CPU frequency that the
-scheduler does not already have.
+display can be measured cheaply, from RenderService dumps alone, and reported
+as it is.
 
-If it does, the end of this is a system component: ArkUI is platform code, so
-patching it once reaches every app through the pre-warmed `appspawn` fork — no
-app touched, recompiled, or aware. That component would report scene
-composition and nothing else. **Aggregation, power attribution and scheduling
-are decided elsewhere.** The quality of the data is what is decided here.
+That is the whole of it. The repository extracts scenes from ArkUI data and
+measures two vectors over them. What any consumer does with those signals —
+aggregation, power attribution, scheduling — is decided elsewhere, by
+something that is not here and whose questions are not asked here.
+
+If the measurement holds up, the end of this is a system component: ArkUI is
+platform code, so patching it once reaches every app through the pre-warmed
+`appspawn` fork — no app touched, recompiled, or aware. That component would
+report scene composition and nothing else.
 
 That component does not exist yet, and this repository is not it.
 
@@ -55,16 +58,6 @@ nothing else, and a cluster is reported by its id, its size, its cohesion and
 the median of its own columns. What the groups mean, if anything, is read off
 the tiles by a person looking at them.
 
-## The open question
-
-`correlate.py` states the premise the whole thing rests on and **has never been
-run**. It joins scene records to power and frequency samples and asks which
-features predict them, with a lead check — a feature that only correlates at
-lag zero describes a present the governor already sees from utilisation.
-
-Until it has an answer, every other decision here is downstream of something
-unmeasured.
-
 ## Layout
 
 | Path | What |
@@ -74,8 +67,6 @@ unmeasured.
 | `tools/cluster/rs_pattern.py` | measure the two vectors |
 | `tools/cluster/vectors_build.py` | cluster each vector, build the page payload |
 | `tools/cluster/vectors_page.py` | render the payload |
-| `tools/correlate.py` | the premise: do these features predict power |
-| `tools/sample_power.sh` | device-side cpufreq / cpuidle sampling |
 | `tools/deck/` | the slides describing data, origin and results |
 | `combobul/` | the spec engine (see `CLAUDE.md`) |
 
