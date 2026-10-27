@@ -91,8 +91,6 @@ ORDER
 
   What remains, in this order (records 1 to 6 hold the decisions; each
   prompt names the records it applies):
-    * the two feature spaces formalized, PHI and PSI declared with the four
-      properties PSI must satisfy (/cb-green);
     * PSI for the pattern vector: the motif derived, named and drawn
       (/cb-green);
     * PSI for the surface vector: the composition cells derived (/cb-green);
@@ -530,71 +528,47 @@ THE DECISIONS IN FORCE
          that are independent, the two vectors are measuring different
          things and the joint view is worth building. If they do not, that
          is the finding.
+       * FORMALIZED 2026-10-27. docs/design/feature-spaces.md carries the
+         reasoning; IF-PATTERN-SPACE, IF-SURFACE-SPACE, ALG-PSI-PATTERN,
+         ALG-PSI-SURFACE and INV-PSI-{TOTAL,DISJOINT,MINIMAL,ORTHOGONAL}
+         carry the contract. The two algorithms are DECLARED and not
+         implemented; the two items after this one write them.
+       * PSI_p = (arrangement, whether the group covers more than half the
+         window), plus one cell for a scene with no group. Nine cells, nine
+         reachable: grid 47/46, row 1/87, column 5/78, stack 1/3, none 31.
+         One half earns its place here - a group covering more than half IS
+         the screen's layout and one covering less is an element inside
+         another - and the arrangement axis is closed because arrangement()
+         can emit nothing but those four.
+       * PSI_s = (largest coordinate, second largest), vis_glyph excluded,
+         NO threshold anywhere. Twenty cells, sixteen reachable, largest
+         cell 23 percent. The rejected alternative was (argmax, above one
+         half): 12 cells, 8 reachable, and one cell holding 179 of 299
+         scenes, which separates almost nothing. Exactly one scene ties for
+         the largest coordinate, so the coordinate order is declared rather
+         than left to the sort.
+       * INV-PSI-MINIMAL DOES NOT HOLD for the surface space. Four of its
+         twenty cells are empty and they are exactly the row where vis_text
+         leads: text is never the largest coordinate in any of 299 scenes.
+         Either no text-dominant screen exists on this device and these
+         applications - two sessions of one person's phone is a thin basis
+         for believing it - or the measurement cannot express one because
+         text sits inside containers whose paint takes the pixels first.
+         The second is testable by capturing a reader or a document editor,
+         and that test is not scheduled by this list.
+       * The weakest step, recorded as such: vis_glyph is excluded as a
+         ranking candidate on an argument from the component - a glyph and
+         a hairline are bounded small by what they are - not on a proof. It
+         is the first thing to revisit if a device is captured where a
+         glyph fills a display.
 
-     Applied by: the two feature spaces formalized; PSI for the pattern
-     vector; PSI for the surface vector; the viewers.
+     Applied by: PSI for the pattern vector; PSI for the surface vector;
+     the viewers.
 
 
 ===============================================================================
 PROMPTS
 ===============================================================================
-
-/cb-green — the two feature spaces formalized, PHI and PSI declared
-  - What: the design record 6 calls for, written down and specified before
-    any pattern is computed. Two deliverables and they are different things:
-    the reasoning goes in docs/ as prose, and the contract goes in the DAG
-    as nodes, because a pre/postcondition written in a document is not a
-    specification.
-    For each vector: the measurement space PHI maps into, with its shape
-    stated - the surface space is the standard 4-simplex because five
-    non-negative columns sum to one; the pattern space is a product whose
-    arrangement axis is closed at four values because arrangement() can emit
-    no others. Then the partition PSI, defined as a function on that space,
-    with the demonstration that it is total, disjoint, minimal and
-    orthogonal in the senses record 6 gives.
-    Where a property cannot be shown, the item says so and says which cell
-    or axis fails it. A formalization that quietly weakens a property to
-    make itself true is worse than none.
-    No pattern is computed and no page changes here. This item produces the
-    definition the next two implement against.
-  - Read: record 2 and record 6; the audit report; rs_pattern.py's analyse,
-    arrangement, pattern and visible_surface in full; the full patterns.csv.
-  - Spec areas: SUB-FEATURE-RESEARCH.
-  - Spec work: decided with the human before the envelope. The candidates
-    are two interfaces IF-PATTERN-SPACE and IF-SURFACE-SPACE (py) carrying
-    each space's shape and coordinates; two algorithms ALG-PSI-PATTERN and
-    ALG-PSI-SURFACE declared with their preconditions and postconditions but
-    implemented by the items after; and four invariants over them -
-    INV-PSI-TOTAL, INV-PSI-DISJOINT, INV-PSI-MINIMAL, INV-PSI-ORTHOGONAL -
-    each with a predicate that a check can evaluate rather than a sentence
-    that reads well. Whether the four are one invariant per property per
-    vector, or one family shared by both, is part of the decision.
-  - Code path: docs/design/ for the reasoning; no tools/ code in this item.
-  - Test: the four properties argued for each space, with the argument
-    written out; the cells enumerated and their reachability over the real
-    299 scenes reported as counts, including every cell that is empty;
-    npm run spec:check, no violations.
-  - BOUNDARY: combobul and ArkUI are two projects. combobul/spec/spec.db
-    holds the specification of this project's code, in combobul's ontology,
-    written only through combobul's ril. No rule, kind, check or store of
-    one is carried to the other. The engine is installed per machine and is
-    not published from this repository.
-
-  - IMPORTANT: The context you get is not hallucinated, its deterministically extracted.
-  - IMPORTANT: Every figure is measured in this session against a real capture and written into the report.
-  - REFERENCE: If specification authoring details are needed, ask RIL for authoring rules.
-  - INVIOLABLE: SPECIFICATION SURFACE IS AUTHORITATIVE. Every function this item adds is specified
-    in the DAG before it is written: the algorithm, its preconditions, and the invariants it must hold.
-  - INVIOLABLE: NO SCENE CLASSES. A set derived from the structure of the measurement space, writable
-    without looking at a screenshot, is a function. A list of names matched against data is a class,
-    and INV-NO-SCENE-CLASS forbids it. If you cannot derive it, you may not assert it.
-  - INVIOLABLE: DO NOT EMIT P3_SKIPPED. If you do not need to modify the specification you must submit a reason.
-  - FORBIDDEN: MULTI-AGENT execution is not allowed. DO NOT SPAWN MULTIPLE AGENTS.
-  - WHEN TO COMMIT: Before "silk run finalize".
-  - AFTER COMMIT: the item is not finished until it is pushed. git push is /cb-ops only, so end
-    FINAL_STATUS with an explicit NOT PUSHED line naming /cb-ops.
-  - DECISION PROTOCOL: If a decision must be made, ask for direct feedback. DO NOT DECIDE ALONE.
-  - AT THE END: update this list as the rule at the head of the list states.
 
 /cb-green — PSI for the pattern vector: the motif derived, named and drawn
   - What: the pattern space's partition implemented, so a scene has a
