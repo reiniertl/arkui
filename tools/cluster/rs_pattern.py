@@ -201,7 +201,34 @@ def mark_kind(n, density):
     return "b"
 
 
-def vis_kind(n):
+def paints_behind(sc, nid):
+    """Does anything below this node draw?
+
+    If so, whatever this node paints is behind it, and what is behind
+    everything is background. The test is the tree, not a name: there is
+    no list of container tags to author, nothing to fit, and nothing that
+    drifts when the capture changes.
+
+    Measured on the capture of 2026-10-27: 578 of 6,151 content-bucket
+    nodes answer yes, 9.4% by count but 0.159 of the display by area -
+    almost all of it WaterFlow, whose 103 nodes are 103 of 103 such, and
+    whose backdrop was 40% of everything the surface vector called
+    content it could not name.
+    """
+    stack, seen = [nid], set()
+    while stack:
+        for k in sc.kids.get(stack.pop(), ()):
+            if k in seen:
+                continue
+            seen.add(k)
+            kn = sc.N.get(k)
+            if kn is not None and is_drawn(kn):
+                return True
+            stack.append(k)
+    return False
+
+
+def vis_kind(n, sc=None, nid=None):
     """What a node puts on the display, by what it actually draws.
 
     The type comes from two independent places and both are needed. The
@@ -224,7 +251,14 @@ def vis_kind(n):
             return "text"
         if "SymbolGlyph" in t or "Divider" in t:
             return "glyph"
-        return "content"          # draws, but nothing says what
+        # Untyped. Only here does descent decide: a tag is direct evidence
+        # of what the paint IS, descent only of where it sits, so a tagged
+        # node keeps its kind whatever is under it. Without that restriction
+        # an Image with any painting child would vanish from the measurement.
+        if sc is not None and nid is not None and paints_behind(sc, nid):
+            return ""             # background: claims nothing, falls to the
+                                  # complement, which is what substrate is
+        return "content"          # draws, and nothing says what
     return ""                      # background, border, or structural:
                                    # none of them compete for pixels
 
@@ -252,7 +286,8 @@ def visible_surface(sc, dw, dh, own_area, order, step=4):
             continue
         if not (is_drawn(n) or is_composed(n)):
             continue
-        if not vis_kind(n):
+        k = vis_kind(n, sc, nid)
+        if not k:
             continue
         # Size is judged on the node's OWN rect, never on the clipped one:
         # an 8198x8198 blur source clips to exactly the window and so slips
@@ -263,12 +298,21 @@ def visible_surface(sc, dw, dh, own_area, order, step=4):
         q = clipped(n["abs"], dw, dh) if n["abs"] and n["abs"][2] > 0 else None
         if not q:
             continue
-        marks.append((order.get(nid, 0), q, vis_kind(n)))
+        # A node with no client-dump entry has no tag because none exists:
+        # it is a CANVAS_NODE below the component layer. Carried so the
+        # share it claims can be reported apart from content the dump named
+        # and the mapping failed to cover (INV-UNNAMED-CONTENT-REPORTED).
+        marks.append((order.get(nid, 0), q, k, not (n["tag"] or "")))
     marks.sort(key=lambda m: -m[0])              # topmost first
-    for _, q, k in marks:
+    # A second grid, same shape, marking only the content cells whose node
+    # was unnameable. Painted in lockstep so it cannot drift from the first.
+    unnamed = np.zeros((H, W), dtype=np.uint8)
+    for _, q, k, anon in marks:
         x0, y0 = int(q[0] // step), int(q[1] // step)
         x1, y1 = int((q[0] + q[2]) // step) + 1, int((q[1] + q[3]) // step) + 1
         sub = grid[y0:y1, x0:x1]
+        if k == "content" and anon:
+            np.putmask(unnamed[y0:y1, x0:x1], sub == 0, 1)
         np.putmask(sub, sub == 0, idx[k])
     cell = float(step * step)
     tot = float(dw * dh)
@@ -286,6 +330,16 @@ def visible_surface(sc, dw, dh, own_area, order, step=4):
         print("ERR-SURFACE-SUM-OFF: the surface columns sum to %.4f, not one; "
               "the composition was not built as a partition of the display"
               % total)
+    # Not a term of the partition: a subset of vis_content, reported so a
+    # composition made of drawing nobody can name is visible as that rather
+    # than read as a gap in the tag mapping. On the capture this was written
+    # against it is 0.184 of the display, 46.8% of all content.
+    out["vis_unnamed"] = round(min(out["vis_content"],
+                                   int(unnamed.sum()) * cell / tot), 3)
+    if out["vis_content"] and out["vis_unnamed"] / max(out["vis_content"], 1e-9) > 0.5:
+        print("ERR-UNNAMED-CONTENT: %.0f%% of this scene's content is nodes with "
+              "no client-dump entry; the pixels are measured, nothing names them"
+              % (100.0 * out["vis_unnamed"] / out["vis_content"]))
     out["vis_marks"] = len(marks)
     return out
 

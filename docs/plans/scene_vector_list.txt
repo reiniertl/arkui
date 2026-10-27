@@ -91,8 +91,6 @@ ORDER
 
   What remains, in this order (records 1 to 6 hold the decisions; each
   prompt names the records it applies):
-    * the surface mapping gap closed, containers read as substrate
-      (/cb-green);
     * the two feature spaces formalized, PHI and PSI declared with the four
       properties PSI must satisfy (/cb-green);
     * PSI for the pattern vector: the motif derived, named and drawn
@@ -160,6 +158,12 @@ THE DECISIONS IN FORCE
            vis_content    unit       0.7     draws, but no tag names the type
            vis_substrate  unit       0.7     claimed by nothing
 
+         vis_unnamed is written beside them and is NOT a term of the
+         partition: it is the part of vis_content claimed by nodes with no
+         client-dump entry, carried so that content nobody can name is
+         distinguishable from content a mapping failed to cover. It is a
+         subset of vis_content and is never added to the sum.
+
        * A second pattern group is measured into pat2_* with has_slot2 and
          is not in the vector. pat, arr, cols, rows stay as measurements —
          content-kind letters off node tags, geometric arrangement, column
@@ -190,8 +194,8 @@ THE DECISIONS IN FORCE
          is where the full width is settled.
 
 
-     Applied by: the surface mapping gap closed; the two feature spaces
-     formalized; PSI for the pattern vector; PSI for the surface vector.
+     Applied by: the two feature spaces formalized; PSI for the pattern
+     vector; PSI for the surface vector.
 
   3. What is measured and what is not. Decided by the evidence; verified
      2026-10-26 against the two capture sessions, 250 scenes.
@@ -311,12 +315,27 @@ THE DECISIONS IN FORCE
          what feeds vis_content is a node the dump named, with a tag the
          mapping does not cover. The device emits 60 distinct tag values and
          vis_kind tests four families.
-       * The unrecognised set is dominated by layout containers - Stack
-         2,863, Row 1,734, Column 935, RelativeContainer 254, ListItem 173,
-         Swiper 133, FlowItem 131, Flex 119 - plus the generics __Common__
-         1,173 and Custom 926. A container that paints is painting a
-         background, and background is substrate. vis_content at mean 0.393
-         is substrate misfiled as content.
+       * CORRECTED 2026-10-27, same day, by the item that acted on it. The
+         sentence above said the unrecognised set is dominated by layout
+         containers - Stack 2,863, Row 1,734, Column 935 and the rest. That
+         was measured over the vocabulary of ALL client-dump nodes and then
+         asserted of the content bucket, a population the audit never
+         measured. It is wrong. Stack, Row and Column carry no slot 28, so
+         is_drawn rejects them and vis_kind is never called on them; they
+         cannot have been in the bucket at any time.
+       * What is actually in it, measured over all 299 scenes: 6,151 nodes
+         under eleven tags, not sixty - NO-TAG 4,275, Custom 582, Blank 520,
+         Rect 283, Canvas 195, Slider 148, WaterFlow 103, Path 37, Scroll 4,
+         RenderNode 3, Circle 1. 90.6 percent are drawn leaves. By AREA, of
+         0.393 mean content: NO-TAG 0.184 (46.8 percent), WaterFlow 0.158
+         (40.2 percent), all others together 0.051.
+       * So the container reading was right about a container and wrong
+         about which. WaterFlow is a container and its 103 nodes are 103 of
+         103 with a painting descendant; its backdrop was 40 percent of the
+         bucket. The other half has no tag because none can exist: those
+         nodes are CANVAS_NODE and CANVAS_DRAWING_NODE, 3,517 of 3,517
+         absent from the client dump, render-level primitives below the
+         component layer. No tag vocabulary reaches them.
        * vis_kind does not read TAG_KIND. TAG_KIND serves mark_kind and the
          pattern vector; the surface vector does its own substring test over
          four families. The two halves of the measurement disagree about
@@ -342,6 +361,21 @@ THE DECISIONS IN FORCE
          The node-level vocabulary settles WHY content is large; the area
          split settles HOW MUCH the fix recovers, and is the before/after of
          the item that closes the gap.
+       * The repair, measured. A node that paints with a painting
+         descendant is painting background and claims nothing; only the
+         untyped branch is subject to it, since a tag is evidence of what
+         the paint is while descent is evidence only of where it sits. Over
+         299 scenes vis_content fell 0.393 to 0.177 and vis_substrate rose
+         0.320 to 0.488. The other three rose too - image 0.119 to 0.137,
+         xcomp 0.121 to 0.141, text 0.047 to 0.057 - which means real
+         content had been occluded by untyped backdrops painted over it.
+         vis_unnamed carries the remainder nobody can name: 0.135, which is
+         76 percent of what content still holds.
+       * And the clustering barely moved. Surface outliers went 132 of 299
+         to 130, 44 percent to 43, silhouette 0.655 to 0.625. The
+         measurement is far more honest and the collapse is still there, so
+         its cause is not the mapping gap. That is evidence for record 6:
+         what is missing is PSI, not a better column.
        * Decided by the human, 2026-10-27: the surface vector is NOT
          dropped. Its collapse has a cause the data says is fixable, and no
          judgement of it is sound until it has been measured with the gap
@@ -349,7 +383,7 @@ THE DECISIONS IN FORCE
          the agent in 10b5f72 and was never the human's; it is removed
          wherever it appears.
 
-     Applied by: the surface mapping gap closed; PSI for the surface vector.
+     Applied by: PSI for the surface vector.
 
   4. Names, proposed by this list and confirmed by the human before each
      envelope.
@@ -504,64 +538,6 @@ THE DECISIONS IN FORCE
 ===============================================================================
 PROMPTS
 ===============================================================================
-
-/cb-green — the surface mapping gap closed, containers read as substrate
-  - What: vis_kind recognises four tag families out of the sixty the device
-    emits, and files the other 77.3 percent as content it could not name.
-    Measured 2026-10-27 over every client dump of the capture: 95,430 tagged
-    nodes, 21,705 recognised, 73,725 not, of which only 1,370 carry an empty
-    tag - so this is a mapping gap and not missing data. The unrecognised
-    set is dominated by layout containers, and a container that paints is
-    painting a background.
-    So the tag vocabulary becomes explicit. A declared set says which tags
-    name content, which name a composed surface, and which are containers
-    whose paint is background; a container that paints is routed to
-    substrate rather than to content. A tag in none of those three is
-    counted and named, not absorbed - that is the defect being repaired, and
-    it must not be reintroduced by a catch-all.
-    This is a measurement correction, not a class list: every entry is read
-    off the tag the device emits, exactly as Image and Text already are.
-  - Read: record 3 and record 6; rs_pattern.py's vis_kind, mark_kind,
-    TAG_KIND, is_drawn, is_composed, is_structural and visible_surface in
-    full; one client dump in full; the audit's report in the contract
-    surfvec-audit-01.
-  - Spec areas: SUB-FEATURE-RESEARCH, ALG-VISIBLE-SURFACE, IF-PATTERNS-ROW.
-  - Spec work: decided with the human before the envelope. The candidates
-    are one invariant INV-TAG-VOCABULARY-DECLARED - every tag the device
-    emits is in the declared set or is reported with a count, never silently
-    bucketed - contained, checked-at AUT-PIPELINE-RUN, emitting a new
-    error-code ERR-TAG-UNRECOGNISED (WARN); and modifications to
-    ALG-VISIBLE-SURFACE's description and preconditions stating the three
-    tag roles. Whether the vocabulary itself is an interface node of its own
-    is part of that decision.
-  - Code path: tools/cluster/rs_pattern.py; a check under tools/checks/.
-  - Test: THE MEASUREMENT THE AUDIT COULD NOT TAKE. The painter pass
-    instrumented to attribute claimed pixels per tag, before and after, so
-    the item reports exactly how much of vis_content moves and where it
-    goes. Plus the six-column means and the outlier rate for both vectors
-    before and after; INV-SURFACE-SUMS-TO-ONE still holds; the pipeline run
-    end to end; npm run spec:check, no violations.
-  - BOUNDARY: combobul and ArkUI are two projects. combobul/spec/spec.db
-    holds the specification of this project's code, in combobul's ontology,
-    written only through combobul's ril. No rule, kind, check or store of
-    one is carried to the other. The engine is installed per machine and is
-    not published from this repository.
-
-  - IMPORTANT: The context you get is not hallucinated, its deterministically extracted.
-  - IMPORTANT: Every figure is measured in this session against a real capture and written into the report.
-  - REFERENCE: If specification authoring details are needed, ask RIL for authoring rules.
-  - INVIOLABLE: SPECIFICATION SURFACE IS AUTHORITATIVE. Every function this item adds is specified
-    in the DAG before it is written: the algorithm, its preconditions, and the invariants it must hold.
-  - INVIOLABLE: NO SCENE CLASSES. A set derived from the structure of the measurement space, writable
-    without looking at a screenshot, is a function. A list of names matched against data is a class,
-    and INV-NO-SCENE-CLASS forbids it. If you cannot derive it, you may not assert it.
-  - INVIOLABLE: DO NOT EMIT P3_SKIPPED. If you do not need to modify the specification you must submit a reason.
-  - FORBIDDEN: MULTI-AGENT execution is not allowed. DO NOT SPAWN MULTIPLE AGENTS.
-  - WHEN TO COMMIT: Before "silk run finalize".
-  - AFTER COMMIT: the item is not finished until it is pushed. git push is /cb-ops only, so end
-    FINAL_STATUS with an explicit NOT PUSHED line naming /cb-ops.
-  - DECISION PROTOCOL: If a decision must be made, ask for direct feedback. DO NOT DECIDE ALONE.
-  - AT THE END: update this list as the rule at the head of the list states.
 
 /cb-green — the two feature spaces formalized, PHI and PSI declared
   - What: the design record 6 calls for, written down and specified before
