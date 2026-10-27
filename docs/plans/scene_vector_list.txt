@@ -222,10 +222,24 @@ WHAT IS DONE
     _surface_cells, underscored, and every tile carries both of its cells.
     No drawing was added: a composition is not a layout, the item asked only
     for the cells, and a renderer would have needed its own node first.
-    NOT MEASURED IN THIS ITEM. Its test needs the 299-scene capture and the
-    authoring machine has none, so it finalized on the authoring gates
-    alone - which is exactly how PSI_p shipped a bug. The numbers go in when
-    the capture machine has run it.
+    MEASURED on the capture machine after the push: 299 of 299 assigned, 20
+    declared cells, 16 reachable, 4 empty - text/xcomp, text/image,
+    text/content, text/substrate. Every empty cell is one where vis_text
+    leads, exactly as the formalization predicted and for the reason it
+    gave: text is never the largest coordinate in any scene. The largest
+    cell is substrate/xcomp at 69 scenes, 23 percent of the capture. Both
+    payload blocks re-derived and agree. Page 19.9 MB. no_silent_scene_loss,
+    boundary_rules, vector_rules and no_scene_class all hold; tree clean.
+    psi_rules exits VIOLATED, which is the correct result: INV-PSI-MINIMAL
+    does not hold for the surface space and the check says so rather than
+    being softened until it passes.
+    A DEFECT IN THE CHECK ITSELF was found by this run and is NOT fixed:
+    check_disjoint was never parameterised when the other three were, so
+    under the PSI_s heading it prints the pattern space's wording and tests
+    pat1_cover against the half-window boundary, which means nothing there.
+    Disjointness is therefore UNVERIFIED for the surface space - and the one
+    scene in 299 that ties for the largest coordinate is exactly what it
+    should have been counting.
 
 
 
