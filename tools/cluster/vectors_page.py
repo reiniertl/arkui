@@ -108,6 +108,30 @@ var DATA = __DATA__;
                   : "all with a picture") : "")
       + "</div>";
     h += "<p style='margin:0 0 6px'>" + esc(v.blurb) + "</p>";
+    // INV-UNPLACED-SCENES-NAMED. The two populations are shown apart and
+    // the scenes are named, because a count cannot be traced to a scene.
+    // The spaces are not symmetric and the note says which is which rather
+    // than inventing a cell so they look alike.
+    var up = (D._unplaced || {})[key];
+    if (up) {
+      var tot = v.n;
+      function pop(label, ids, why) {
+        if (!ids.length) return "<div class='ct'>" + esc(label)
+             + ": <b>none</b> \u00b7 " + esc(why) + "</div>";
+        return "<div class='ct'>" + esc(label) + ": <b>" + ids.length
+             + "</b> of " + tot + " ("
+             + Math.round(100 * ids.length / tot) + "%) \u00b7 " + esc(why)
+             + "<br><span style='opacity:.8'>" + ids.map(esc).join(", ")
+             + "</span></div>";
+      }
+      h += "<div class='fld'><div class='k'>What the vectors could not place</div>"
+         + pop("undescribed", up.undescribed,
+               "the measurement looked and found nothing to describe")
+         + pop("unplaced", up.unplaced,
+               "PHI described it and PSI put it in a none-of-the-above cell")
+         + "<div class='ct' style='margin-top:4px;opacity:.75'>"
+         + esc(up.note) + "</div></div>";
+    }
     // The PSI cells, shown before the clusters because they are the
     // partition: a cell is what a scene IS, a cluster is where it sits
     // relative to the others. An empty cell is drawn dashed and kept in

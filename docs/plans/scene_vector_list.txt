@@ -96,7 +96,6 @@ ORDER
 
   What remains, in this order (records 1 to 6 hold the decisions; each
   prompt names the records it applies):
-    * every viewer names the cell, and what falls outside one (/cb-green);
     * the two vectors together, and whether their patterns are independent
       (/cb-green).
   After this list: nothing is planned.
@@ -255,6 +254,28 @@ WHAT IS DONE
     no space and no method, which is how a single-space check satisfied it
     on paper. It now names the convention per space AND the demonstration
     required, so a hardcoded implementation cannot meet it again.
+
+  2026-10-27  /cb-green  every viewer names the cell, and what falls outside
+    <commit>.  THE ITEM'S PREMISE WAS HALF WRONG and checking it before
+    authoring is what caught it. It assumed both spaces have a
+    none-of-the-above cell and that the undescribed and the unplaced are
+    distinct populations in each. Neither holds. In the pattern space a
+    scene with no repeating group is BOTH - PHI found nothing and PSI puts
+    it in the declared `none` cell - so they are the same 31 scenes. In the
+    surface space nothing is unplaced at all: PSI_s has no none-cell,
+    because the six coordinates always exist and sum to one, so every scene
+    ranks. Put to the human, who chose the unnameable-content scenes as the
+    surface analogue of undescribed - vis_unnamed averages 0.135 against a
+    vis_content of 0.177.
+    INV-UNPLACED-SCENES-NAMED states which population exists in which space
+    rather than inventing a cell to make them look alike, and requires the
+    scenes NAMED and not merely counted, because a count cannot be traced
+    back to a scene. ERR-SCENE-UNPLACED is WARN: the page is still correct,
+    what is missing is a description. unplaced_rules.py recomputes both
+    populations rather than reading the payload's word for them.
+    Also found: the page already printed the cluster outlier count and
+    percentage, so the defect the item cites as unrepaired was partly
+    repaired already.
 
 
 
@@ -727,58 +748,6 @@ THE DECISIONS IN FORCE
 ===============================================================================
 PROMPTS
 ===============================================================================
-
-/cb-green — every viewer names the cell, and what falls outside one
-  - What: a scene the vectors cannot place is shown as such, in the page,
-    with the two reasons kept apart because they are not the same thing:
-      the unmeasurable - a scene PHI could not describe. 31 of 299 have no
-        repeating group at all and leave pat1_* empty by design;
-      the unplaced - a scene PHI described and PSI puts in a cell declared
-        as "none of the above", which after the two PSI items should be a
-        named cell and not an accident.
-    A scene can be both and the page must not merge them: the first is the
-    measurement saying it found nothing, the second is the partition saying
-    this composition is its own thing.
-    Each vector's section carries its cell listing with counts, the cells
-    named by their coordinates, and the tiles. The counts are stated against
-    the total on the page itself, so a reader sees what fraction of the
-    capture each cell speaks for. That is the defect this repairs: the page
-    published a cluster count and a silhouette with no indication that 132
-    of 299 surface scenes sat outside all of it.
-  - Read: records 3, 5 and 6; both PSI implementations; vectors_build.py and
-    vectors_page.py in full.
-  - Spec areas: SUB-FEATURE-RESEARCH, IF-PAGE-PAYLOAD.
-  - Spec work: decided with the human before the envelope. The candidate is
-    one invariant INV-UNPLACED-SCENES-NAMED - every scene PHI could not
-    describe and every scene PSI placed in a none-of-the-above cell is
-    counted and named in the payload and on the page, with the two kept
-    apart - contained, checked-at AUT-PIPELINE-RUN, emitting an error code.
-  - Code path: tools/cluster/vectors_build.py; tools/cluster/vectors_page.py;
-    a check under tools/checks/.
-  - Test: the counts reported for both vectors; the check failing on a
-    payload with the listing removed and passing with it present; the page
-    rebuilt and its size reported; npm run spec:check, no violations.
-  - BOUNDARY: combobul and ArkUI are two projects. combobul/spec/spec.db
-    holds the specification of this project's code, in combobul's ontology,
-    written only through combobul's ril. No rule, kind, check or store of
-    one is carried to the other. The engine is installed per machine and is
-    not published from this repository.
-
-  - IMPORTANT: The context you get is not hallucinated, its deterministically extracted.
-  - IMPORTANT: Every figure is measured in this session against a real capture and written into the report.
-  - REFERENCE: If specification authoring details are needed, ask RIL for authoring rules.
-  - INVIOLABLE: SPECIFICATION SURFACE IS AUTHORITATIVE. Every function this item adds is specified
-    in the DAG before it is written: the algorithm, its preconditions, and the invariants it must hold.
-  - INVIOLABLE: NO SCENE CLASSES. A set derived from the structure of the measurement space, writable
-    without looking at a screenshot, is a function. A list of names matched against data is a class,
-    and INV-NO-SCENE-CLASS forbids it. If you cannot derive it, you may not assert it.
-  - INVIOLABLE: DO NOT EMIT P3_SKIPPED. If you do not need to modify the specification you must submit a reason.
-  - FORBIDDEN: MULTI-AGENT execution is not allowed. DO NOT SPAWN MULTIPLE AGENTS.
-  - WHEN TO COMMIT: Before "silk run finalize".
-  - AFTER COMMIT: the item is not finished until it is pushed. git push is /cb-ops only, so end
-    FINAL_STATUS with an explicit NOT PUSHED line naming /cb-ops.
-  - DECISION PROTOCOL: If a decision must be made, ask for direct feedback. DO NOT DECIDE ALONE.
-  - AT THE END: update this list as the rule at the head of the list states.
 
 /cb-green — the two vectors together, and whether their patterns are independent
   - What: the question record 6 ends on. If PSI of the pattern vector and

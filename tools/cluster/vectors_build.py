@@ -585,6 +585,57 @@ def main():
         })
     s_empty = [c["cell"] for c in scells if not c["n"]]
 
+    # INV-UNPLACED-SCENES-NAMED. Two populations, kept apart because they
+    # are different claims, and NAMED because a count cannot be traced back
+    # to a scene.
+    #
+    # The two spaces are not symmetric and this does not pretend they are.
+    # PSI_p has a declared `none` cell for a scene with no repeating group,
+    # so there the undescribed and the unplaced are the same scenes. PSI_s
+    # has no none-cell at all - every scene ranks, because the six
+    # coordinates always exist and sum to one - so its unplaced population
+    # is empty, and what stands in for undescribed is the scene whose
+    # content is mostly nodes nothing can name.
+    def _f(r, c):
+        v = (r.get(c) or "").strip()
+        return float(v) if v else 0.0
+
+    unplaced = {
+        "pattern": {
+            "undescribed": [row_identity(r) for r in rows
+                            if (r.get("pat1_arr") or "").strip() == ""],
+            "unplaced": [row_identity(r) for r in rows
+                         if psi_pattern(r) == CELL_NONE],
+            "note": ("a scene with no repeating group is both: PHI found "
+                     "nothing to describe and PSI puts it in the declared "
+                     "`none` cell, so these are the same scenes"),
+        },
+        "surface": {
+            # Mostly unnameable: more than half of what content holds comes
+            # from nodes with no client-dump entry. The same half that
+            # ERR-UNNAMED-CONTENT fires on, so the page and the run agree.
+            "undescribed": [row_identity(r) for r in rows
+                            if _f(r, "vis_content")
+                            and _f(r, "vis_unnamed") / _f(r, "vis_content") > 0.5],
+            "unplaced": [],
+            "note": ("PSI_s places every scene - there is no none-cell, "
+                     "because the six coordinates always exist and sum to "
+                     "one - so nothing is unplaced here. Undescribed is the "
+                     "scene whose content is mostly CANVAS_NODEs that no "
+                     "component tag can name"),
+        },
+    }
+    for sp, d in unplaced.items():
+        print("INV-UNPLACED-SCENES-NAMED, %s: %d undescribed, %d unplaced, "
+              "of %d" % (sp, len(d["undescribed"]), len(d["unplaced"]),
+                         len(rows)))
+    tot_un = sum(len(d["undescribed"]) + len(d["unplaced"])
+                 for d in unplaced.values())
+    if tot_un:
+        print("ERR-SCENE-UNPLACED: %d scene-and-space pairing(s) the vectors "
+              "could not place or could not describe; each is named in the "
+              "payload" % tot_un)
+
     empty = [c["cell"] for c in cells if not c["n"]]
     print("\nPSI_p: %d scenes over %d declared cell(s); %d empty"
           % (len(rows), len(cells), len(empty)))
@@ -606,7 +657,8 @@ def main():
     # skips those keys. Adding `pattern_cells` without it told
     # no_silent_scene_loss.py that a list of cells was a vector block, and
     # it crashed reaching for .groups on a list.
-    out = {"_pattern_cells": cells,
+    out = {"_unplaced": unplaced,
+           "_pattern_cells": cells,
            "_surface_cells": scells,
            "_audit": {"rows": len(rows), "shown": len(img),
                       "own": len(img) - borrowed, "backstop": borrowed,
