@@ -175,8 +175,15 @@ ARRANGEMENTS = ("grid", "row", "column", "stack")
 CELL_NONE = "none"
 
 
-def psi_pattern(row):
+def psi_pattern(row, strict=True):
     """Which cell of the pattern space this scene falls in.
+
+    `strict` is the declared convention at the boundary: a group covering
+    exactly half the window is `minor` under the declared reading and
+    `major` under the other. It is a parameter so the disjointness check
+    can assign every row under both and report which rows the convention
+    decides, rather than reimplementing the comparison and drifting from
+    this one (INV-PSI-DISJOINT).
 
     Total by construction: every row either has an arrangement, in which
     case it has a coverage and lands in one of eight, or it has neither and
@@ -192,7 +199,8 @@ def psi_pattern(row):
     cov = (row.get("pat1_cover") or "").strip()
     if arr not in ARRANGEMENTS or cov == "":
         return CELL_NONE
-    return "%s/%s" % (arr, "major" if float(cov) > 0.5 else "minor")
+    over = float(cov) > 0.5 if strict else float(cov) >= 0.5
+    return "%s/%s" % (arr, "major" if over else "minor")
 
 
 def psi_pattern_cells():
@@ -226,16 +234,23 @@ VIS_RANKED = ("vis_xcomp", "vis_image", "vis_text", "vis_content",
               "vis_substrate")
 
 
-def psi_surface(row):
+def psi_surface(row, order=VIS_RANKED):
     """Which cell of the surface space this scene falls in.
 
     Ranked by (value descending, declared coordinate order), so a tie is
-    broken by VIS_RANKED and never by what the sort does with equal keys.
+    broken by `order` and never by what the sort does with equal keys.
     Total: five candidates always rank, because the six columns are a
     partition of the display and always exist.
+
+    `order` is a parameter for the same reason psi_pattern takes `strict`:
+    the disjointness check assigns every row under the declared order and
+    under a reversed one, and the rows whose cell differs are exactly the
+    rows the declared order decides (INV-PSI-DISJOINT). Passing the
+    convention in is what keeps the check from carrying its own copy of
+    the ranking.
     """
     vals = []
-    for i, c in enumerate(VIS_RANKED):
+    for i, c in enumerate(order):
         raw = (row.get(c) or "").strip()
         vals.append((-(float(raw) if raw else 0.0), i, c))
     vals.sort()

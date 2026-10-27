@@ -42,8 +42,22 @@ import vectors_build as VB            # noqa: E402
 # Each space is (name, the assigning function, the declared cells). The
 # four properties are one family stated over any PSI, so they are checked
 # by one set of functions over both rather than by two copies that drift.
-SPACES = (("pattern", lambda r: VB.psi_pattern(r), VB.psi_pattern_cells),
-          ("surface", lambda r: VB.psi_surface(r), VB.psi_surface_cells))
+# Each space is (name, assign, declared cells, assign-under-the-other-
+# convention). The fourth entry is what makes disjointness checkable: a
+# row whose cell differs between the two is a row the declared convention
+# decided, and nothing else is.
+#
+# The alternatives are equally admissible, not wrong. Half the window
+# could belong to `major` as easily as to `minor`; the coordinate order
+# could run the other way. That is exactly why one of them has to be
+# declared, and why a check that cannot show which rows turn on it has
+# not checked anything.
+SPACES = (
+    ("pattern", lambda r: VB.psi_pattern(r), VB.psi_pattern_cells,
+     lambda r: VB.psi_pattern(r, strict=False)),
+    ("surface", lambda r: VB.psi_surface(r), VB.psi_surface_cells,
+     lambda r: VB.psi_surface(r, order=tuple(reversed(VB.VIS_RANKED)))),
+)
 
 
 def check_total(rows, name, psi, cells):
@@ -61,18 +75,30 @@ def check_total(rows, name, psi, cells):
     return not unassigned and not stray
 
 
-def check_disjoint(rows, name, psi, cells):
-    """One row, one cell. psi_pattern returns a scalar, so the way this
-    breaks is a row whose inputs admit two readings - a coverage exactly
-    at the boundary. The comparison is strict, so the boundary belongs to
-    `minor` and the count below says how many rows sit on it."""
-    on_edge = [VB.row_identity(r) for r in rows
-               if (r.get("pat1_cover") or "").strip() not in ("",)
-               and abs(float(r["pat1_cover"]) - 0.5) < 1e-12]
+def check_disjoint(rows, name, psi, cells, alt):
+    """One row, one cell, and the tie-break shown to be doing the deciding.
+
+    Each assignment returns a scalar, so two cells for one row is not
+    reachable. What IS reachable is a row whose cell depends on a choice
+    nobody declared, and the way to find those is to assign every row
+    twice - once under the declared convention, once under an equally
+    admissible alternative - and look at which rows move.
+
+    This was hardcoded to the pattern space until 2026-10-27. It took
+    (rows, name, psi, cells) like its three siblings and used none of
+    them, reading pat1_cover directly, so under the surface heading it
+    reported the pattern space's boundary count - a quantity with no
+    meaning there - and the surface partition's disjointness was never
+    checked at all. The one surface scene in 299 that ties for the largest
+    coordinate is precisely what it should have been finding.
+    """
+    moved = [VB.row_identity(r) for r in rows if psi(r) != alt(r)]
     print("  INV-PSI-DISJOINT")
-    print("    psi_pattern returns one cell per row by construction")
-    print("    %d row(s) sit exactly on the half-window boundary; the "
-          "comparison is strict so they are `minor`" % len(on_edge))
+    print("    each row is assigned one cell; a second is not reachable")
+    print("    %d row(s) change cell under the alternative convention, so "
+          "the declared one decides them" % len(moved))
+    for sid in moved[:5]:
+        print("      %s" % sid)
     return True
 
 
@@ -133,10 +159,10 @@ def main():
         raise SystemExit("%s holds no rows" % a.patterns)
 
     ok = []
-    for name, psi, cells in SPACES:
+    for name, psi, cells, alt in SPACES:
         print("\nPSI_%s over %s" % (name[0], os.path.basename(a.patterns)))
         ok += [check_total(rows, name, psi, cells),
-               check_disjoint(rows, name, psi, cells),
+               check_disjoint(rows, name, psi, cells, alt),
                check_minimal(rows, name, psi, cells),
                check_orthogonal(rows, name, psi, cells)]
 

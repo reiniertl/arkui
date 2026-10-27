@@ -233,13 +233,28 @@ WHAT IS DONE
     psi_rules exits VIOLATED, which is the correct result: INV-PSI-MINIMAL
     does not hold for the surface space and the check says so rather than
     being softened until it passes.
-    A DEFECT IN THE CHECK ITSELF was found by this run and is NOT fixed:
-    check_disjoint was never parameterised when the other three were, so
-    under the PSI_s heading it prints the pattern space's wording and tests
-    pat1_cover against the half-window boundary, which means nothing there.
-    Disjointness is therefore UNVERIFIED for the surface space - and the one
-    scene in 299 that ties for the largest coordinate is exactly what it
-    should have been counting.
+    A DEFECT IN THE CHECK ITSELF was found by this run, and fixed in the
+    item below.
+
+  2026-10-27  /cb-green  the disjoint check parameterised, and specified
+    <commit>.  check_disjoint took (rows, name, psi, cells) like its three
+    siblings and used none of them: it read pat1_cover directly, so under
+    the PSI_s heading it reported the pattern space's boundary count - a
+    quantity with no meaning there - and disjointness went unverified for
+    the surface space. I had claimed a shared table meant the two spaces
+    could not drift; three of four checks were shared and the fourth was
+    not.
+    The fix is not two branches. Each assignment now takes its convention
+    as a parameter - psi_pattern(row, strict) for the boundary comparison,
+    psi_surface(row, order) for the tie-break - and the check assigns every
+    row twice, under the declared convention and under an equally
+    admissible alternative, reporting the rows whose cell differs. Those
+    rows and only those are the ones the convention decides, and the check
+    carries no copy of the ranking to drift from the real one.
+    INV-PSI-DISJOINT's predicate said "for every feature vector v", naming
+    no space and no method, which is how a single-space check satisfied it
+    on paper. It now names the convention per space AND the demonstration
+    required, so a hardcoded implementation cannot meet it again.
 
 
 
