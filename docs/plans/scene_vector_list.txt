@@ -96,8 +96,6 @@ ORDER
 
   What remains, in this order (records 1 to 6 hold the decisions; each
   prompt names the records it applies):
-    * PSI for the pattern vector: the motif derived, named and drawn
-      (/cb-green);
     * PSI for the surface vector: the composition cells derived (/cb-green);
     * every viewer names the cell, and what falls outside one (/cb-green);
     * the two vectors together, and whether their patterns are independent
@@ -188,6 +186,31 @@ WHAT IS DONE
     because text is never the largest coordinate in any of 299 scenes.
     Authored with the failure rather than with a weakened predicate.
     docs/design/feature-spaces.md carries the reasoning.
+
+  2026-10-27  /cb-green  PSI for the pattern vector: the motif derived and drawn
+    afad8d6.  psi_pattern assigns every row one of nine declared cells and
+    psi_pattern_cells declares them, so a cell nobody reaches can be named as
+    empty. schematic() recovered from 4421f9b; the DESC table of 13 names
+    beside it was not and must not be. Verified on the capture: 299 of 299
+    assigned, 9 of 9 cells reachable, grid 47/46, row 1/87, column 5/78,
+    stack 1/3, none 31, and the payload re-derived rather than trusted.
+    The content signature was measured as a candidate third axis and
+    rejected - 9 kind sets, 36 cells, most under ten scenes - rather than
+    silently dropped. IF-PAGE-PAYLOAD authored, no longer held.
+    THIS ITEM REPORTED SUCCESS WHILE CARRYING A BUG. Its own test could not
+    run inside /cb-green, since the captures are on the other machine, so it
+    finalized on the authoring machine's gates alone and they were all green.
+
+  2026-10-27  /cb-free   the payload key that broke the scene-loss check
+    fc1091a.  The bug the item above shipped. PSI_p added the cells as
+    `pattern_cells`, a bare list at the top level, and no_silent_scene_loss.py
+    walks the top-level keys treating anything without a leading underscore as
+    a vector block - so it reached for .groups on a list and died. The check
+    against losing scenes silently could not be evaluated at all. Renamed to
+    _pattern_cells, which is the convention _audit already set, and the reader
+    hardened to skip a value that is not a block with groups. Reproduced
+    before and verified after on the real capture: exit 1 then exit 0, and all
+    five checks green.
 
 
 
@@ -660,62 +683,6 @@ THE DECISIONS IN FORCE
 ===============================================================================
 PROMPTS
 ===============================================================================
-
-/cb-green — PSI for the pattern vector: the motif derived, named and drawn
-  - What: the pattern space's partition implemented, so a scene has a
-    pattern and not only seven numbers. The axes are measured already and
-    reach nothing: pat1_arr holds 93 grid, 88 row, 83 column, 4 stack and 31
-    with no repeating group over 299 scenes, and pat1_pat holds the content
-    signature such as IIITTT for three images and three texts repeating.
-    Both are computed into patterns.csv and then discarded before the
-    vector. This item is where they become the feature.
-    The motif is drawn again. feature_motifs.py did this before deletion in
-    4421f9b: schematic() laid cells into a phone-shaped SVG from cols, rows,
-    h, aspect and arr, a cell cut off at the bottom drawn dashed, a stack as
-    an offset outline. That function is recovered from git history. What is
-    NOT recovered is the DESC table beside it - 13 names with prose, part of
-    the deleted taxonomy. A schematic drawn from a cell's own numbers is a
-    measurement rendered; a name for it is a class.
-    A pattern's label is its coordinates, not a word: the arrangement, the
-    signature and the band it falls in, which is readable and derived.
-  - Read: records 2, 5 and 6; the formalization from the item before;
-    git show 4421f9b^:tools/cluster/feature_motifs.py in full;
-    vectors_build.py and vectors_page.py in full.
-  - Spec areas: SUB-FEATURE-RESEARCH, IF-PATTERNS-ROW, IF-PAGE-PAYLOAD.
-  - Spec work: implement ALG-PSI-PATTERN against the contract the previous
-    item authored, and satisfy INV-PSI-* for the pattern space. One
-    algorithm ALG-MOTIF-SCHEMATIC (py) renders a cell from its medians,
-    satisfying INV-NO-SCENE-CLASS. Whether IF-PAGE-PAYLOAD is authored here
-    rather than held back is decided with the human, since this item changes
-    the payload's shape - see record 5.
-  - Code path: tools/cluster/vectors_build.py; tools/cluster/vectors_page.py;
-    a check under tools/checks/ that evaluates the four PSI properties.
-  - Test: every one of the 299 scenes assigned to exactly one cell, with the
-    per-cell counts reported and every empty cell named; the four properties
-    checked by the check, not asserted in prose;
-    tools/checks/no_scene_class.py still holds; the page rebuilt and its
-    size reported; npm run spec:check, no violations.
-  - BOUNDARY: combobul and ArkUI are two projects. combobul/spec/spec.db
-    holds the specification of this project's code, in combobul's ontology,
-    written only through combobul's ril. No rule, kind, check or store of
-    one is carried to the other. The engine is installed per machine and is
-    not published from this repository.
-
-  - IMPORTANT: The context you get is not hallucinated, its deterministically extracted.
-  - IMPORTANT: Every figure is measured in this session against a real capture and written into the report.
-  - REFERENCE: If specification authoring details are needed, ask RIL for authoring rules.
-  - INVIOLABLE: SPECIFICATION SURFACE IS AUTHORITATIVE. Every function this item adds is specified
-    in the DAG before it is written: the algorithm, its preconditions, and the invariants it must hold.
-  - INVIOLABLE: NO SCENE CLASSES. A set derived from the structure of the measurement space, writable
-    without looking at a screenshot, is a function. A list of names matched against data is a class,
-    and INV-NO-SCENE-CLASS forbids it. If you cannot derive it, you may not assert it.
-  - INVIOLABLE: DO NOT EMIT P3_SKIPPED. If you do not need to modify the specification you must submit a reason.
-  - FORBIDDEN: MULTI-AGENT execution is not allowed. DO NOT SPAWN MULTIPLE AGENTS.
-  - WHEN TO COMMIT: Before "silk run finalize".
-  - AFTER COMMIT: the item is not finished until it is pushed. git push is /cb-ops only, so end
-    FINAL_STATUS with an explicit NOT PUSHED line naming /cb-ops.
-  - DECISION PROTOCOL: If a decision must be made, ask for direct feedback. DO NOT DECIDE ALONE.
-  - AT THE END: update this list as the rule at the head of the list states.
 
 /cb-green — PSI for the surface vector: the composition cells derived
   - What: the surface space's partition implemented, so a composition is a
