@@ -94,10 +94,9 @@ The baseline the executions read (read each file in full):
 ORDER
 ===============================================================================
 
-  What remains, in this order (records 1 to 6 hold the decisions; each
-  prompt names the records it applies):
-    * the two vectors together, and whether their patterns are independent
-      (/cb-green).
+  Nothing remains. Every item of this list has run; what each one found is
+  under WHAT IS DONE. Records 1 to 6 hold the decisions that produced them.
+
   After this list: nothing is planned.
 
 
@@ -276,6 +275,30 @@ WHAT IS DONE
     Also found: the page already printed the cluster outlier count and
     percentage, so the defect the item cites as unrepaired was partly
     repaired already.
+
+  2026-10-27  /cb-green  the two vectors together, and whether independent
+    <commit>.  The last item, and a negative one. Two measurements that
+    point opposite ways, both reported.
+    NOT REDUNDANT: over 299 scenes the contingency of the two cell
+    assignments gives chi-square 272.8 on 120 df, Cramers V 0.338 and
+    Goodman-Kruskal lambda 0.109. Predicting a scene's surface cell from
+    its pattern cell gives 31.4 percent against 23.1 for always guessing
+    the commonest, and 58 of 144 possible joint cells are occupied. Each
+    vector carries something the other does not.
+    AND NOT WORTH JOINING: pattern alone leaves 50 of 299 in no cluster,
+    surface alone 130, the two concatenated 172 - 58 percent - with 5
+    clusters instead of 7 and 9. Scaling the blocks to equal variance gives
+    173 and 5, so the imbalance is not the cause. The joint space places 42
+    percent of scenes where the pattern vector alone places 83.
+    So no joint view was built, which is what the item asked for when it
+    said "if it is warranted". The two results are consistent: vectors
+    sharing little structure gain dimensions without gaining agreement, and
+    a density clusterer finds less in the larger space.
+    A methodology note that mattered: build() computes silhouette over
+    CLUSTERED points only, so a figure over all points is not the page's
+    figure. My first pass read 0.310 and 0.138; computing it the page's way
+    reproduced its 0.475 and 0.625 exactly, and only then was the
+    three-way comparison sound.
 
 
 
@@ -707,6 +730,23 @@ THE DECISIONS IN FORCE
          that are independent, the two vectors are measuring different
          things and the joint view is worth building. If they do not, that
          is the finding.
+       * ANSWERED 2026-10-27, and the two halves point opposite ways. The
+         vectors are NOT redundant: over 299 scenes the contingency of the
+         two cell assignments gives Cramers V 0.338 and Goodman-Kruskal
+         lambda 0.109, so knowing a scene's pattern cell lifts the guess of
+         its surface cell from 23.1 to 31.4 percent. Each carries something
+         the other does not. But the joint view is NOT worth building:
+         pattern alone leaves 50 of 299 scenes in no cluster, surface alone
+         130, the two concatenated 172 - 58 percent - with 5 clusters
+         instead of 7 and 9, and scaling the blocks to equal variance
+         changes nothing. The joint space places 42 percent of scenes where
+         pattern alone places 83.
+       * Both are consistent: vectors that share little structure gain
+         dimensions without gaining agreement when concatenated, and a
+         density clusterer finds less in the larger space. So the answer to
+         "is a joint view worth building" is no, and the reason is not that
+         the vectors measure the same thing - it is that they measure
+         different things and the clusterer cannot use both at once.
        * FORMALIZED 2026-10-27. docs/design/feature-spaces.md carries the
          reasoning; IF-PATTERN-SPACE, IF-SURFACE-SPACE, ALG-PSI-PATTERN,
          ALG-PSI-SURFACE and INV-PSI-{TOTAL,DISJOINT,MINIMAL,ORTHOGONAL}
@@ -749,52 +789,3 @@ THE DECISIONS IN FORCE
 PROMPTS
 ===============================================================================
 
-/cb-green — the two vectors together, and whether their patterns are independent
-  - What: the question record 6 ends on. If PSI of the pattern vector and
-    PSI of the surface vector place scenes independently, the two vectors
-    measure different things and a joint view is worth building; if a
-    scene's surface cell is predictable from its pattern cell, one of them
-    is redundant and that is the finding.
-    Measured, not asserted: the contingency table of the two cell
-    assignments over the real capture, with a stated measure of association
-    and what it would read if they were independent. The number is reported
-    whichever way it falls.
-    Then the joint view, if it is warranted: both vectors in one space,
-    shown beside the two alone. The weights are the question this item must
-    answer rather than assume - twelve columns of two kinds, with per-column
-    weights fitted for each vector on its own. Whether those carry over,
-    whether each block is normalised before joining, and whether the space
-    is dominated by whichever vector has more columns - all measured and
-    reported.
-  - Read: records 2, 3 and 6; both PSI implementations; vectors_build.py's
-    VECTORS table and build() in full.
-  - Spec areas: SUB-FEATURE-RESEARCH, ALG-VECTOR-CLUSTER.
-  - Spec work: decided with the human before the envelope. The candidate is
-    to modify ALG-VECTOR-CLUSTER, since the joint view is the same algorithm
-    over a different column set; a node is added only if the joining itself
-    needs one.
-  - Test: the association between the two cell assignments reported as a
-    number with its independence baseline; the three views built on one real
-    capture with their counts and outlier rates side by side; the page
-    rebuilt and its size reported; npm run spec:check, no violations.
-  - BOUNDARY: combobul and ArkUI are two projects. combobul/spec/spec.db
-    holds the specification of this project's code, in combobul's ontology,
-    written only through combobul's ril. No rule, kind, check or store of
-    one is carried to the other. The engine is installed per machine and is
-    not published from this repository.
-
-  - IMPORTANT: The context you get is not hallucinated, its deterministically extracted.
-  - IMPORTANT: Every figure is measured in this session against a real capture and written into the report.
-  - REFERENCE: If specification authoring details are needed, ask RIL for authoring rules.
-  - INVIOLABLE: SPECIFICATION SURFACE IS AUTHORITATIVE. Every function this item adds is specified
-    in the DAG before it is written: the algorithm, its preconditions, and the invariants it must hold.
-  - INVIOLABLE: NO SCENE CLASSES. A set derived from the structure of the measurement space, writable
-    without looking at a screenshot, is a function. A list of names matched against data is a class,
-    and INV-NO-SCENE-CLASS forbids it. If you cannot derive it, you may not assert it.
-  - INVIOLABLE: DO NOT EMIT P3_SKIPPED. If you do not need to modify the specification you must submit a reason.
-  - FORBIDDEN: MULTI-AGENT execution is not allowed. DO NOT SPAWN MULTIPLE AGENTS.
-  - WHEN TO COMMIT: Before "silk run finalize".
-  - AFTER COMMIT: the item is not finished until it is pushed. git push is /cb-ops only, so end
-    FINAL_STATUS with an explicit NOT PUSHED line naming /cb-ops.
-  - DECISION PROTOCOL: If a decision must be made, ask for direct feedback. DO NOT DECIDE ALONE.
-  - AT THE END: update this list as the rule at the head of the list states.
