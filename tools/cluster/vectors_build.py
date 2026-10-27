@@ -168,6 +168,11 @@ def build(rows, img, key, mcs):
         if m.any():
             X[m, j] = np.nanmean(X[:, j]) if not m.all() else 0.0
     sd = X.std(0)
+    flat = [F[j][0] for j in range(X.shape[1]) if sd[j] < 1e-9]
+    if flat:
+        print("ERR-COLUMN-CONSTANT: %s measured nothing on this capture - no "
+              "variance, so %s dropped from the %s matrix before clustering"
+              % (", ".join(flat), "they are" if len(flat) > 1 else "it is", key))
     sd[sd < 1e-9] = 1.0
     Z = (X - X.mean(0)) / sd * np.array([w for _, _, w in F])
     Z = Z[:, Z.std(0) > 1e-9]
@@ -243,14 +248,26 @@ def main():
     # INV-NO-SILENT-SCENE-LOSS: every measured row reaches the payload or is
     # reported in it. A scene with no picture is still measured and still
     # clustered; only its tile is poorer for it.
-    img, missing = {}, []
+    img, missing, unmatched = {}, [], []
     for r in rows:
         sid = row_identity(r)
-        path = rep_path((r.get("shot") or "").strip(), a.captures, a.reps)
+        shot = (r.get("shot") or "").strip()
+        path = rep_path(shot, a.captures, a.reps)
         if path:
             img[sid] = thumbnail(path, a.thumb)
         else:
             missing.append(sid)
+            if shot:
+                # The row names a file. A shot that resolves to nothing is a
+                # broken join, not a scene that was never photographed - and
+                # a join key resolving to nothing is the shape of both
+                # failures this project has had on this seam.
+                unmatched.append("%s -> %s" % (sid, shot))
+    if unmatched:
+        print("ERR-JOIN-KEY-UNMATCHED: %d row(s) name a screenshot that is not "
+              "there: %s" % (len(unmatched), ", ".join(unmatched[:5])
+                             + (" and %d more" % (len(unmatched) - 5)
+                                if len(unmatched) > 5 else "")))
     if missing:
         print("ERR-SCENE-WITHOUT-REP: %d of %d scenes have no screenshot; they "
               "are measured and clustered, and their tiles carry no picture."

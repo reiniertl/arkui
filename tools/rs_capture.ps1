@@ -48,7 +48,16 @@ function Invoke-HdcRaw {
     param([string] $CommandLine)
     $full = "hdc $CommandLine"
     if ($ShowCmd) { Write-Host "  > $full" -ForegroundColor DarkGray }
-    $out = & cmd.exe /c $full 2>&1
+    # A failing hdc writes to stderr, and with $ErrorActionPreference = Stop
+    # that arrives as a terminating NativeCommandError - which killed the
+    # script before Find-ShotCommand could report that nothing answered, so
+    # ERR-SHOT-COMMAND-ABSENT was unreachable in the one case it exists for.
+    # The caller decides what an empty or useless answer means.
+    $prev = $ErrorActionPreference
+    $ErrorActionPreference = 'Continue'
+    try   { $out = & cmd.exe /c $full 2>&1 }
+    catch { $out = @() }
+    finally { $ErrorActionPreference = $prev }
     return ($out | ForEach-Object { "$_" })
 }
 
@@ -231,7 +240,20 @@ function Get-RsQuickSig {
 function Invoke-RsFastCapture {
     param([int] $Seconds, [string] $Dir, [int] $Tol = 650, [int] $ShotEvery = 5)
 
-    if (-not (Find-ShotCommand)) { return }
+    # Every candidate was probed and none produced a file. Stopping here
+    # rather than capturing on: a session of dumps with no picture for any
+    # scene reads downstream as scenes that merely never settled.
+    if (-not (Find-ShotCommand)) {
+        # Write-Output, not Write-Host: an error code that cannot be
+        # captured by whatever runs the capture is not a vocabulary, it is
+        # a message on a console nobody is watching.
+        Write-Output ("ERR-SHOT-COMMAND-ABSENT: no screenshot command answered " +
+                      "on the device - snapshot_display, screencap and uitest " +
+                      "screenCap were all probed. Capturing without pictures " +
+                      "would be indistinguishable downstream from scenes that " +
+                      "never settled, so nothing is captured.")
+        return
+    }
     $stamp   = (Get-Date).ToString("yyyyMMdd_HHmmss")
     $session = Join-Path $Dir $stamp
     [void](New-Item -ItemType Directory -Force -Path $session)

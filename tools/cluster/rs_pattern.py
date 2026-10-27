@@ -749,6 +749,27 @@ def owner_of(tree, disp):
     return best[0] if best else None
 
 
+def report(fell_back, no_client, no_owner):
+    """Say what the run skipped. Each of these used to be a bare continue."""
+    def listed(ids, limit=5):
+        head = ", ".join(ids[:limit])
+        return head + (" and %d more" % (len(ids) - limit) if len(ids) > limit else "")
+
+    if fell_back:
+        print("ERR-DISPLAY-DUMP-MISSING: %d session(s) have no display.txt and "
+              "no fallback at the capture root; geometry defaults to "
+              "%gx%g at density %g, and every fraction is computed against it: %s"
+              % (len(fell_back), R.DISPLAY_DEFAULT["w"], R.DISPLAY_DEFAULT["h"],
+                 R.DISPLAY_DEFAULT["density"], listed(fell_back)))
+    if no_client:
+        print("ERR-CLIENT-DUMP-MISSING: %d render tree(s) have no matching "
+              "client dump and are skipped; without it no node can say what "
+              "component it is: %s" % (len(no_client), listed(no_client)))
+    if no_owner:
+        print("ERR-NO-OWNER-WINDOW: %d dump(s) carry no window that paints "
+              "anything, and are skipped: %s" % (len(no_owner), listed(no_owner)))
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -756,17 +777,21 @@ def main():
     ap.add_argument("--out", default="patterns.csv")
     a = ap.parse_args()
     rows = []
+    no_client, no_owner, fell_back = [], [], []
     for sdir in sorted(glob.glob(os.path.join(a.root, "*"))):
         if not os.path.isdir(sdir):
             continue
         disp = R.read_display(os.path.join(sdir, "display.txt"))
         if not os.path.exists(os.path.join(sdir, "display.txt")):
             disp = R.read_display(os.path.join(a.root, "display.txt"))
+        if disp.get("fallback"):
+            fell_back.append(os.path.basename(sdir))
         n = 0
         for tf in sorted(glob.glob(os.path.join(sdir, "*.rstree.txt"))):
             stem = os.path.basename(tf).split(".")[0]
             cf = os.path.join(sdir, stem + ".client.txt")
             if not os.path.exists(cf):
+                no_client.append("%s/%s" % (os.path.basename(sdir), stem))
                 continue
             lines = open(tf, encoding="utf-8", errors="replace").read().splitlines()
             tree = R.parse_tree(lines)
@@ -777,6 +802,7 @@ def main():
                     nd["tag"] = cmap[nd["id"]]
             own = owner_of(tree, disp)
             if own is None:
+                no_owner.append("%s/%s" % (os.path.basename(sdir), stem))
                 continue
             r = {"session": os.path.basename(sdir), "stem": stem,
                  "owner": own["name"]}
@@ -788,6 +814,7 @@ def main():
             n += 1
         if n:
             print("  %-22s %4d scenes" % (os.path.basename(sdir), n))
+    report(fell_back, no_client, no_owner)
     if not rows:
         print("nothing to do"); return 1
     cols = list(rows[0])

@@ -358,11 +358,22 @@ def window_weight(tree, surf):
     return {"nodes": len(adm), "paint_px": round(region_area(paint))}
 
 
+DISPLAY_DEFAULT = {"w": 1316.0, "h": 2832.0, "density": 3.5, "rotation": 0,
+                   "refresh": 0, "refresh_max": 0, "power": -1,
+                   "internal": True, "cutout": None, "avail": None}
+
+
 def read_display(path):
-    d = {"w": 1316.0, "h": 2832.0, "density": 3.5, "rotation": 0, "refresh": 0,
-         "refresh_max": 0, "power": -1, "internal": True, "cutout": None,
-         "avail": None}
+    """Geometry, or the fallback - which the caller is told about.
+
+    The fallback is a real device's geometry, so a run continues on it and
+    looks healthy. Every fraction in every row is computed against that
+    denominator, so on a device of another size every coverage, every height
+    and the whole composition is wrong by the ratio, silently.
+    """
+    d = dict(DISPLAY_DEFAULT)
     if not path or not os.path.exists(path):
+        d["fallback"] = True
         return d
     sect = ""
     for l in open(path, encoding="utf-8", errors="replace"):
