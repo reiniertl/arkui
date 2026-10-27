@@ -282,6 +282,15 @@ def visible_surface(sc, dw, dh, own_area, order, step=4):
         out["vis_" + k] = round(min(1.0, int((grid == idx[k]).sum()) * cell / tot), 3)
     # everything no content mark claimed: substrate, chrome, blur, blank
     out["vis_substrate"] = round(max(0.0, 1.0 - sum(out.values())), 3)
+    # INV-SURFACE-SUMS-TO-ONE, checked where it could break rather than only
+    # by a script someone remembers to run. True by construction above, which
+    # is the point: it is the day the construction changes that matters. The
+    # tolerance is the rounding of six values at three decimals.
+    total = sum(out["vis_" + k] for k in VIS_KINDS) + out["vis_substrate"]
+    if abs(total - 1.0) > 0.01:
+        print("ERR-SURFACE-SUM-OFF: the surface columns sum to %.4f, not one; "
+              "the composition was not built as a partition of the display"
+              % total)
     out["vis_marks"] = len(marks)
     return out
 

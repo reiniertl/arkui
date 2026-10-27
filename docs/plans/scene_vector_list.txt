@@ -95,9 +95,6 @@ ORDER
 
   What remains, in this order (records 1 to 7 hold the decisions; each
   prompt names the records it applies):
-    * the eleven algorithms (/cb-green);
-    * the two interfaces given fields, so they are structure and not prose
-      (/cb-green);
     * each threshold given a contract or deleted (/cb-green);
     * correlate.py closed: the premise measured (/cb-green);
     * the 71 scenes given a picture from the periodic shots, by the index
@@ -153,7 +150,7 @@ THE DECISIONS IN FORCE
          written statement of what separates these scenes and are worth
          keeping as prose. They are not to be executable.
 
-     Applied by: the eleven algorithms; each threshold given a contract.
+     Applied by: each threshold given a contract.
 
   3. The two vectors and their column contracts. Decided by the human.
        * The pattern vector — what repeats in the layout, and how much of
@@ -296,12 +293,18 @@ THE DECISIONS IN FORCE
        * Interfaces: IF-CAPTURE-SESSION (language meta), IF-PATTERNS-ROW
          (py). IF-PAGE-PAYLOAD and IF-SCENE-RECORD are held back — see
          record 7.
-       * Automatons: AUT-TREE-CHECK, the gate where tree-level static checks
-         run. Every invariant needs exactly one checked-at edge to an
+       * Automatons: AUT-CAPTURE-RUN at order 0, the stage on the device;
+         AUT-TREE-CHECK at order 1, the gate where tree-level static checks
+         run; AUT-PIPELINE-RUN at order 2, the offline run. Every algorithm
+         runs at one of the three, which is what AUTH-009 requires.
+         AUT-TREE-CHECK: Every invariant needs exactly one checked-at edge to an
          automaton (AUTH-008, AUTH-012), so the static family shares this
          one. Authored 2026-10-26 with order=1.
        * Authoring facts the engine dictates, learned by proposing against
          it rather than by reading the template, which does not list them:
+         input-of runs interface to algorithm, which is the reverse of how
+         the plan's wording reads; every algorithm needs a runs-at edge to
+         an automaton or AUTH-009 warns;
          an invariant needs a core `predicate` field, with `predicateNL`
          beside it or AUTH-016 warns; `predicateAuthority` is engine-owned
          and is refused on an add (AUTH-ERR-VERIFICATION-ESCALATION); an
@@ -335,6 +338,13 @@ THE DECISIONS IN FORCE
      Applied by: every /cb-green item.
 
   7. What is deliberately not declared yet. Decided by the human.
+       * One item left this list without being run. "The two interfaces
+         given fields" existed to clear the two AUTH-024 warnings, and its
+         own prompt said to re-check the warning after the algorithms
+         landed before authoring 61 relation nodes. The algorithms carry
+         input-of and output-of edges to both interfaces, which is what
+         AUTH-024 asks for, so the warnings cleared on their own and the
+         item had nothing left to do. The relation nodes were never needed.
        * IF-SCENE-RECORD, the shape correlate.py expects, waits until
          something produces it. An interface with no producer and no
          consumer is how the deleted C header started.
@@ -350,115 +360,13 @@ THE DECISIONS IN FORCE
          computes nothing, and it is reported upstream rather than worked
          around.
 
-     Applied by: the eleven algorithms; the surface vector's collapse; the
-     diagnosis brought to the human.
+     Applied by: the surface vector's collapse; the diagnosis brought to
+     the human.
 
 
 ===============================================================================
 PROMPTS
 ===============================================================================
-
-/cb-green — the eleven algorithms
-  - What: the named procedures of the pipeline authored as algorithm nodes,
-    each carrying the invariants it satisfies and the error codes it emits.
-    Only now, with the invariants in place: an algorithm node with no
-    invariant over it is documentation.
-    This item also clears the six AUTH-026 warnings standing since the
-    error vocabulary was authored. An error code no algorithm emits is a
-    code nothing requires, and the emitters are algorithms, so the
-    warnings are a true statement of an incomplete graph rather than
-    noise. Every one of the eight codes must carry an emitter when this
-    item finishes.
-    The two device-side algorithms are declared language meta, because the
-    enum has 23 entries and PowerShell is not among them (record 7). That
-    costs nothing while their invariant is that they compute nothing, and
-    the gap is reported upstream rather than worked around.
-  - Read: records 2, 6 and 7; every file named under Code path, in full.
-  - Spec areas: SUB-FEATURE-RESEARCH.
-  - Spec work:
-      add algorithm ALG-CAPTURE-LOOP (meta): the capture loop; contains;
-        output-of IF-CAPTURE-SESSION; satisfies
-        INV-DEVICE-COMPUTES-NOTHING; emits ERR-SHOT-COMMAND-ABSENT;
-      add algorithm ALG-QUICK-SIG (meta): the signature off the raw dump
-        text; contains; called by ALG-CAPTURE-LOOP;
-      add algorithm ALG-PARSE-RSTREE (py): contains; input-of
-        IF-CAPTURE-SESSION; satisfies INV-FIRST-PASS-COUNTS; emits
-        ERR-DISPLAY-DUMP-MISSING, ERR-CLIENT-DUMP-MISSING;
-      add algorithm ALG-PAINT-ORDER (py): contains; satisfies
-        INV-OCCLUSION-PAINT-ORDER;
-      add algorithm ALG-OWNERSHIP (py): contains;
-      add algorithm ALG-OWNER-SELECT (py): contains; calls ALG-OWNERSHIP;
-        emits ERR-NO-OWNER-WINDOW;
-      add algorithm ALG-BRANCH-GROUP (py): the pattern vector; contains;
-        output-of IF-PATTERNS-ROW; satisfies INV-OWN-RECT-BOUNDS,
-        INV-TIEBREAK-NOT-ON-AREA, INV-ABSENT-NOT-ZERO, INV-NO-SCENE-CLASS;
-      add algorithm ALG-VISIBLE-SURFACE (py): the surface vector; contains;
-        output-of IF-PATTERNS-ROW; calls ALG-PAINT-ORDER; satisfies
-        INV-OCCLUDER-PAINTS, INV-SUBSTRATE-IS-COMPLEMENT,
-        INV-SURFACE-SUMS-TO-ONE;
-      add algorithm ALG-MEDIA-SURFACE (py): contains; calls ALG-PAINT-ORDER;
-        satisfies INV-OCCLUDER-PAINTS, INV-OWN-RECT-BOUNDS;
-      add algorithm ALG-VECTOR-CLUSTER (py): standardise, weight, cluster;
-        contains; input-of IF-PATTERNS-ROW; satisfies INV-ABSENT-NOT-ZERO,
-        INV-NO-SILENT-SCENE-LOSS, INV-NO-SCENE-CLASS; emits
-        ERR-SCENE-WITHOUT-REP, ERR-COLUMN-CONSTANT, ERR-JOIN-KEY-UNMATCHED;
-      add algorithm ALG-CORRELATE (py): contains.
-  - Code path: tools/rs_capture.ps1; tools/cluster/rs_extract.py,
-    rs_pattern.py, vectors_build.py; tools/correlate.py.
-  - Test: npm run spec:check, no violations; the pipeline run end to end on
-    a real capture, its output unchanged.
-  - BOUNDARY: as above.
-
-  - IMPORTANT: The context you get is not hallucinated, its deterministically extracted.
-  - REFERENCE: If specification authoring details are needed, ask RIL for authoring rules.
-  - INVIOLABLE: SPECIFICATION SURFACE IS AUTHORITATIVE.
-  - INVIOLABLE: DO NOT EMIT P3_SKIPPED. If you do not need to modify the specification you must submit a reason.
-  - FORBIDDEN: MULTI-AGENT execution is not allowed. DO NOT SPAWN MULTIPLE AGENTS.
-  - WHEN TO COMMIT: Before "silk run finalize".
-  - DECISION PROTOCOL: If a decision must be made, ask for direct feedback. DO NOT DECIDE ALONE.
-  - AT THE END: update this list as the rule at the head of the list states.
-
-
-/cb-green — the two interfaces given fields, so they are structure and not prose
-  - What: AUTH-024 warns that IF-CAPTURE-SESSION and IF-PATTERNS-ROW have no
-    fields, no type relationships and no I/O contracts: both describe
-    themselves in prose, and the graph cannot read prose. The warning stood
-    from the moment they were authored and is the honest signal that a first
-    graph is a sketch.
-    Two ways close it and the cheaper one is chosen in this item, not before:
-    defines-field edges to relation nodes, one per declared column, which is
-    61 nodes for IF-PATTERNS-ROW alone; or the input-of and output-of edges
-    the algorithms carry, which exist once the eleven algorithms are
-    authored and may discharge AUTH-024 on their own. Check the warning
-    after the algorithms land before authoring any relation node.
-    Where relation nodes are authored, the twelve vector columns come first
-    and carry their transform and weight from record 3; the other columns
-    follow only if the warning persists.
-  - Read: record 3 and record 6; the AUTH-024 text from
-    `npm run ril -- template interface`; the graph as the algorithms item
-    leaves it.
-  - Spec areas: SUB-FEATURE-RESEARCH, IF-CAPTURE-SESSION, IF-PATTERNS-ROW.
-  - Spec work: determined by which way closes the warning; the node list is
-    given to the human before the envelope is written. If the algorithms'
-    edges already discharge it, this item adds no node and says so.
-  - Code path: no code changes.
-  - Test: npm run spec:check reports no AUTH-024 warning for either
-    interface; no new error.
-  - BOUNDARY: combobul and ArkUI are two projects. combobul/spec/spec.db
-    holds the specification of this project's code, in combobul's ontology,
-    written only through combobul's ril. No rule, kind, check or store of
-    one is carried to the other. The engine is installed per machine and is
-    not published from this repository.
-
-  - IMPORTANT: The context you get is not hallucinated, its deterministically extracted.
-  - REFERENCE: If specification authoring details are needed, ask RIL for authoring rules.
-  - INVIOLABLE: SPECIFICATION SURFACE IS AUTHORITATIVE.
-  - INVIOLABLE: DO NOT EMIT P3_SKIPPED. If you do not need to modify the specification you must submit a reason.
-  - FORBIDDEN: MULTI-AGENT execution is not allowed. DO NOT SPAWN MULTIPLE AGENTS.
-  - WHEN TO COMMIT: Before "silk run finalize".
-  - DECISION PROTOCOL: If a decision must be made, ask for direct feedback. DO NOT DECIDE ALONE.
-  - AT THE END: update this list as the rule at the head of the list states.
-
 
 /cb-green — each threshold given a contract or deleted
   - What: the fourteen tuned constants given the contract each lacks, as
