@@ -91,9 +91,13 @@ ORDER
 
   What remains, in this order (records 1 to 5 hold the decisions; each
   prompt names the records it applies):
-    * the surface vector's collapse diagnosed (/cb-audit);
-    * the diagnosis brought to the human, the surface vector kept or
-      dropped (/cb-free).
+    * the surface vector's collapse diagnosed, and what a composition can
+      be expected to look like (/cb-audit);
+    * the diagnosis brought to the human, the surface vector kept, bounded
+      or dropped (/cb-free);
+    * the pattern motif drawn again, from measured medians (/cb-green);
+    * every viewer names what fits nothing (/cb-green);
+    * the two vectors clustered together, beside the two alone (/cb-green).
   After this list: nothing is planned.
 
 
@@ -165,8 +169,10 @@ THE DECISIONS IN FORCE
          person, and have not been re-fitted since. Fourteen were expected
          and ten were found: COINCIDENT, OVERLAY_IN, OVERLAY_MAX, POS_TOL,
          BUDGET, OVERSIZE, SURF_MIN, FULLBLEED_H, SURF_BANDS and
-         SLOT_CONTENT, plus the capture's Tol and ShotEvery and the
-         clustering's min_cluster_size and THUMB_W.
+         SLOT_CONTENT, plus the capture's Tol and the clustering's
+         min_cluster_size and THUMB_W. ShotEvery was among them and is gone:
+         it named samples in one place and seconds in another, and the clock
+         it drove was deleted on 2026-10-27.
        * Four were dead. SLOT_CHILDREN, SLOTS_BRACKET, SLOTS_BACKGROUND and
          SLOTS_BORDER were defined and never read - the working notes of
          the bracket-pair derivation, left behind when the substrate rule
@@ -179,6 +185,21 @@ THE DECISIONS IN FORCE
          inspection, not clustered. IF-PATTERNS-ROW names every one and says
          which is which; this record states the vectors alone, and the node
          is where the full width is settled.
+
+       * The surface vector measures its own failure more than it measures
+         a display, found 2026-10-27 over 299 scenes. vis_content - "draws,
+         but no tag names the type" - is the largest of the six columns in
+         131 scenes, 44 percent. vis_substrate - "claimed by nothing" - is
+         largest in another 110, 37 percent. So 81 percent of scenes are
+         dominated by a column that says nothing about what is on the
+         display. vis_text is never the largest in any scene and never
+         exceeds 0.312; vis_glyph never exceeds 0.006 and is, for every
+         practical purpose, always zero. The clustering calls 132 scenes
+         outliers, 44 percent, which is the same figure as the content-
+         dominated count and almost certainly the same scenes.
+       * That is a measurement problem before it is a vector problem. A
+         scene whose surface is 96 percent "we could not tell" has not been
+         measured, and no transform or weight on that column recovers it.
 
      Applied by: the surface vector's collapse; the diagnosis brought to
      the human.
@@ -277,6 +298,21 @@ THE DECISIONS IN FORCE
          surface holding the display from everything else, which is real.
          The rest is not settled.
 
+       * The surface vector measures its own failure more than it measures
+         a display, found 2026-10-27 over 299 scenes. vis_content - "draws,
+         but no tag names the type" - is the largest of the six columns in
+         131 scenes, 44 percent. vis_substrate - "claimed by nothing" - is
+         largest in another 110, 37 percent. So 81 percent of scenes are
+         dominated by a column that says nothing about what is on the
+         display. vis_text is never the largest in any scene and never
+         exceeds 0.312; vis_glyph never exceeds 0.006 and is, for every
+         practical purpose, always zero. The clustering calls 132 scenes
+         outliers, 44 percent, which is the same figure as the content-
+         dominated count and almost certainly the same scenes.
+       * That is a measurement problem before it is a vector problem. A
+         scene whose surface is 96 percent "we could not tell" has not been
+         measured, and no transform or weight on that column recovers it.
+
      Applied by: the surface vector's collapse; the diagnosis brought to
      the human.
 
@@ -346,14 +382,37 @@ THE DECISIONS IN FORCE
          once the surface vector is kept or dropped. The 71 are no longer
          part of that wait - they were tested on 2026-10-27 and all but 2
          are unrecoverable, because their frames were never taken.
+         Three items now press on this. The motif schematic, the listing of
+         what fits nothing, and the joint view each change what the payload
+         carries, and the first of them to run is where the hold is lifted
+         or restated. An interface authored while three items are about to
+         rewrite its shape would be authored three times; an interface the
+         page has already changed twice without one is the gap the hold was
+         meant to avoid. The call is the human's, at that item.
        * The surface vector keeps a caveat rather than an invariant
          asserting it is meaningful. Asserting that would assert the thing
-         in doubt.
+         in doubt, and the 2026-10-27 measurement is why: it is dominated by
+         a column that names nothing in 81 percent of scenes.
        * The metamodel has no PowerShell: the language enum has 23 entries
          and PowerShell is not among them, so the device side is declared
          as meta. That costs nothing while its invariant is that it
          computes nothing, and it is reported upstream rather than worked
          around.
+
+       * The surface vector measures its own failure more than it measures
+         a display, found 2026-10-27 over 299 scenes. vis_content - "draws,
+         but no tag names the type" - is the largest of the six columns in
+         131 scenes, 44 percent. vis_substrate - "claimed by nothing" - is
+         largest in another 110, 37 percent. So 81 percent of scenes are
+         dominated by a column that says nothing about what is on the
+         display. vis_text is never the largest in any scene and never
+         exceeds 0.312; vis_glyph never exceeds 0.006 and is, for every
+         practical purpose, always zero. The clustering calls 132 scenes
+         outliers, 44 percent, which is the same figure as the content-
+         dominated count and almost certainly the same scenes.
+       * That is a measurement problem before it is a vector problem. A
+         scene whose surface is 96 percent "we could not tell" has not been
+         measured, and no transform or weight on that column recovers it.
 
      Applied by: the surface vector's collapse; the diagnosis brought to
      the human.
@@ -363,7 +422,8 @@ THE DECISIONS IN FORCE
 PROMPTS
 ===============================================================================
 
-/cb-audit — the surface vector's collapse diagnosed
+/cb-audit — the surface vector's collapse diagnosed, and what a composition
+            can be expected to look like
   - What: why the surface vector collapses towards one axis on this
     capture, and whether it carries information the pattern vector does
     not. Each of the five columns examined over the full capture: its
@@ -373,18 +433,34 @@ PROMPTS
     it is arithmetic (five reals summing to one, with three of them usually
     near zero), a property of the capture (two sessions of one device), or
     a defect in the occlusion walk.
-    vis_text is examined specifically: over the 250 scenes measured it
-    reaches 0.312 at most, its mean is 0.045, and it dominates no scene at
-    all — 0 of 250. A text-dominant reading is unreachable, and whether
-    that is the device, the capture or the measurement is a finding.
-    The untyped vis_content bucket is examined: how much of it is nodes
-    absent from the client dump entirely, how much is nodes the client dump
-    names with a tag the mapping does not cover, and whether the geometry
-    fallback already in the code can split it.
+    vis_text is examined specifically: over the 299 scenes now measured it
+    reaches 0.312 at most and dominates no scene at all — 0 of 299. A
+    text-dominant reading is unreachable, and whether that is the device,
+    the capture or the measurement is a finding. vis_glyph never exceeds
+    0.006 and is examined for whether it can ever be anything but zero.
+    The untyped vis_content bucket is the centre of this audit, because it
+    is the largest of the six columns in 131 of 299 scenes — 44 percent,
+    the same figure as the clustering's outlier rate and almost certainly
+    the same scenes. vis_substrate is largest in another 110, so 81 percent
+    of scenes are dominated by a column that names nothing on the display.
+    How much of vis_content is nodes absent from the client dump entirely,
+    how much is nodes the client dump names with a tag the mapping does not
+    cover, and whether the geometry fallback already in the code can split
+    it. A scene whose surface is 96 percent "we could not tell" has not
+    been measured, and no transform or weight on that column recovers it.
+    And the question the vector cannot currently answer: WHAT SHOULD A
+    COMPOSITION LOOK LIKE. Not a class list - the expected shape of the
+    six columns, derived from the data: which columns carry information and
+    which record a failure to identify, what range each occupies on scenes
+    where the tags did resolve, and therefore what makes a composition
+    well-formed and what makes one unreadable. The answer is the thing the
+    surface vector is missing, and without it "fits no cluster" cannot be
+    told apart from "was never measured".
     Each finding with its evidence and a recommendation; nothing decided.
   - Read: records 2, 3 and 5; rs_pattern.py's visible_surface, vis_kind,
-    mark_kind and the slot sets, in full; the full patterns.csv of a real
-    capture; the page.
+    mark_kind, TAG_KIND and the slot sets, in full; the full patterns.csv
+    of a real capture; a client dump in full, to see what tags the device
+    actually emits against what TAG_KIND covers; the page.
   - Spec work: none; an audit changes nothing.
   - BOUNDARY: as above.
 
@@ -395,7 +471,8 @@ PROMPTS
   - AT THE END: the list update this audit owes is done by the /cb-free session after it.
 
 
-/cb-free — the diagnosis brought to the human, the surface vector kept or dropped
+/cb-free — the diagnosis brought to the human, the surface vector kept,
+           bounded or dropped
   - What: each finding of the audit brought to the human one at a time,
     with its evidence and a recommendation. The human rules on the one
     question the list cannot answer for itself: whether the surface vector
@@ -410,5 +487,159 @@ PROMPTS
   - Spec work: none; the session writes this list and changes no node.
   - BOUNDARY: as above.
 
+  - DECISION PROTOCOL: If a decision must be made, ask for direct feedback. DO NOT DECIDE ALONE.
+  - AT THE END: update this list as the rule at the head of the list states.
+
+
+/cb-green — the pattern motif drawn again, from measured medians
+  - What: the page shows what a repeating group looks like, not only the
+    numbers describing it. feature_motifs.py drew this before deletion in
+    4421f9b: schematic() laid cells into a phone-shaped SVG from cols,
+    rows, h, aspect and arr, a cell cut off at the bottom edge drawn
+    dashed, a stack drawn as an offset outline. That function is recovered
+    from git history and is the starting point.
+    What is NOT recovered is the DESC table beside it - 13 names with prose
+    for each, part of the 28-shape taxonomy deleted with it. The drawing is
+    made from the group's own median numbers and nothing else. A schematic
+    is a measurement rendered; a name for it is a class, and
+    INV-NO-SCENE-CLASS forbids the second and not the first.
+    One schematic per cluster, from that cluster's medians, in the cluster
+    header beside its cohesion and centre. Per scene the tile also carries
+    its own pat1_arr and pat1_pat - grid, row, column or stack, and the
+    content-kind signature such as IIITTT for three images and three texts
+    repeating. Those two columns are measured into patterns.csv today and
+    reach nothing: 93 grid, 88 row, 83 column, 4 stack and 31 with no group
+    over 299 scenes, computed and then discarded. They are the answer to
+    "which pattern is this scene", which is the pattern vector's point.
+  - Read: record 2; git show 4421f9b^:tools/cluster/feature_motifs.py in
+    full; vectors_build.py where it builds a cluster's groups; the tile and
+    cluster-header markup in vectors_page.py.
+  - Spec areas: SUB-FEATURE-RESEARCH, IF-PAGE-PAYLOAD.
+  - Spec work: decided with the human before the envelope. The candidate is
+    one algorithm ALG-MOTIF-SCHEMATIC (py) - render a repeating group as an
+    SVG from its median geometry - contained, runs-at AUT-PIPELINE-RUN,
+    satisfying INV-NO-SCENE-CLASS, with IF-PATTERNS-ROW as input-of. Whether
+    IF-PAGE-PAYLOAD is authored now rather than held back is part of that
+    decision, since this item changes the payload's shape.
+  - Code path: tools/cluster/vectors_build.py; tools/cluster/vectors_page.py.
+  - Test: the page rebuilt on a real capture, its size reported, and the
+    number of clusters carrying a schematic against the number of clusters;
+    tools/checks/no_scene_class.py over the tree, which must still hold -
+    it is the check that would catch a name creeping back in; npm run
+    spec:check, no violations.
+  - BOUNDARY: combobul and ArkUI are two projects. combobul/spec/spec.db
+    holds the specification of this project's code, in combobul's ontology,
+    written only through combobul's ril. No rule, kind, check or store of
+    one is carried to the other. The engine is installed per machine and is
+    not published from this repository.
+
+  - IMPORTANT: The context you get is not hallucinated, its deterministically extracted.
+  - REFERENCE: If specification authoring details are needed, ask RIL for authoring rules.
+  - INVIOLABLE: SPECIFICATION SURFACE IS AUTHORITATIVE.
+  - INVIOLABLE: NO SCENE CLASSES. A drawing or a grouping made from measured numbers is a
+    measurement. A name, a description or a library of expected shapes matched against the
+    data is a taxonomy, and INV-NO-SCENE-CLASS forbids it.
+  - INVIOLABLE: DO NOT EMIT P3_SKIPPED. If you do not need to modify the specification you must submit a reason.
+  - FORBIDDEN: MULTI-AGENT execution is not allowed. DO NOT SPAWN MULTIPLE AGENTS.
+  - WHEN TO COMMIT: Before "silk run finalize".
+  - DECISION PROTOCOL: If a decision must be made, ask for direct feedback. DO NOT DECIDE ALONE.
+  - AT THE END: update this list as the rule at the head of the list states.
+
+/cb-green — every viewer names what fits nothing
+  - What: a scene the vectors cannot place is shown as such, in the page,
+    rather than being absent from the reader's attention. Two populations,
+    and they are not the same thing:
+      the unmeasurable - a scene with no repeating group at all, which is
+        31 of 299 and leaves pat1_* empty by design, and for the surface
+        vector a scene whose composition is dominated by vis_content or
+        vis_substrate, which is 241 of 299 and means the tags did not
+        resolve;
+      the unclustered - a scene HDBSCAN assigns to no cluster, which is 50
+        of 299 on the pattern vector and 132 on the surface vector.
+    A scene can be both and the page must not merge them: the first is the
+    measurement saying it found nothing, the second is the clustering
+    saying this scene is unlike the others. Each vector's section gets its
+    own listing with counts, the scenes named, and their tiles.
+    The counts are stated against the total on the page itself, so a reader
+    sees what fraction of the capture the clustering actually speaks for.
+    That is the defect this repairs: the page publishes a cluster count and
+    a silhouette with no indication that 44 percent of the surface vector's
+    scenes sit outside all of it.
+  - Read: records 2 and 3; vectors_build.py's build(), where lab < 0 marks
+    an outlier; vectors_page.py; the audit block in the payload.
+  - Spec areas: SUB-FEATURE-RESEARCH, IF-PAGE-PAYLOAD.
+  - Spec work: decided with the human before the envelope. The candidate is
+    one invariant INV-UNPLACED-SCENES-NAMED - every scene the measurement
+    could not describe, and every scene the clustering did not place, is
+    counted and named in the payload and on the page, with the two kept
+    apart - contained, checked-at AUT-PIPELINE-RUN, emitting an error code
+    which may be ERR-SCENE-WITHOUT-REP's sibling or may be new.
+  - Code path: tools/cluster/vectors_build.py; tools/cluster/vectors_page.py;
+    a check under tools/checks/.
+  - Test: the counts reported for both vectors before and after, measured
+    on a real capture; the check failing on a payload with the listing
+    removed and passing with it present; npm run spec:check, no violations.
+  - BOUNDARY: combobul and ArkUI are two projects. combobul/spec/spec.db
+    holds the specification of this project's code, in combobul's ontology,
+    written only through combobul's ril. No rule, kind, check or store of
+    one is carried to the other. The engine is installed per machine and is
+    not published from this repository.
+
+  - IMPORTANT: The context you get is not hallucinated, its deterministically extracted.
+  - REFERENCE: If specification authoring details are needed, ask RIL for authoring rules.
+  - INVIOLABLE: SPECIFICATION SURFACE IS AUTHORITATIVE.
+  - INVIOLABLE: NO SCENE CLASSES. A drawing or a grouping made from measured numbers is a
+    measurement. A name, a description or a library of expected shapes matched against the
+    data is a taxonomy, and INV-NO-SCENE-CLASS forbids it.
+  - INVIOLABLE: DO NOT EMIT P3_SKIPPED. If you do not need to modify the specification you must submit a reason.
+  - FORBIDDEN: MULTI-AGENT execution is not allowed. DO NOT SPAWN MULTIPLE AGENTS.
+  - WHEN TO COMMIT: Before "silk run finalize".
+  - DECISION PROTOCOL: If a decision must be made, ask for direct feedback. DO NOT DECIDE ALONE.
+  - AT THE END: update this list as the rule at the head of the list states.
+
+/cb-green — the two vectors clustered together, beside the two alone
+  - What: a third view, over both vectors at once - the pattern vector's
+    seven columns and the surface vector's five, in one space, clustered as
+    the other two are and shown beside them in the same page. The two
+    vectors describe different things about one scene, and nothing has yet
+    asked whether a scene's layout and its composition agree.
+    The weights are the question this item must answer rather than assume:
+    twelve columns of two different kinds, with the existing per-column
+    weights fitted for each vector on its own. Whether those weights carry
+    over, whether each vector's block is normalised before being joined,
+    and whether the joint space is dominated by whichever vector has more
+    columns - all of it measured and reported, not chosen.
+    Ordered after the surface diagnosis deliberately. If the surface vector
+    is dropped or bounded by the decision before it, this item changes with
+    it, and clustering on a vector that measures its own failure 44 percent
+    of the time would produce a joint view built on it.
+  - Read: records 2 and 3 and the surface diagnosis; vectors_build.py's
+    VECTORS table and build() in full; vectors_page.py's section rendering.
+  - Spec areas: SUB-FEATURE-RESEARCH.
+  - Spec work: decided with the human before the envelope. The candidate is
+    to modify ALG-VECTOR-CLUSTER rather than add a node, since the joint
+    view is the same algorithm over a different column set; a new node is
+    authored only if the joining itself needs one.
+  - Code path: tools/cluster/vectors_build.py; tools/cluster/vectors_page.py.
+  - Test: the three views built on one real capture with their cluster
+    counts, outlier rates and silhouettes side by side; whether the joint
+    view agrees with either vector alone reported as a number, not an
+    impression; the page rebuilt and its size reported; npm run spec:check,
+    no violations.
+  - BOUNDARY: combobul and ArkUI are two projects. combobul/spec/spec.db
+    holds the specification of this project's code, in combobul's ontology,
+    written only through combobul's ril. No rule, kind, check or store of
+    one is carried to the other. The engine is installed per machine and is
+    not published from this repository.
+
+  - IMPORTANT: The context you get is not hallucinated, its deterministically extracted.
+  - REFERENCE: If specification authoring details are needed, ask RIL for authoring rules.
+  - INVIOLABLE: SPECIFICATION SURFACE IS AUTHORITATIVE.
+  - INVIOLABLE: NO SCENE CLASSES. A drawing or a grouping made from measured numbers is a
+    measurement. A name, a description or a library of expected shapes matched against the
+    data is a taxonomy, and INV-NO-SCENE-CLASS forbids it.
+  - INVIOLABLE: DO NOT EMIT P3_SKIPPED. If you do not need to modify the specification you must submit a reason.
+  - FORBIDDEN: MULTI-AGENT execution is not allowed. DO NOT SPAWN MULTIPLE AGENTS.
+  - WHEN TO COMMIT: Before "silk run finalize".
   - DECISION PROTOCOL: If a decision must be made, ask for direct feedback. DO NOT DECIDE ALONE.
   - AT THE END: update this list as the rule at the head of the list states.
