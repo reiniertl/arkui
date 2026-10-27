@@ -54,6 +54,15 @@ HTML = """<!doctype html>
   .pics { display:flex; gap:9px; padding:11px 13px; overflow-x:auto; }
   .pic { flex:0 0 118px; }
   .pic img { width:100%; border-radius:5px; border:1px solid var(--line); display:block; }
+  .cells { display:flex; flex-wrap:wrap; gap:11px; margin:14px 0; }
+  .cel { flex:0 0 150px; border:1px solid var(--line); border-radius:9px;
+    background:var(--card); padding:9px; }
+  .cel.empty { border-style:dashed; opacity:.62; }
+  .cel svg { width:100%; height:150px; display:block; }
+  .cel .noimg { height:150px; display:flex; align-items:center;
+    justify-content:center; font-size:10px; color:var(--dim); text-align:center; }
+  .cel .nm { font-size:11.5px; font-weight:650; margin-top:5px; }
+  .cel .ct { font-size:10px; color:var(--dim); line-height:1.5; margin-top:2px; }
   .pic.brw { position:relative; }
   .pic.brw img { border-style:dashed; }
   .pic .borrowed { position:absolute; left:4px; top:4px; padding:1px 4px;
@@ -99,6 +108,28 @@ var DATA = __DATA__;
                   : "all with a picture") : "")
       + "</div>";
     h += "<p style='margin:0 0 6px'>" + esc(v.blurb) + "</p>";
+    // The PSI cells, shown before the clusters because they are the
+    // partition: a cell is what a scene IS, a cluster is where it sits
+    // relative to the others. An empty cell is drawn dashed and kept in
+    // place, because a declared cell nobody reached is a result.
+    if (key === "pattern" && D.pattern_cells) {
+      var cs = D.pattern_cells, mt = cs.filter(function(c){return !c.n;});
+      h += "<div class='fld'><div class='k'>PSI cells \u00b7 "
+         + cs.length + " declared, " + (cs.length - mt.length) + " reachable"
+         + (mt.length ? ", <span class='flag'>" + mt.length + " empty</span>" : "")
+         + "</div><div class='cells'>";
+      cs.forEach(function (c) {
+        h += "<div class='cel" + (c.n ? "" : " empty") + "'>"
+           + (c.svg ? c.svg : "<div class='noimg'>" + (c.n ? "no drawing"
+                 : "no scene reached<br>this cell") + "</div>")
+           + "<div class='nm'>" + esc(c.cell) + "</div>"
+           + "<div class='ct'>" + c.n + " scene" + (c.n === 1 ? "" : "s")
+           + (c.centre && c.centre.length
+                ? "<br>" + c.centre.map(esc).join("<br>") : "")
+           + "</div></div>";
+      });
+      h += "</div></div>";
+    }
     h += "<div class='fld'><div class='k'>The columns</div><table><tr><th>column</th>"
        + "<th>transform</th><th>weight</th><th>what it measures</th></tr>"
        + v.cols.map(function (c) {
@@ -123,6 +154,9 @@ var DATA = __DATA__;
                    + g.centre.map(esc).join(" \\u00b7 "))
          + "</div></div><div class='pics'>";
       g.reps.forEach(function (r) {
+        // r.cell is the PSI_p cell: what the scene IS under a partition
+        // written down before the data was looked at. r.sil is where it
+        // sits relative to the others. Different questions, both shown.
         // A backstop frame is of this scene but was not taken for it. The
         // capture takes it on arrival, before knowing whether the scene will
         // last, so nothing confirms the screen had not already moved on
@@ -135,7 +169,9 @@ var DATA = __DATA__;
         h += "<div class='pic" + (r.imgsrc === "backstop" ? " brw" : "") + "'>"
            + pic + "<div class='cap'>"
            + esc(r.scene || "") + "<br>"
-           + "sil " + (r.sil === null ? "\\u2014" : r.sil) + "<br>"
+           + "sil " + (r.sil === null ? "\\u2014" : r.sil)
+           + (r.cell ? " \\u00b7 " + esc(r.cell) : "")
+           + (r.sig ? " \\u00b7 " + esc(r.sig) : "") + "<br>"
            + r.cap.map(esc).join("<br>") + "</div></div>";
       });
       h += "</div></div>";
