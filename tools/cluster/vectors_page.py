@@ -112,15 +112,20 @@ var DATA = __DATA__;
     // partition: a cell is what a scene IS, a cluster is where it sits
     // relative to the others. An empty cell is drawn dashed and kept in
     // place, because a declared cell nobody reached is a result.
-    if (key === "pattern" && D._pattern_cells) {
-      var cs = D._pattern_cells, mt = cs.filter(function(c){return !c.n;});
+    var cellKey = key === "pattern" ? "_pattern_cells"
+                : key === "surface" ? "_surface_cells" : null;
+    if (cellKey && D[cellKey]) {
+      var cs = D[cellKey], mt = cs.filter(function(c){return !c.n;});
       h += "<div class='fld'><div class='k'>PSI cells \u00b7 "
          + cs.length + " declared, " + (cs.length - mt.length) + " reachable"
          + (mt.length ? ", <span class='flag'>" + mt.length + " empty</span>" : "")
          + "</div><div class='cells'>";
       cs.forEach(function (c) {
         h += "<div class='cel" + (c.n ? "" : " empty") + "'>"
-           + (c.svg ? c.svg : "<div class='noimg'>" + (c.n ? "no drawing"
+           // The pattern cells carry a schematic. The surface cells do not:
+           // a composition is not a layout, and drawing one would need a
+           // renderer specified before it could be written.
+           + (c.svg ? c.svg : "<div class='noimg'>" + (c.n ? "\\u2014"
                  : "no scene reached<br>this cell") + "</div>")
            + "<div class='nm'>" + esc(c.cell) + "</div>"
            + "<div class='ct'>" + c.n + " scene" + (c.n === 1 ? "" : "s")
@@ -171,6 +176,7 @@ var DATA = __DATA__;
            + esc(r.scene || "") + "<br>"
            + "sil " + (r.sil === null ? "\\u2014" : r.sil)
            + (r.cell ? " \\u00b7 " + esc(r.cell) : "")
+           + (r.scell ? " \\u00b7 " + esc(r.scell) : "")
            + (r.sig ? " \\u00b7 " + esc(r.sig) : "") + "<br>"
            + r.cap.map(esc).join("<br>") + "</div></div>";
       });

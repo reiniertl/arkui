@@ -96,7 +96,6 @@ ORDER
 
   What remains, in this order (records 1 to 6 hold the decisions; each
   prompt names the records it applies):
-    * PSI for the surface vector: the composition cells derived (/cb-green);
     * every viewer names the cell, and what falls outside one (/cb-green);
     * the two vectors together, and whether their patterns are independent
       (/cb-green).
@@ -211,6 +210,22 @@ WHAT IS DONE
     hardened to skip a value that is not a block with groups. Reproduced
     before and verified after on the real capture: exit 1 then exit 0, and all
     five checks green.
+
+  2026-10-27  /cb-green  PSI for the surface vector: the composition cells
+    343f36e.  psi_surface assigns every row one of twenty declared cells -
+    (largest coordinate, second largest), vis_glyph excluded, no threshold
+    anywhere. Ranked by value descending then by the declared coordinate
+    order, because exactly one scene in 299 ties for the largest and the
+    order is therefore part of the partition rather than an implementation
+    detail. psi_rules.py now evaluates the four properties over BOTH spaces
+    from one set of functions, so the two cannot drift. The payload gains
+    _surface_cells, underscored, and every tile carries both of its cells.
+    No drawing was added: a composition is not a layout, the item asked only
+    for the cells, and a renderer would have needed its own node first.
+    NOT MEASURED IN THIS ITEM. Its test needs the 299-scene capture and the
+    authoring machine has none, so it finalized on the authoring gates
+    alone - which is exactly how PSI_p shipped a bug. The numbers go in when
+    the capture machine has run it.
 
 
 
@@ -683,58 +698,6 @@ THE DECISIONS IN FORCE
 ===============================================================================
 PROMPTS
 ===============================================================================
-
-/cb-green — PSI for the surface vector: the composition cells derived
-  - What: the surface space's partition implemented, so a composition is a
-    feature and not five loose fractions. Ordered after the mapping gap is
-    closed, deliberately: until containers stop being filed as content, the
-    simplex coordinates are 0.393 mean content and the cells would be a
-    partition of a measurement error.
-    The partition comes from the simplex, as record 6 states: dominant
-    component and concentration give exhaustive, disjoint cells by
-    construction. Which cells are REACHABLE is the question the data
-    answers, and the item reports the count in each over the real capture,
-    naming every cell that is empty and saying whether it is empty because
-    the device never produces it or because the measurement cannot express
-    it. Those are different findings.
-    The columns that cannot carry information are named as such rather than
-    partitioned: vis_glyph has mean 0.001 and max 0.006 over 299 scenes and
-    is largest in none of them, and vis_text is bounded at 0.312 and largest
-    in none. Whether they are coordinates of the space or are excluded from
-    PSI is decided from the post-fix measurement, not from this text.
-  - Read: records 2, 3 and 6; the formalization; the before/after from the
-    mapping-gap item; rs_pattern.py's visible_surface in full; the full
-    patterns.csv after the fix.
-  - Spec areas: SUB-FEATURE-RESEARCH, IF-PATTERNS-ROW, IF-PAGE-PAYLOAD.
-  - Spec work: implement ALG-PSI-SURFACE against the authored contract and
-    satisfy INV-PSI-* for the surface space. If a column is excluded from
-    PSI, that exclusion is written into IF-PATTERNS-ROW with its measured
-    reason.
-  - Test: every scene assigned to exactly one cell; per-cell counts with
-    every empty cell named and explained; the four properties checked by the
-    check; the outlier rate compared with the figure before the mapping fix;
-    npm run spec:check, no violations.
-  - BOUNDARY: combobul and ArkUI are two projects. combobul/spec/spec.db
-    holds the specification of this project's code, in combobul's ontology,
-    written only through combobul's ril. No rule, kind, check or store of
-    one is carried to the other. The engine is installed per machine and is
-    not published from this repository.
-
-  - IMPORTANT: The context you get is not hallucinated, its deterministically extracted.
-  - IMPORTANT: Every figure is measured in this session against a real capture and written into the report.
-  - REFERENCE: If specification authoring details are needed, ask RIL for authoring rules.
-  - INVIOLABLE: SPECIFICATION SURFACE IS AUTHORITATIVE. Every function this item adds is specified
-    in the DAG before it is written: the algorithm, its preconditions, and the invariants it must hold.
-  - INVIOLABLE: NO SCENE CLASSES. A set derived from the structure of the measurement space, writable
-    without looking at a screenshot, is a function. A list of names matched against data is a class,
-    and INV-NO-SCENE-CLASS forbids it. If you cannot derive it, you may not assert it.
-  - INVIOLABLE: DO NOT EMIT P3_SKIPPED. If you do not need to modify the specification you must submit a reason.
-  - FORBIDDEN: MULTI-AGENT execution is not allowed. DO NOT SPAWN MULTIPLE AGENTS.
-  - WHEN TO COMMIT: Before "silk run finalize".
-  - AFTER COMMIT: the item is not finished until it is pushed. git push is /cb-ops only, so end
-    FINAL_STATUS with an explicit NOT PUSHED line naming /cb-ops.
-  - DECISION PROTOCOL: If a decision must be made, ask for direct feedback. DO NOT DECIDE ALONE.
-  - AT THE END: update this list as the rule at the head of the list states.
 
 /cb-green — every viewer names the cell, and what falls outside one
   - What: a scene the vectors cannot place is shown as such, in the page,

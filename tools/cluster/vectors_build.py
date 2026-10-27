@@ -206,6 +206,52 @@ def psi_pattern_cells():
                           for b in ("major", "minor")]
 
 
+# PSI_s, the partition of the surface space (ALG-PSI-SURFACE). A cell is
+# (largest coordinate, second largest), written largest/second. No
+# threshold appears in it: a threshold is a constant, a constant has to be
+# fitted, and anything fitted on two sessions of one device held by one
+# person is a property of that capture rather than of the space.
+#
+# vis_glyph is not a ranking candidate. A SymbolGlyph is an icon glyph and
+# a Divider is a hairline, both bounded small by what the component IS
+# rather than by what this capture held; over 299 scenes it never exceeds
+# 0.006 and is neither first nor second in any scene. That is an argument
+# from the component and not a proof, and it is the first thing to revisit
+# if a device is captured where a glyph fills a display.
+#
+# The ORDER of this tuple is the declared tie-break and is part of the
+# partition, not an implementation detail. Exactly one scene in 299 ties
+# for the largest coordinate; change this order and that scene moves cell.
+VIS_RANKED = ("vis_xcomp", "vis_image", "vis_text", "vis_content",
+              "vis_substrate")
+
+
+def psi_surface(row):
+    """Which cell of the surface space this scene falls in.
+
+    Ranked by (value descending, declared coordinate order), so a tie is
+    broken by VIS_RANKED and never by what the sort does with equal keys.
+    Total: five candidates always rank, because the six columns are a
+    partition of the display and always exist.
+    """
+    vals = []
+    for i, c in enumerate(VIS_RANKED):
+        raw = (row.get(c) or "").strip()
+        vals.append((-(float(raw) if raw else 0.0), i, c))
+    vals.sort()
+    return "%s/%s" % (vals[0][2][4:], vals[1][2][4:])
+
+
+def psi_surface_cells():
+    """The twenty cells the partition declares: five ranked two deep."""
+    out = []
+    for a in VIS_RANKED:
+        for b in VIS_RANKED:
+            if a != b:
+                out.append("%s/%s" % (a[4:], b[4:]))
+    return out
+
+
 DW_REF, DH_REF = 1316.0, 2832.0      # the captured display; a frame, not a claim
 
 
@@ -385,6 +431,7 @@ def build(rows, img, kind, key, mcs):
                       "img": img.get(row_identity(rows[i])),
                       "imgsrc": kind.get(row_identity(rows[i])),
                       "cell": psi_pattern(rows[i]),
+                      "scell": psi_surface(rows[i]),
                       "sig": (rows[i].get("pat1_pat") or "").strip(),
                       "cap": V["caption"](rows[i]),
                       "sil": (None if np.isnan(per[i]) else round(float(per[i]), 2))}
@@ -504,6 +551,25 @@ def main():
                 "%d cols" % round(_med(mem, "pat1_cols", 1)),
                 "%d members" % round(_med(mem, "pat1_n", 1))]),
         })
+    SIX = ["vis_xcomp", "vis_image", "vis_text", "vis_glyph",
+           "vis_content", "vis_substrate"]
+    by_scell = {c: [] for c in psi_surface_cells()}
+    for r in rows:
+        by_scell[psi_surface(r)].append(r)
+    scells = []
+    for c in psi_surface_cells():
+        mem = by_scell[c]
+        scells.append({
+            "cell": c,
+            "n": len(mem),
+            # The median composition of the scenes in the cell, which is
+            # what the cell looks like. No drawing: a composition is not a
+            # layout, and a renderer would need a node of its own.
+            "centre": ([] if not mem else
+                       ["%s %.2f" % (k[4:], _med(mem, k)) for k in SIX]),
+        })
+    s_empty = [c["cell"] for c in scells if not c["n"]]
+
     empty = [c["cell"] for c in cells if not c["n"]]
     print("\nPSI_p: %d scenes over %d declared cell(s); %d empty"
           % (len(rows), len(cells), len(empty)))
@@ -511,6 +577,14 @@ def main():
         print("  %-14s %4d" % (c["cell"], c["n"]))
     if empty:
         print("  INV-PSI-MINIMAL: empty cell(s): %s" % ", ".join(empty))
+    print("PSI_s: %d scenes over %d declared cell(s); %d empty"
+          % (len(rows), len(scells), len(s_empty)))
+    for c in scells:
+        if c["n"]:
+            print("  %-22s %4d" % (c["cell"], c["n"]))
+    if s_empty:
+        print("  INV-PSI-MINIMAL does NOT hold for the surface space; empty: "
+              "%s" % ", ".join(s_empty))
 
     # The leading underscore is the payload's own convention for a block
     # that is not a vector - _audit already uses it, and every consumer
@@ -518,6 +592,7 @@ def main():
     # no_silent_scene_loss.py that a list of cells was a vector block, and
     # it crashed reaching for .groups on a list.
     out = {"_pattern_cells": cells,
+           "_surface_cells": scells,
            "_audit": {"rows": len(rows), "shown": len(img),
                       "own": len(img) - borrowed, "backstop": borrowed,
                       "missing": missing,

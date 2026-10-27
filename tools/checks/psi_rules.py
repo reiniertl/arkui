@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""The four properties PSI must have, evaluated rather than asserted.
+"""The four properties PSI must have, over both spaces, evaluated.
 
     ./psi_rules.py --patterns patterns.csv [--payload two_payload.json]
 
@@ -39,10 +39,17 @@ sys.path.append(os.path.join(os.path.dirname(HERE), "cluster"))
 import vectors_build as VB            # noqa: E402
 
 
-def check_total(rows):
-    unassigned = [VB.row_identity(r) for r in rows if not VB.psi_pattern(r)]
-    declared = set(VB.psi_pattern_cells())
-    stray = {VB.psi_pattern(r) for r in rows} - declared
+# Each space is (name, the assigning function, the declared cells). The
+# four properties are one family stated over any PSI, so they are checked
+# by one set of functions over both rather than by two copies that drift.
+SPACES = (("pattern", lambda r: VB.psi_pattern(r), VB.psi_pattern_cells),
+          ("surface", lambda r: VB.psi_surface(r), VB.psi_surface_cells))
+
+
+def check_total(rows, name, psi, cells):
+    unassigned = [VB.row_identity(r) for r in rows if not psi(r)]
+    declared = set(cells())
+    stray = {psi(r) for r in rows} - declared
     print("  INV-PSI-TOTAL")
     print("    %d row(s); %d assigned to a declared cell"
           % (len(rows), len(rows) - len(unassigned)))
@@ -54,7 +61,7 @@ def check_total(rows):
     return not unassigned and not stray
 
 
-def check_disjoint(rows):
+def check_disjoint(rows, name, psi, cells):
     """One row, one cell. psi_pattern returns a scalar, so the way this
     breaks is a row whose inputs admit two readings - a coverage exactly
     at the boundary. The comparison is strict, so the boundary belongs to
@@ -69,23 +76,24 @@ def check_disjoint(rows):
     return True
 
 
-def check_minimal(rows):
-    declared = VB.psi_pattern_cells()
+def check_minimal(rows, name, psi, cells):
+    declared = cells()
     counts = {c: 0 for c in declared}
     for r in rows:
-        counts[VB.psi_pattern(r)] += 1
+        counts[psi(r)] += 1
     empty = [c for c in declared if not counts[c]]
     print("  INV-PSI-MINIMAL")
     print("    %d declared cell(s), %d reachable, %d empty"
           % (len(declared), len(declared) - len(empty), len(empty)))
     for c in declared:
-        print("      %-14s %4d" % (c, counts[c]))
+        if counts[c] or len(declared) < 12:
+            print("      %-22s %4d" % (c, counts[c]))
     if empty:
         print("    EMPTY: %s" % ", ".join(empty))
     return not empty
 
 
-def check_orthogonal(rows):
+def check_orthogonal(rows, name, psi, cells):
     """Does the arrangement determine the coverage band, or the reverse?
 
     If every scene of one arrangement fell in one band, that axis would be
@@ -94,19 +102,19 @@ def check_orthogonal(rows):
     """
     seen = {}
     for r in rows:
-        c = VB.psi_pattern(r)
+        c = psi(r)
         if c == VB.CELL_NONE:
             continue
         a, b = c.split("/")
         seen.setdefault(a, set()).add(b)
     determined = [a for a, bs in seen.items() if len(bs) < 2]
     print("  INV-PSI-ORTHOGONAL")
-    print("    arrangements present: %d" % len(seen))
+    print("    first coordinates present: %d" % len(seen))
     for a in sorted(seen):
-        print("      %-8s bands seen: %s" % (a, ", ".join(sorted(seen[a]))))
+        print("      %-10s second seen: %s" % (a, ", ".join(sorted(seen[a]))))
     if determined:
-        print("    %s show only one band, so for them the arrangement "
-              "determines it" % ", ".join(sorted(determined)))
+        print("    %s admit only one second coordinate, so for them the "
+              "first determines it" % ", ".join(sorted(determined)))
         print("    that is a thin-cell warning, not independence lost: the "
               "axes are independent by construction and this says the "
               "capture is thin there")
@@ -124,25 +132,36 @@ def main():
     if not rows:
         raise SystemExit("%s holds no rows" % a.patterns)
 
-    print("PSI_p over %s" % os.path.basename(a.patterns))
-    ok = [check_total(rows), check_disjoint(rows),
-          check_minimal(rows), check_orthogonal(rows)]
+    ok = []
+    for name, psi, cells in SPACES:
+        print("\nPSI_%s over %s" % (name[0], os.path.basename(a.patterns)))
+        ok += [check_total(rows, name, psi, cells),
+               check_disjoint(rows, name, psi, cells),
+               check_minimal(rows, name, psi, cells),
+               check_orthogonal(rows, name, psi, cells)]
 
     if a.payload:
         d = json.load(open(a.payload, encoding="utf-8"))
-        pc = {c["cell"]: c["n"] for c in d.get("_pattern_cells", [])}
-        fresh = {c: 0 for c in VB.psi_pattern_cells()}
-        for r in rows:
-            fresh[VB.psi_pattern(r)] += 1
-        drift = {c: (pc.get(c), fresh[c]) for c in fresh if pc.get(c) != fresh[c]}
-        print("  payload agrees with a fresh assignment: %s"
-              % ("yes" if not drift else "NO"))
-        for c, (p, f) in list(drift.items())[:5]:
-            print("    %s: payload %s, fresh %s" % (c, p, f))
-        ok.append(not drift)
+        print("")
+        for key, psi, cells in (("_pattern_cells", VB.psi_pattern,
+                                 VB.psi_pattern_cells),
+                                ("_surface_cells", VB.psi_surface,
+                                 VB.psi_surface_cells)):
+            pc = {c["cell"]: c["n"] for c in d.get(key, [])}
+            fresh = {c: 0 for c in cells()}
+            for r in rows:
+                fresh[psi(r)] += 1
+            drift = {c: (pc.get(c), fresh[c]) for c in fresh
+                     if pc.get(c) != fresh[c]}
+            print("  %s agrees with a fresh assignment: %s"
+                  % (key, "yes" if not drift else "NO"))
+            for c, (pv, f) in list(drift.items())[:5]:
+                print("    %s: payload %s, fresh %s" % (c, pv, f))
+            ok.append(not drift)
 
+    print("")
     if all(ok):
-        print("  all four hold")
+        print("  all four hold, over both spaces")
         return 0
     print("  VIOLATED")
     return 1
