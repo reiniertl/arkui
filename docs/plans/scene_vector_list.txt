@@ -212,7 +212,7 @@ WHAT IS DONE
     five checks green.
 
   2026-10-27  /cb-green  PSI for the surface vector: the composition cells
-    343f36e.  psi_surface assigns every row one of twenty declared cells -
+    276f450.  psi_surface assigns every row one of twenty declared cells -
     (largest coordinate, second largest), vis_glyph excluded, no threshold
     anywhere. Ranked by value descending then by the declared coordinate
     order, because exactly one scene in 299 ties for the largest and the
