@@ -56,7 +56,7 @@ Every prompt carries a Spec work section naming its specification work node
 by node: each node it adds (id, kind, module, and every edge it carries),
 each node it modifies (id and the fields written), each node and each edge
 it removes. An item that changes no node says so and gives the reason. The
-names a prompt gives are record 6's; the human confirms them before the
+names a prompt gives are record 5's; the human confirms them before the
 envelope is written.
 
 Every prompt carries the BOUNDARY clause: combobul and ArkUI are two
@@ -93,9 +93,8 @@ The baseline the executions read (read each file in full):
 ORDER
 ===============================================================================
 
-  What remains, in this order (records 1 to 7 hold the decisions; each
+  What remains, in this order (records 1 to 6 hold the decisions; each
   prompt names the records it applies):
-    * each threshold given a contract or deleted (/cb-green);
     * correlate.py closed: the premise measured (/cb-green);
     * the 71 scenes given a picture from the periodic shots, by the index
       samples.csv already holds (/cb-green);
@@ -134,25 +133,7 @@ THE DECISIONS IN FORCE
 
      Applied by: every item.
 
-  2. No scene classes. Decided by the human, this session.
-       * There is no taxonomy and none is to be reintroduced. Three were
-         deleted: ark_scene_class_t (20 members), the PowerShell classifier
-         (23 classes, hand-tuned thresholds, a -Separation report), and
-         describe() in rs_pattern.py (7 cell kinds crossed with 4
-         arrangements, gated by NAME_FLOOR).
-       * The clustering confirms nothing. It is given the vectors and
-         nothing else. A cluster is reported by its id, its size, its
-         cohesion and the median of its own columns. What the groups mean,
-         if anything, is read off the tiles by a person.
-       * No vector column holds a string label. A column whose value is a
-         name, rather than a measurement, does not exist.
-       * The discriminators the deleted classifier used are the sharpest
-         written statement of what separates these scenes and are worth
-         keeping as prose. They are not to be executable.
-
-     Applied by: each threshold given a contract.
-
-  3. The two vectors and their column contracts. Decided by the human.
+  2. The two vectors and their column contracts. Decided by the human.
        * The pattern vector — what repeats in the layout, and how much of
          the window it holds. Branches are grouped by a description of
          their subtree, and the group covering the most area wins. Ties
@@ -184,15 +165,32 @@ THE DECISIONS IN FORCE
          content-kind letters off node tags, geometric arrangement, column
          count — and are not matches against a library.
        * Both are measurements. Neither is a class.
+       * Every tuned constant now states its contract as a precondition of
+         the algorithm that reads it: what it separates, what changing it
+         breaks, and that all of them were fitted by sweep on the two
+         sessions of 2026-10-22, 250 scenes of one device held by one
+         person, and have not been re-fitted since. Fourteen were expected
+         and ten were found: COINCIDENT, OVERLAY_IN, OVERLAY_MAX, POS_TOL,
+         BUDGET, OVERSIZE, SURF_MIN, FULLBLEED_H, SURF_BANDS and
+         SLOT_CONTENT, plus the capture's Tol and ShotEvery and the
+         clustering's min_cluster_size and THUMB_W.
+       * Four were dead. SLOT_CHILDREN, SLOTS_BRACKET, SLOTS_BACKGROUND and
+         SLOTS_BORDER were defined and never read - the working notes of
+         the bracket-pair derivation, left behind when the substrate rule
+         replaced them. They are deleted; the derivation and the slot-50
+         caveat live in ALG-VISIBLE-SURFACE's contract beside SLOT_CONTENT,
+         which is the one slot still read. Nothing referenced them, so the
+         output over all 250 scenes is byte-identical.
        * patterns.csv is 61 columns wide, of which these 12 are the vectors
          and 4 identify the scene. The other 45 are measured and carried for
          inspection, not clustered. IF-PATTERNS-ROW names every one and says
          which is which; this record states the vectors alone, and the node
          is where the full width is settled.
 
-          each threshold given a contract; the surface vector's collapse.
+     Applied by: the surface vector's collapse; the diagnosis brought to
+     the human.
 
-  4. What is measured and what is not. Decided by the evidence; verified
+  3. What is measured and what is not. Decided by the evidence; verified
      2026-10-26 against the two capture sessions, 250 scenes.
        * Holds, and is now INV-SURFACE-SUMS-TO-ONE: the six surface columns
          depart from one by at most 0.0060 over 250 rows, against a
@@ -260,10 +258,10 @@ THE DECISIONS IN FORCE
          surface holding the display from everything else, which is real.
          The rest is not settled.
 
-     Applied by: determinism
-     and the tiebreak; the surface vector's collapse.
+     Applied by: the 71 scenes given a picture; the surface vector's
+     collapse; the diagnosis brought to the human.
 
-  5. The open question. Decided by the human, carried from the first audit
+  4. The open question. Decided by the human, carried from the first audit
      (finding F6, CRITICAL).
        * correlate.py states the premise the whole component rests on — do
          features derived from ArkUI carry information about power and
@@ -283,7 +281,7 @@ THE DECISIONS IN FORCE
 
      Applied by: correlate.py closed.
 
-  6. Names, proposed by this list and confirmed by the human before each
+  5. Names, proposed by this list and confirmed by the human before each
      envelope.
        * One module: SUB-FEATURE-RESEARCH, role neutral, containmentProfile
          unrestricted. The authority / implementation / test split is not
@@ -292,7 +290,7 @@ THE DECISIONS IN FORCE
          algorithm is written.
        * Interfaces: IF-CAPTURE-SESSION (language meta), IF-PATTERNS-ROW
          (py). IF-PAGE-PAYLOAD and IF-SCENE-RECORD are held back — see
-         record 7.
+         record 6.
        * Automatons: AUT-CAPTURE-RUN at order 0, the stage on the device;
          AUT-TREE-CHECK at order 1, the gate where tree-level static checks
          run; AUT-PIPELINE-RUN at order 2, the offline run. Every algorithm
@@ -337,7 +335,7 @@ THE DECISIONS IN FORCE
 
      Applied by: every /cb-green item.
 
-  7. What is deliberately not declared yet. Decided by the human.
+  6. What is deliberately not declared yet. Decided by the human.
        * One item left this list without being run. "The two interfaces
          given fields" existed to clear the two AUTH-024 warnings, and its
          own prompt said to re-check the warning after the algorithms
@@ -360,56 +358,16 @@ THE DECISIONS IN FORCE
          computes nothing, and it is reported upstream rather than worked
          around.
 
-     Applied by: the surface vector's collapse; the diagnosis brought to
-     the human.
+     Applied by: the 71 scenes given a picture; the surface vector's
+     collapse; the diagnosis brought to the human.
 
 
 ===============================================================================
 PROMPTS
 ===============================================================================
 
-/cb-green — each threshold given a contract or deleted
-  - What: the fourteen tuned constants given the contract each lacks, as
-    preconditions of the algorithm they belong to: what the constant
-    separates, what capture it was fitted on, and what changing it would
-    break. A constant that cannot state its contract is deleted rather than
-    specified.
-    The constants: COINCIDENT 0.90, OVERLAY_IN 0.80, OVERLAY_MAX 0.40,
-    POS_TOL 40px, BUDGET 8, OVERSIZE 1.5, SURF_MIN 0.25, FULLBLEED_H 0.80,
-    SURF_BANDS (0.25, 0.50, 0.75, 1.00), SLOT_CONTENT 28, SLOT_CHILDREN 29,
-    and the three drawable-slot sets; the capture's Tol 650 and ShotEvery
-    5; the clustering's min_cluster_size 9.
-    The drawable-slot numbers carry a caveat the contract must state: the
-    device emits slot 50 while the longest published OpenHarmony enum ends
-    at 46, so the mapping was recovered by bracket-pair alignment and is an
-    inference about this build, not a published fact.
-  - Read: record 3; rs_pattern.py in full; vectors_build.py's VECTORS
-    table; rs_capture.ps1's parameters.
-  - Spec areas: SUB-FEATURE-RESEARCH.
-  - Spec work: the algorithm nodes of the previous item modified
-    (preconditions) to carry their constants' contracts; a constant with no
-    contract removed from the code and the removal reported. No node is
-    added. The list of constants and their disposition is given to the
-    human before the envelope is written.
-  - Code path: tools/cluster/rs_pattern.py, vectors_build.py;
-    tools/rs_capture.ps1.
-  - Test: the pipeline run on a real capture; any constant removed, its
-    effect on the output measured and reported; npm run spec:check, no
-    violations.
-  - BOUNDARY: as above.
-
-  - IMPORTANT: The context you get is not hallucinated, its deterministically extracted.
-  - REFERENCE: If specification authoring details are needed, ask RIL for authoring rules.
-  - INVIOLABLE: SPECIFICATION SURFACE IS AUTHORITATIVE.
-  - INVIOLABLE: DO NOT EMIT P3_SKIPPED. If you do not need to modify the specification you must submit a reason.
-  - FORBIDDEN: MULTI-AGENT execution is not allowed. DO NOT SPAWN MULTIPLE AGENTS.
-  - WHEN TO COMMIT: Before "silk run finalize".
-  - DECISION PROTOCOL: If a decision must be made, ask for direct feedback. DO NOT DECIDE ALONE.
-  - AT THE END: update this list as the rule at the head of the list states.
-
-
 /cb-green — correlate.py closed: the premise measured
-  - What: record 5's question answered. One capture session on the device
+  - What: record 4's question answered. One capture session on the device
     carrying, on one clock, a scene record per interval and a
     sample_power.sh capture of cpufreq and cpuidle; the join run; the
     answer attached to the spec as evidence.
@@ -421,7 +379,7 @@ PROMPTS
     This item is the cheapest decisive experiment in the repository and it
     has never been run. A negative answer changes what the rest of the work
     is for, and that is reported as the result, not worked around.
-  - Read: record 5; tools/correlate.py and tools/sample_power.sh in full;
+  - Read: record 4; tools/correlate.py and tools/sample_power.sh in full;
     tools/rs_capture.ps1's loop.
   - Spec areas: SUB-FEATURE-RESEARCH.
   - Spec work:
@@ -462,10 +420,10 @@ PROMPTS
     scene that still has none keeps its empty tile and its
     ERR-SCENE-WITHOUT-REP; the count should fall well below 71 and the
     report says what it fell to.
-    This is also what decides record 5's open question: if samples.csv is
+    This is also what decides record 4's open question: if samples.csv is
     read, it stops being an output with no consumer and
     IF-CAPTURE-SESSION is modified to say so.
-  - Read: record 4 and record 5; IF-CAPTURE-SESSION as it stands;
+  - Read: record 3 and record 4; IF-CAPTURE-SESSION as it stands;
     vectors_build.py; one session's samples.csv in full; rs_capture.ps1
     where it decides to photograph.
   - Spec areas: SUB-FEATURE-RESEARCH, IF-CAPTURE-SESSION.
@@ -512,7 +470,7 @@ PROMPTS
     names with a tag the mapping does not cover, and whether the geometry
     fallback already in the code can split it.
     Each finding with its evidence and a recommendation; nothing decided.
-  - Read: records 3, 4 and 7; rs_pattern.py's visible_surface, vis_kind,
+  - Read: records 2, 3 and 6; rs_pattern.py's visible_surface, vis_kind,
     mark_kind and the slot sets, in full; the full patterns.csv of a real
     capture; the page.
   - Spec work: none; an audit changes nothing.
@@ -530,13 +488,13 @@ PROMPTS
     with its evidence and a recommendation. The human rules on the one
     question the list cannot answer for itself: whether the surface vector
     stays as a second measurement, is repaired, or is dropped and the
-    pattern vector left alone. The ruling is written into record 3, which
-    then states the vectors in the form they keep, and record 7's caveat
+    pattern vector left alone. The ruling is written into record 2, which
+    then states the vectors in the form they keep, and record 6's caveat
     is deleted or restated.
     If the surface vector stays, IF-PAGE-PAYLOAD is planned by this session
     and placed in the order; if it is dropped, every later reference to it
     in this list is removed.
-  - Read: the audit's report; records 3, 4 and 7.
+  - Read: the audit's report; records 2, 3 and 6.
   - Spec work: none; the session writes this list and changes no node.
   - BOUNDARY: as above.
 

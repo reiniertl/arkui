@@ -99,26 +99,21 @@ def surface_kind(n):
     return 3 if any(k in t for k in SURF_TAGS) else 0
 
 
-# RSDrawableSlot on this build, recovered by aligning the published enum on
-# the SAVE_FRAME / RESTORE_FRAME pair. See parse_tree for the derivation.
-SLOT_CONTENT = 28           # CONTENT_STYLE
-SLOT_CHILDREN = 29          # CHILDREN
-# Brackets, not paints. Four pairs occur in the dumps that NEVER appear
-# apart - (0,50), (3,22), (11,12) and (24,31) - which is the signature of
-# the enum's four save/restore pairs: SAVE_ALL/RESTORE_ALL,
-# BG_SAVE_BOUNDS/BG_RESTORE_BOUNDS, SAVE_FRAME/RESTORE_FRAME and the
-# bounds pair around them. A bracket sets up or tears down a clip; it puts
-# nothing on the display.
+# RSDrawableSlot on this build. The number is an inference, not a published
+# fact: the device emits slot 50 while the longest published OpenHarmony
+# enum ends at 46, so the mapping was recovered by bracket-pair alignment -
+# four pairs never appear apart, (0,50), (3,22), (11,12) and (24,31),
+# matching the enum's four save/restore pairs, and anchoring on
+# SAVE_FRAME/RESTORE_FRAME = (24,31) puts the content region at master+4.
+# ALG-VISIBLE-SURFACE carries the full derivation and what invalidates it.
 #
-# 11 and 12 were the first two members of the background family here, and
-# they sit on 31.6% of all nodes - every clipping container. That is why
-# "background" claimed the remainder of nearly every scene and dominated
-# 195 of 250: the feature was reading a clip bracket as a painted
-# background. The actual paint slots are rare, as paints should be: 10 at
-# 0.2% of nodes, 13 at 1.0%, 14 at 6.1%, 15 at 0.7%, 18 at 0.3%.
-SLOTS_BRACKET = frozenset((0, 3, 11, 12, 22, 24, 31, 50))
-SLOTS_BACKGROUND = frozenset((10, 13, 14, 15, 17, 18))
-SLOTS_BORDER = frozenset((43,))
+# Only this one is read. The bracket, background and border sets were
+# defined and never used: they were the working notes of that derivation,
+# and the lesson in them - that 11 and 12 are clip brackets on 31.6% of
+# nodes, which is why background once dominated 195 of 250 scenes - belongs
+# to the rule that substrate is the complement, not to a constant nothing
+# touches.
+SLOT_CONTENT = 28           # CONTENT_STYLE
 
 # Only content competes for pixels. A background is the substrate: it is
 # what you see where nothing else was drawn, so letting it claim the
