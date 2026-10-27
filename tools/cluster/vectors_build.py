@@ -158,13 +158,15 @@ def rep_path(shot, captures, reps):
     return None
 
 
-def periodic_index(captures):
-    """stem -> the periodic frame that was on the display while it was.
+def backstop_index(captures):
+    """stem -> the backstop frame that was on the display while it was.
 
     The capture photographs a scene when its pair settles. A scene that
     never settles gets no picture of its own, and the backstop is a frame
-    taken every few seconds named p<nnnnnn>.jpeg, where nnnnnn is the
-    number of the sample it was taken at. Nothing in that filename says
+    named p<nnnnnn>.jpeg, where nnnnnn is the number of the sample it was
+    taken at. Until 2026-10-27 it was taken every few seconds, which is why
+    the older captures hold so many of a scene that needed none; it is now
+    taken on arrival at a scene with no picture yet. Nothing in that filename says
     which scene it shows; samples.csv is what says so, and until now
     nothing read it.
 
@@ -309,9 +311,9 @@ def main():
     # INV-NO-SILENT-SCENE-LOSS: every measured row reaches the payload or is
     # reported in it. A scene with no picture is still measured and still
     # clustered; only its tile is poorer for it.
-    # The frames taken for no scene in particular, so a scene that never
-    # settled can still show what was on the display while it was.
-    periodic = periodic_index(a.captures) if a.captures else {}
+    # The frames taken as a backstop, so a scene that never settled can
+    # still show what was on the display while it was.
+    backstop = backstop_index(a.captures) if a.captures else {}
 
     img, kind, missing, unmatched = {}, {}, [], []
     borrowed = 0
@@ -322,9 +324,9 @@ def main():
         if path:
             img[sid] = thumbnail(path, a.thumb)
             kind[sid] = "own"
-        elif sid in periodic:
-            img[sid] = thumbnail(periodic[sid], a.thumb)
-            kind[sid] = "periodic"
+        elif sid in backstop:
+            img[sid] = thumbnail(backstop[sid], a.thumb)
+            kind[sid] = "backstop"
             borrowed += 1
         else:
             missing.append(sid)
@@ -339,11 +341,11 @@ def main():
               "there: %s" % (len(unmatched), ", ".join(unmatched[:5])
                              + (" and %d more" % (len(unmatched) - 5)
                                 if len(unmatched) > 5 else "")))
-    print("  pictures: %d taken for the scene, %d borrowed from a periodic "
-          "frame, %d none" % (len(img) - borrowed, borrowed, len(missing)))
-    if a.captures and not borrowed and periodic:
-        print("  (the periodic index found %d frame(s) but none belonged to a "
-              "scene that needed one)" % len(periodic))
+    print("  pictures: %d taken for the scene, %d from a backstop frame, "
+          "%d none" % (len(img) - borrowed, borrowed, len(missing)))
+    if a.captures and not borrowed and backstop:
+        print("  (the backstop index found %d frame(s) but none belonged to a "
+              "scene that needed one)" % len(backstop))
     if missing:
         print("ERR-SCENE-WITHOUT-REP: %d of %d scenes have no screenshot; they "
               "are measured and clustered, and their tiles carry no picture."
@@ -355,7 +357,7 @@ def main():
                   % (len(missing) - 10))
 
     out = {"_audit": {"rows": len(rows), "shown": len(img),
-                      "own": len(img) - borrowed, "periodic": borrowed,
+                      "own": len(img) - borrowed, "backstop": borrowed,
                       "missing": missing,
                       "captures": a.captures or None, "reps": a.reps or None}}
     for key in VECTORS:

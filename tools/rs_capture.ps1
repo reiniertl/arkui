@@ -35,8 +35,6 @@ param(
     [string] $Dir       = "captures",
     [int]    $Tol       = 650,     # permille of rects shared before two
                                    # samples count as the same scene
-    [int]    $ShotEvery = 5,       # take a picture anyway after this many
-                                   # samples on one scene that never settles
     [switch] $ShowCmd              # echo every hdc command
 )
 
@@ -238,7 +236,7 @@ function Get-RsQuickSig {
 # Repeats cost two dumps and a regex pass. Only a new scene pays for storage
 # and a screenshot, which on a phone held on one screen is almost never.
 function Invoke-RsFastCapture {
-    param([int] $Seconds, [string] $Dir, [int] $Tol = 650, [int] $ShotEvery = 5)
+    param([int] $Seconds, [string] $Dir, [int] $Tol = 650)
 
     # Every candidate was probed and none produced a file. Stopping here
     # rather than capturing on: a session of dumps with no picture for any
@@ -311,8 +309,7 @@ function Invoke-RsFastCapture {
     # seconds.
     $pending  = @{}          # scene key -> stem still waiting for a picture
     $prevKey  = ""
-    $lastShot = (Get-Date).AddSeconds(-$ShotEvery)
-    $shots = 0; $periodic = 0
+    $shots = 0; $backstop = 0
 
     while (((Get-Date) - $t0).TotalSeconds -lt $Seconds) {
         $sw.Restart()
@@ -345,7 +342,6 @@ function Invoke-RsFastCapture {
                 $shot = $st + $script:ShotExt
                 $pending.Remove($key)
                 $shots++
-                $lastShot = Get-Date
             }
         } else {
             $idx++
@@ -360,18 +356,32 @@ function Invoke-RsFastCapture {
             $pending[$key] = $stem
         }
 
-        # The backstop. A scene seen once and never again never earns a
-        # stable pair, so without this it would have no picture at all - and
-        # a periodic frame taken while the display sat on one screen is the
-        # best evidence available for it. Which scene each belongs to is
-        # settled offline, against the signature of the sample it was taken
-        # at, which is why the sample number is in the name.
-        if (-not $shot -and ((Get-Date) - $lastShot).TotalSeconds -ge $ShotEvery) {
+        # The backstop, on arrival at a scene that has no picture yet. A scene
+        # present for a single sample never appears twice running, so it never
+        # earns a stable pair, and this is the only moment it is on the display
+        # at all - the next sample is already somewhere else.
+        #
+        # $pending holds exactly the scenes recorded and not yet photographed,
+        # and an arrival is $key -ne $prevKey, so the condition needs no state
+        # of its own. Sitting on the scene does not re-fire it: the next sample
+        # has $key -eq $prevKey and takes the stable pair instead, which is the
+        # better picture and supersedes this one.
+        #
+        # This replaced a 5-second wall clock on 2026-10-27. Measured over six
+        # sessions, that clock put 167 of its 169 frames on a scene that
+        # already had its own picture, because a scene held long enough for the
+        # clock to fire is a scene already photographed by the rule above. It
+        # photographed the scenes that least needed it and missed every
+        # short-lived one.
+        #
+        # Which scene the frame belongs to is settled offline, against the
+        # signature of the sample it was taken at, which is why the sample
+        # number is in the name: nothing in the file itself can say.
+        if (-not $shot -and $key -ne $prevKey -and $pending.ContainsKey($key)) {
             $pn = "p{0:D6}" -f $n
             Invoke-HdcRaw ("shell `"{0} {1}/{2}{3}`"" -f $script:ShotBin, $devDir, $pn, $script:ShotExt) | Out-Null
             $shot = $pn + $script:ShotExt
-            $lastShot = Get-Date
-            $periodic++
+            $backstop++
         }
 
         $row = [PSCustomObject]@{
@@ -395,12 +405,12 @@ function Invoke-RsFastCapture {
     }
 
     # One transfer for every picture taken, now that the device is free.
-    # Against the number of pictures TAKEN, not the number of scenes. Scene
-    # shots and periodic ones both land here, so comparing to the scene count
+    # Against the number of pictures TAKEN, not the number of scenes. Settled
+    # frames and backstop ones both land here, so comparing to the scene count
     # printed "51 of 39 arrived" - and worse, it would have called a transfer
     # complete and wiped the device while pictures were still missing, as
     # long as more than one per scene had made it back.
-    $want = $shots + $periodic
+    $want = $shots + $backstop
     if ($want -gt 0) {
         Write-Host ""
         Write-Host ("  pulling {0} pictures back in one transfer..." -f $want) -ForegroundColor DarkGray
@@ -434,8 +444,10 @@ function Invoke-RsFastCapture {
     Write-Host ""
     Write-Host ("captured {0:N0}s: {1} samples, {2} distinct scenes, {3} failed" -f $el, $n, $idx, $failed) -ForegroundColor Green
     Write-Host ("  raw stream: {0} dumps, {1:N0} MB in {2}" -f $n, $rawMB, $rawDir) -ForegroundColor DarkGray
-    Write-Host ("  pictures: {0} on a stable pair, {1} periodic, {2} scenes never settled" -f `
-        $shots, $periodic, $pending.Count) -ForegroundColor DarkGray
+    # $pending.Count is the scenes that ended the run with no picture at all,
+    # which is INV-EVERY-DISTINCT-SCENE-PHOTOGRAPHED's count. It should be 0.
+    Write-Host ("  pictures: {0} on a stable pair, {1} backstop, {2} scenes with none" -f `
+        $shots, $backstop, $pending.Count) -ForegroundColor DarkGray
     if ($n -gt 0) { Write-Host ("  {0:N2} s per sample" -f ($el / $n)) -ForegroundColor Green }
     Write-Host ("  -> {0}" -f $session)
     Write-Host ""
@@ -443,4 +455,4 @@ function Invoke-RsFastCapture {
     Write-Host ("  python tools/cluster/rs_pattern.py {0} --out patterns.csv" -f $Dir) -ForegroundColor DarkCyan
 }
 
-Invoke-RsFastCapture -Seconds $Seconds -Dir $Dir -Tol $Tol -ShotEvery $ShotEvery
+Invoke-RsFastCapture -Seconds $Seconds -Dir $Dir -Tol $Tol

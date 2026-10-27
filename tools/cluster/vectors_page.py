@@ -123,15 +123,16 @@ var DATA = __DATA__;
                    + g.centre.map(esc).join(" \\u00b7 "))
          + "</div></div><div class='pics'>";
       g.reps.forEach(function (r) {
-        // A borrowed frame is of this scene but was not taken for it: the
-        // capture photographs on a timer when a scene never settles, so the
-        // frame is from some sample while the scene was up. Saying so on the
-        // tile is the difference between evidence and decoration.
+        // A backstop frame is of this scene but was not taken for it. The
+        // capture takes it on arrival, before knowing whether the scene will
+        // last, so nothing confirms the screen had not already moved on
+        // between the dump and the shot. Saying so on the tile is the
+        // difference between evidence and decoration.
         var pic = r.img
           ? "<img loading='lazy' src='" + r.img + "'>"
-            + (r.imgsrc === "periodic" ? "<div class='borrowed'>periodic</div>" : "")
+            + (r.imgsrc === "backstop" ? "<div class='borrowed'>backstop</div>" : "")
           : "<div class='nopic'>no picture</div>";
-        h += "<div class='pic" + (r.imgsrc === "periodic" ? " brw" : "") + "'>"
+        h += "<div class='pic" + (r.imgsrc === "backstop" ? " brw" : "") + "'>"
            + pic + "<div class='cap'>"
            + esc(r.scene || "") + "<br>"
            + "sil " + (r.sil === null ? "\\u2014" : r.sil) + "<br>"

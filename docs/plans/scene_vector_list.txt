@@ -91,7 +91,6 @@ ORDER
 
   What remains, in this order (records 1 to 5 hold the decisions; each
   prompt names the records it applies):
-    * the capture photographs what never settles (/cb-green);
     * the surface vector's collapse diagnosed (/cb-audit);
     * the diagnosis brought to the human, the surface vector kept or
       dropped (/cb-free).
@@ -242,14 +241,27 @@ THE DECISIONS IN FORCE
          land on a scene that already has its own picture, and 2 on a scene
          without one. samples.csv is now read by vectors_build.py and the
          count fell from 74 to 72 of 272, not to near zero.
-       * The reason is the capture's rule, not the index. The backstop
-         fires on a 5-second wall clock, which at 0.3-0.5s per sample is
-         every 10 to 16 samples, while the scenes that lack a picture are
-         exactly the short-lived ones that never settle. The backstop
-         photographs the scenes that least need it. Repairing that is the
-         item "the capture photographs what never settles", and it can only
-         help captures taken after it: the frames for the existing 72 were
-         never taken and no index can conjure them.
+       * The reason was the capture's rule, not the index, and it was
+         repaired on 2026-10-27. The backstop fired on a 5-second wall
+         clock, which at 0.3-0.5s per sample is every 10 to 16 samples,
+         while the scenes that lack a picture are the short-lived ones that
+         never settle; it photographed the scenes that least needed it. It
+         now fires on arrival at a scene that has no picture yet, which is
+         the only moment a one-sample scene is on the display, and the
+         clock is deleted: a scene held across two samples already earns a
+         settled frame from the twice-running rule, so the clock could only
+         ever fire for a scene that already had a picture.
+       * Measured. First capture under the new rule: 27 scenes, 18 settled,
+         9 carried by a backstop frame, 0 with none, at 0.33s per sample -
+         covering every scene cost nothing in sampling rate. Every session
+         captured before it still fails the check, and permanently: 73
+         scenes whose frames were never taken, which no later change
+         reaches backwards. INV-EVERY-DISTINCT-SCENE-PHOTOGRAPHED and
+         tools/checks/capture_coverage.py are what hold it from here.
+       * ShotEvery is gone. Its name meant a count of samples in
+         ALG-CAPTURE-LOOP's preconditions and a count of wall-clock seconds
+         in the code, and the two never agreed; deleting the clock removed
+         the disagreement rather than resolving it.
        * What the repair changed, over the full capture: the pattern vector
          goes from 6 clusters, 19 fitting none (11%) and silhouette 0.499
          over 179 scenes, to 6 clusters, 27 fitting none (11%) and
@@ -265,8 +277,8 @@ THE DECISIONS IN FORCE
          surface holding the display from everything else, which is real.
          The rest is not settled.
 
-     Applied by: the capture photographs what never settles; the surface
-     vector's collapse; the diagnosis brought to the human.
+     Applied by: the surface vector's collapse; the diagnosis brought to
+     the human.
 
   4. Names, proposed by this list and confirmed by the human before each
      envelope.
@@ -310,6 +322,8 @@ THE DECISIONS IN FORCE
          ALG-PARSE-RSTREE, ALG-PAINT-ORDER, ALG-OWNERSHIP,
          ALG-OWNER-SELECT, ALG-BRANCH-GROUP, ALG-VISIBLE-SURFACE,
          ALG-MEDIA-SURFACE, ALG-VECTOR-CLUSTER.
+       * Invariants added since: INV-EVERY-DISTINCT-SCENE-PHOTOGRAPHED,
+         checked-at AUT-PIPELINE-RUN, emitting ERR-SCENE-WITHOUT-REP.
        * Error codes: ERR-SCENE-WITHOUT-REP (WARN),
          ERR-DISPLAY-DUMP-MISSING (WARN), ERR-CLIENT-DUMP-MISSING (WARN),
          ERR-NO-OWNER-WINDOW (ERROR), ERR-JOIN-KEY-UNMATCHED (ERROR),
@@ -341,58 +355,13 @@ THE DECISIONS IN FORCE
          computes nothing, and it is reported upstream rather than worked
          around.
 
-     Applied by: the capture photographs what never settles; the surface
-     vector's collapse; the diagnosis brought to the human.
+     Applied by: the surface vector's collapse; the diagnosis brought to
+     the human.
 
 
 ===============================================================================
 PROMPTS
 ===============================================================================
-
-/cb-green — the capture photographs what never settles
-  - What: rs_capture.ps1 photographs a scene when its pair settles, and
-    takes a backstop frame otherwise on a 5-second wall clock. Measured on
-    2026-10-27 over six sessions: 272 measured scenes, 198 with their own
-    picture, 74 without, and of the 169 periodic frames 167 land on a scene
-    that already has one. At 0.3-0.5s per sample a 5-second timer fires
-    every 10 to 16 samples, so it photographs whatever is on the display
-    for a long time - which is the scene that least needs it - and misses
-    the short-lived ones entirely.
-    So the backstop fires on a scene change into a scene that has no
-    picture yet, rather than on elapsed time. The timer stays as a second
-    condition so a long-lived scene that never settles is still eventually
-    photographed, but it is no longer the only one.
-    This cannot recover the 72 scenes already without a picture: their
-    frames were never taken. It is measured on a NEW capture, against the
-    same count on an old one, and the item reports both.
-  - Read: record 3; rs_capture.ps1 where it decides to photograph, and
-    where it decides a scene is new; IF-CAPTURE-SESSION as it stands.
-  - Spec areas: SUB-FEATURE-RESEARCH, IF-CAPTURE-SESSION, ALG-CAPTURE-LOOP.
-  - Spec work: decided with the human before the envelope. The candidate is
-    one invariant on ALG-CAPTURE-LOOP - every distinct scene is
-    photographed, by its own settled pair or by a backstop taken while it
-    was on the display - authored in the VIOLATED state the capture is in
-    so the fix moves it to satisfied. IF-CAPTURE-SESSION's description is
-    modified to state the new rule and the count it yields.
-  - Code path: tools/rs_capture.ps1.
-  - Test: a new capture driven across many short-lived scenes, with the
-    count of scenes lacking a picture reported for it and for an existing
-    session measured the same way; the pipeline run end to end; npm run
-    spec:check, no violations.
-  - BOUNDARY: combobul and ArkUI are two projects. combobul/spec/spec.db
-    holds the specification of this project's code, in combobul's ontology,
-    written only through combobul's ril. No rule, kind, check or store of
-    one is carried to the other. The engine is installed per machine and is
-    not published from this repository.
-
-  - IMPORTANT: The context you get is not hallucinated, its deterministically extracted.
-  - REFERENCE: If specification authoring details are needed, ask RIL for authoring rules.
-  - INVIOLABLE: SPECIFICATION SURFACE IS AUTHORITATIVE.
-  - INVIOLABLE: DO NOT EMIT P3_SKIPPED. If you do not need to modify the specification you must submit a reason.
-  - FORBIDDEN: MULTI-AGENT execution is not allowed. DO NOT SPAWN MULTIPLE AGENTS.
-  - WHEN TO COMMIT: Before "silk run finalize".
-  - DECISION PROTOCOL: If a decision must be made, ask for direct feedback. DO NOT DECIDE ALONE.
-  - AT THE END: update this list as the rule at the head of the list states.
 
 /cb-audit — the surface vector's collapse diagnosed
   - What: why the surface vector collapses towards one axis on this

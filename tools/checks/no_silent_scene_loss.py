@@ -23,10 +23,10 @@ one only under the flat form. Those two numbers are what showed the loss
 was an addressing mistake rather than missing data.
 
 It also reports where each shown picture came from. A tile can hold a
-frame taken for its own scene or a periodic frame borrowed from a sample
-while that scene was on the display, and those are not the same evidence.
+frame taken for its own scene or a backstop frame taken on arrival while
+that scene was on the display, and those are not the same evidence.
 The split is checked against the payload's audit so the two cannot drift:
-a page that fills a tile from a periodic frame and does not say so is
+a page that fills a tile from a backstop frame and does not say so is
 showing something it did not measure.
 
 Exit 0 when the invariant holds, 1 when it does not.
@@ -102,13 +102,13 @@ def main():
     print("  reported missing        : %d" % len(missing))
 
     # Where the shown pictures came from, and whether the tiles agree with
-    # the audit. A borrowed frame that is not marked is the failure this
+    # the audit. A backstop frame that is not marked is the failure this
     # reports: the page would be showing another sample as if it were this
     # scene's own.
-    own, per = audit.get("own"), audit.get("periodic")
+    own, per = audit.get("own"), audit.get("backstop")
     if own is not None or per is not None:
-        print("  of those shown          : %s taken for the scene, %s borrowed "
-              "from a periodic frame" % (own, per))
+        print("  of those shown          : %s taken for the scene, %s from a "
+              "backstop frame" % (own, per))
         d = json.load(open(a.payload, encoding="utf-8"))
         marked, unmarked = set(), set()
         for key, v in d.items():
@@ -118,11 +118,11 @@ def main():
                 for r in g.get("reps", []):
                     if not r.get("img"):
                         continue
-                    (marked if r.get("imgsrc") == "periodic" else unmarked).add(
+                    (marked if r.get("imgsrc") == "backstop" else unmarked).add(
                         r.get("scene"))
-        print("  tiles marked periodic   : %d" % len(marked))
+        print("  tiles marked backstop   : %d" % len(marked))
         if per is not None and len(marked) != per:
-            print("  the audit says %s borrowed but %d tile(s) say so"
+            print("  the audit says %s from a backstop but %d tile(s) say so"
                   % (per, len(marked)))
             print("  VIOLATED")
             return 1
