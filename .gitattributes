@@ -1,0 +1,23 @@
+# Line endings belong to the repository, not to the machine that checked it
+# out. Without this file a Windows clone with core.autocrlf=true - which the
+# capture machine has - writes CRLF into the working tree, and every tool
+# that rewrites a file writes LF back. git then reports a modification whose
+# content is byte-identical, `git pull --ff-only` refuses to overwrite it,
+# and the capture machine silently stops receiving commits. That is not
+# hypothetical: on 2026-10-27 it left the machine four commits behind, the
+# implementation list read there was stale, and an item the repository had
+# already finished was executed a second time.
+#
+# The declaration is `eol=lf`, not a request to configure core.autocrlf on
+# each machine. A rule that lives in the repository holds for every clone
+# including the next one; a rule that lives in a local config holds until
+# someone clones again.
+* text=auto eol=lf
+
+# The mutation log is gzip, and it is the source of truth for the spec graph:
+# spec.db is a local cache rebuilt from these files. git's own heuristic
+# already classifies them as binary - `git ls-files --eol` reports i/-text -
+# but heuristics are a poor guard for the one artifact whose corruption
+# cannot be noticed by reading it. Declared, not detected.
+*.cbm binary
+*.cbs binary
