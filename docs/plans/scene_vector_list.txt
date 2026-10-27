@@ -277,7 +277,7 @@ WHAT IS DONE
     repaired already.
 
   2026-10-27  /cb-green  the two vectors together, and whether independent
-    <commit>.  The last item, and a negative one. Two measurements that
+    4d22713.  The last item, and a negative one. Two measurements that
     point opposite ways, both reported.
     NOT REDUNDANT: over 299 scenes the contingency of the two cell
     assignments gives chi-square 272.8 on 120 df, Cramers V 0.338 and
