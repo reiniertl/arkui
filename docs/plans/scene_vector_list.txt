@@ -26,6 +26,11 @@ Each item is one skill execution, run in the order below.
 Every item ends by bringing this list to the state its work leaves, in the
 same session, before the gate is cleared:
 - the item is deleted, with its line under What remains, and its prompt;
+- the item is appended to WHAT IS DONE, with its date, its commit and what
+  it actually found - including when what it found is that the item itself
+  was wrong. Deleting an item without recording it leaves a list that shows
+  only what is left, and a reader of that list cannot tell work that was
+  done from work that was dropped;
 - each record of THE DECISIONS IN FORCE the item applies is written again to
   what is still to do, its "Applied by" line naming only the items left, and
   deleted when no item is left;
@@ -98,6 +103,92 @@ ORDER
     * the two vectors together, and whether their patterns are independent
       (/cb-green).
   After this list: nothing is planned.
+
+
+===============================================================================
+WHAT IS DONE
+===============================================================================
+
+  Appended by each item before its gate is cleared, oldest first. The commit
+  is where the work is; this is what it found.
+
+  2026-10-27  /cb-free   the scope restated: collection and clustering only
+    92caf92.  Not an item of this list - the human stopped an item in flight.
+    The power experiment was removed in full: correlate.py, sample_power.sh,
+    scene_records.py, run_experiment.ps1, the CLOCK_MONOTONIC column added to
+    the capture index, and the spec nodes IF-SCENE-RECORD,
+    INV-SCENE-RECORD-CLOCK, ALG-SCENE-RECORDS and ALG-CORRELATE. correlate.py
+    and sample_power.sh predated the session and had never been run. The
+    instrumentation worked - 1391 power samples over 100 percent of a capture
+    window - and none of it was this project's business.
+
+  2026-10-27  /cb-green  the 71 scenes given a picture from the periodic shots
+    23a8f0e.  THE ITEM'S PREMISE WAS FALSE. samples.csv is now read and the
+    association works, through the sig of the sample whose number the
+    filename carries. It recovers almost nothing: 167 of the 169 periodic
+    frames land on a scene that already had its own picture, so the count of
+    scenes without one fell 74 to 72, not to near zero. Two independent joins
+    agree. The cause was the capture's rule, which became the next item.
+
+  2026-10-27  /cb-green  the capture photographs what never settles
+    30d20b9.  The backstop fired on a 5-second wall clock, so it photographed
+    whatever sat on the display longest - the scene that had already earned a
+    settled frame - and never the short-lived ones. It now fires on arrival at
+    a scene with no picture yet. Measured on a new capture: 27 scenes, 18
+    settled, 9 backstop, 0 with none, at 0.33s per sample. The 72 already
+    without a picture stay without one permanently; their frames were never
+    taken. INV-EVERY-DISTINCT-SCENE-PHOTOGRAPHED and capture_coverage.py.
+
+  2026-10-27  /cb-free   the list rebuilt around the vectors separating scenes
+    1eb92fc, and 095e2de for the READMEs that documented a command producing
+    an undeclared artefact and still advertised the --reps directory that
+    silently dropped 71 scenes.
+
+  2026-10-27  /cb-audit  the surface vector's collapse diagnosed
+    No commit; an audit changes nothing. Findings in record 3. The headline
+    one was WRONG and the item after it proved so - see below.
+
+  2026-10-27  /cb-free   the list rebuilt around PHI and PSI
+    9fb3fe5.  Record 6 written: the pipeline is two mappings, PSI is the one
+    that is missing, and a pattern set must be total, disjoint, minimal and
+    orthogonal.
+
+  2026-10-27  /cb-green  the surface mapping gap closed
+    bbe00ad.  THE AUDIT'S CENTRAL CLAIM WAS WRONG, and measuring the right
+    population before authoring is what caught it. The audit said the content
+    bucket is dominated by layout containers; it had measured the vocabulary
+    of every client-dump node and asserted it of a population it never
+    measured. Stack, Row and Column carry no slot 28 and never reach the
+    bucket at all. What is in it: 6,151 nodes under eleven tags, and by area
+    NO-TAG 0.184 and WaterFlow 0.158 of 0.393. The rule is structural, not a
+    vocabulary: a node that paints with a painting descendant is painting
+    background. vis_content 0.393 to 0.177, vis_substrate 0.320 to 0.488, and
+    image, xcomp and text all ROSE, because real content had been occluded by
+    untyped backdrops. AND THE CLUSTERING BARELY MOVED - 132 outliers to 130 -
+    so the collapse was never the mapping gap.
+
+  2026-10-27  /cb-green  line endings declared by the repository
+    3723a23.  Not an item of this list. The capture machine has
+    core.autocrlf=true and the repo had no .gitattributes, so git wrote CRLF
+    on checkout while every tool that rewrote a file wrote LF back; git called
+    that a modification though the bytes were identical and the pull refused.
+    The machine fell four commits behind in silence, the list read there was
+    stale, and an item already finished was run a second time. I had recorded
+    the cause as an agent habit - copying files over instead of pulling - and
+    that habit was real but was not the mechanism. INV-TEXT-STORED-LF.
+    Verified on the capture machine: ril rebuild twice, tree clean both times.
+
+  2026-10-27  /cb-green  the two feature spaces formalized, PHI and PSI declared
+    ff38b9b.  PSI_p = (arrangement, coverage above half) plus a none cell: 9
+    cells, 9 reachable. PSI_s = (largest, second largest) with vis_glyph
+    excluded and no threshold anywhere: 20 cells, 16 reachable. The
+    (argmax, above half) alternative was measured and rejected - one cell
+    would hold 60 percent of the capture. INV-PSI-MINIMAL DOES NOT HOLD for
+    the surface space: 4 cells empty, all of them where vis_text leads,
+    because text is never the largest coordinate in any of 299 scenes.
+    Authored with the failure rather than with a weakened predicate.
+    docs/design/feature-spaces.md carries the reasoning.
+
 
 
 ===============================================================================
