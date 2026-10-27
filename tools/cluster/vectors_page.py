@@ -112,8 +112,8 @@ var DATA = __DATA__;
     // partition: a cell is what a scene IS, a cluster is where it sits
     // relative to the others. An empty cell is drawn dashed and kept in
     // place, because a declared cell nobody reached is a result.
-    if (key === "pattern" && D.pattern_cells) {
-      var cs = D.pattern_cells, mt = cs.filter(function(c){return !c.n;});
+    if (key === "pattern" && D._pattern_cells) {
+      var cs = D._pattern_cells, mt = cs.filter(function(c){return !c.n;});
       h += "<div class='fld'><div class='k'>PSI cells \u00b7 "
          + cs.length + " declared, " + (cs.length - mt.length) + " reachable"
          + (mt.length ? ", <span class='flag'>" + mt.length + " empty</span>" : "")

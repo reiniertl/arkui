@@ -43,6 +43,15 @@ def payload_scenes(path):
     for key, v in d.items():
         if key.startswith("_"):
             continue
+        # A top-level key that is not a vector block is skipped, not
+        # assumed. The convention is that an underscore marks those, and
+        # when `pattern_cells` was added without one this reached for
+        # .groups on a list and took the whole check down with an
+        # AttributeError. A check that dies on an unfamiliar key cannot
+        # report on the invariant it exists for, which is worse than a
+        # check that ignores one.
+        if not isinstance(v, dict) or "groups" not in v:
+            continue
         for g in v.get("groups", []):
             for r in g.get("reps", []):
                 sid = r.get("scene")

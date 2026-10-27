@@ -512,7 +512,12 @@ def main():
     if empty:
         print("  INV-PSI-MINIMAL: empty cell(s): %s" % ", ".join(empty))
 
-    out = {"pattern_cells": cells,
+    # The leading underscore is the payload's own convention for a block
+    # that is not a vector - _audit already uses it, and every consumer
+    # skips those keys. Adding `pattern_cells` without it told
+    # no_silent_scene_loss.py that a list of cells was a vector block, and
+    # it crashed reaching for .groups on a list.
+    out = {"_pattern_cells": cells,
            "_audit": {"rows": len(rows), "shown": len(img),
                       "own": len(img) - borrowed, "backstop": borrowed,
                       "missing": missing,

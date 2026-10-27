@@ -130,7 +130,7 @@ def main():
 
     if a.payload:
         d = json.load(open(a.payload, encoding="utf-8"))
-        pc = {c["cell"]: c["n"] for c in d.get("pattern_cells", [])}
+        pc = {c["cell"]: c["n"] for c in d.get("_pattern_cells", [])}
         fresh = {c: 0 for c in VB.psi_pattern_cells()}
         for r in rows:
             fresh[VB.psi_pattern(r)] += 1
