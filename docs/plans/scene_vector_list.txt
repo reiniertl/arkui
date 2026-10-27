@@ -237,7 +237,7 @@ WHAT IS DONE
     item below.
 
   2026-10-27  /cb-green  the disjoint check parameterised, and specified
-    <commit>.  check_disjoint took (rows, name, psi, cells) like its three
+    f537527.  check_disjoint took (rows, name, psi, cells) like its three
     siblings and used none of them: it read pat1_cover directly, so under
     the PSI_s heading it reported the pattern space's boundary count - a
     quantity with no meaning there - and disjointness went unverified for
