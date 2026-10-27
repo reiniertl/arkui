@@ -91,8 +91,7 @@ ORDER
 
   What remains, in this order (records 1 to 5 hold the decisions; each
   prompt names the records it applies):
-    * the 71 scenes given a picture from the periodic shots, by the index
-      samples.csv already holds (/cb-green);
+    * the capture photographs what never settles (/cb-green);
     * the surface vector's collapse diagnosed (/cb-audit);
     * the diagnosis brought to the human, the surface vector kept or
       dropped (/cb-free).
@@ -234,10 +233,23 @@ THE DECISIONS IN FORCE
          the capture photographs a scene when a pair settles and 71 never
          settled. Being dropped from the run entirely was the defect; they
          are now measured, clustered and shown with an empty tile.
-       * The capture does hold pictures for them. It writes periodic shots
-         named p<nnnnnn>.jpeg - 169 across the two sessions - which no
-         filename ties to a scene, and samples.csv relates a stem to the
-         shot taken for it. The index exists and nothing reads it.
+       * The capture does NOT hold pictures for them, and this record said
+         it did until the claim was tested on 2026-10-27. It writes
+         periodic shots named p<nnnnnn>.jpeg - 169 across the two sessions
+         - and samples.csv does relate each to the scene that was on the
+         display, through the sig of the sample whose number the filename
+         carries. The index works. What it finds is that 167 of the 169
+         land on a scene that already has its own picture, and 2 on a scene
+         without one. samples.csv is now read by vectors_build.py and the
+         count fell from 74 to 72 of 272, not to near zero.
+       * The reason is the capture's rule, not the index. The backstop
+         fires on a 5-second wall clock, which at 0.3-0.5s per sample is
+         every 10 to 16 samples, while the scenes that lack a picture are
+         exactly the short-lived ones that never settle. The backstop
+         photographs the scenes that least need it. Repairing that is the
+         item "the capture photographs what never settles", and it can only
+         help captures taken after it: the frames for the existing 72 were
+         never taken and no index can conjure them.
        * What the repair changed, over the full capture: the pattern vector
          goes from 6 clusters, 19 fitting none (11%) and silhouette 0.499
          over 179 scenes, to 6 clusters, 27 fitting none (11%) and
@@ -253,8 +265,8 @@ THE DECISIONS IN FORCE
          surface holding the display from everything else, which is real.
          The rest is not settled.
 
-     Applied by: the 71 scenes given a picture; the surface vector's
-     collapse; the diagnosis brought to the human.
+     Applied by: the capture photographs what never settles; the surface
+     vector's collapse; the diagnosis brought to the human.
 
   4. Names, proposed by this list and confirmed by the human before each
      envelope.
@@ -317,8 +329,9 @@ THE DECISIONS IN FORCE
          AUTH-024 asks for, so the warnings cleared on their own and the
          item had nothing left to do. The relation nodes were never needed.
        * IF-PAGE-PAYLOAD is held back: the payload's shape is settled only
-         once the 71 scenes are recovered and the surface vector is kept or
-         dropped.
+         once the surface vector is kept or dropped. The 71 are no longer
+         part of that wait - they were tested on 2026-10-27 and all but 2
+         are unrecoverable, because their frames were never taken.
        * The surface vector keeps a caveat rather than an invariant
          asserting it is meaningful. Asserting that would assert the thing
          in doubt.
@@ -328,40 +341,44 @@ THE DECISIONS IN FORCE
          computes nothing, and it is reported upstream rather than worked
          around.
 
-     Applied by: the 71 scenes given a picture; the surface vector's
-     collapse; the diagnosis brought to the human.
+     Applied by: the capture photographs what never settles; the surface
+     vector's collapse; the diagnosis brought to the human.
 
 
 ===============================================================================
 PROMPTS
 ===============================================================================
 
-/cb-green — the 71 scenes given a picture from the periodic shots
-  - What: 71 of 250 scenes have no per-scene picture, because the capture
-    photographs a scene when a pair settles and those never settled. The
-    capture did photograph them: it writes periodic shots named
-    p<nnnnnn>.jpeg - 169 across the two sessions - and samples.csv relates
-    a stem to the shot taken for it. The index exists and nothing reads it.
-    So vectors_build.py reads samples.csv where one is present and falls
-    back to the periodic shot a scene's stem points at, with the tile
-    saying the picture is periodic rather than taken for that scene. A
-    scene that still has none keeps its empty tile and its
-    ERR-SCENE-WITHOUT-REP; the count should fall well below 71 and the
-    report says what it fell to.
-    Reading samples.csv also settles its status: it stops being an output
-    nothing reads, and IF-CAPTURE-SESSION is modified to say so.
-  - Read: record 3; IF-CAPTURE-SESSION as it stands;
-    vectors_build.py; one session's samples.csv in full; rs_capture.ps1
-    where it decides to photograph.
-  - Spec areas: SUB-FEATURE-RESEARCH, IF-CAPTURE-SESSION.
-  - Spec work: modify IF-CAPTURE-SESSION (description) to state that
-    samples.csv is read, by whom, and for what; no node added unless the
-    periodic association needs one of its own, which is decided with the
-    human before the envelope is written.
-  - Code path: tools/cluster/vectors_build.py; tools/checks/
-    no_silent_scene_loss.py where it audits where pictures come from.
-  - Test: the invariant still holds; the count of scenes with no picture
-    reported before and after; the page rebuilt and its size reported.
+/cb-green — the capture photographs what never settles
+  - What: rs_capture.ps1 photographs a scene when its pair settles, and
+    takes a backstop frame otherwise on a 5-second wall clock. Measured on
+    2026-10-27 over six sessions: 272 measured scenes, 198 with their own
+    picture, 74 without, and of the 169 periodic frames 167 land on a scene
+    that already has one. At 0.3-0.5s per sample a 5-second timer fires
+    every 10 to 16 samples, so it photographs whatever is on the display
+    for a long time - which is the scene that least needs it - and misses
+    the short-lived ones entirely.
+    So the backstop fires on a scene change into a scene that has no
+    picture yet, rather than on elapsed time. The timer stays as a second
+    condition so a long-lived scene that never settles is still eventually
+    photographed, but it is no longer the only one.
+    This cannot recover the 72 scenes already without a picture: their
+    frames were never taken. It is measured on a NEW capture, against the
+    same count on an old one, and the item reports both.
+  - Read: record 3; rs_capture.ps1 where it decides to photograph, and
+    where it decides a scene is new; IF-CAPTURE-SESSION as it stands.
+  - Spec areas: SUB-FEATURE-RESEARCH, IF-CAPTURE-SESSION, ALG-CAPTURE-LOOP.
+  - Spec work: decided with the human before the envelope. The candidate is
+    one invariant on ALG-CAPTURE-LOOP - every distinct scene is
+    photographed, by its own settled pair or by a backstop taken while it
+    was on the display - authored in the VIOLATED state the capture is in
+    so the fix moves it to satisfied. IF-CAPTURE-SESSION's description is
+    modified to state the new rule and the count it yields.
+  - Code path: tools/rs_capture.ps1.
+  - Test: a new capture driven across many short-lived scenes, with the
+    count of scenes lacking a picture reported for it and for an existing
+    session measured the same way; the pipeline run end to end; npm run
+    spec:check, no violations.
   - BOUNDARY: combobul and ArkUI are two projects. combobul/spec/spec.db
     holds the specification of this project's code, in combobul's ontology,
     written only through combobul's ril. No rule, kind, check or store of
@@ -376,7 +393,6 @@ PROMPTS
   - WHEN TO COMMIT: Before "silk run finalize".
   - DECISION PROTOCOL: If a decision must be made, ask for direct feedback. DO NOT DECIDE ALONE.
   - AT THE END: update this list as the rule at the head of the list states.
-
 
 /cb-audit — the surface vector's collapse diagnosed
   - What: why the surface vector collapses towards one axis on this

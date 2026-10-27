@@ -54,6 +54,11 @@ HTML = """<!doctype html>
   .pics { display:flex; gap:9px; padding:11px 13px; overflow-x:auto; }
   .pic { flex:0 0 118px; }
   .pic img { width:100%; border-radius:5px; border:1px solid var(--line); display:block; }
+  .pic.brw { position:relative; }
+  .pic.brw img { border-style:dashed; }
+  .pic .borrowed { position:absolute; left:4px; top:4px; padding:1px 4px;
+    border-radius:3px; background:var(--card); border:1px solid var(--line);
+    font-size:8.5px; letter-spacing:.03em; color:var(--dim); }
   .pic .nopic { width:100%; aspect-ratio:9/19.5; border-radius:5px;
     border:1px dashed var(--line); background:var(--card); display:flex;
     align-items:center; justify-content:center; font-size:10px; color:var(--dim); }
@@ -118,10 +123,16 @@ var DATA = __DATA__;
                    + g.centre.map(esc).join(" \\u00b7 "))
          + "</div></div><div class='pics'>";
       g.reps.forEach(function (r) {
+        // A borrowed frame is of this scene but was not taken for it: the
+        // capture photographs on a timer when a scene never settles, so the
+        // frame is from some sample while the scene was up. Saying so on the
+        // tile is the difference between evidence and decoration.
         var pic = r.img
           ? "<img loading='lazy' src='" + r.img + "'>"
+            + (r.imgsrc === "periodic" ? "<div class='borrowed'>periodic</div>" : "")
           : "<div class='nopic'>no picture</div>";
-        h += "<div class='pic'>" + pic + "<div class='cap'>"
+        h += "<div class='pic" + (r.imgsrc === "periodic" ? " brw" : "") + "'>"
+           + pic + "<div class='cap'>"
            + esc(r.scene || "") + "<br>"
            + "sil " + (r.sil === null ? "\\u2014" : r.sil) + "<br>"
            + r.cap.map(esc).join("<br>") + "</div></div>";

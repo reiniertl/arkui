@@ -25,7 +25,7 @@ Inputs
                 real phone in real use and never enter the repository, so
                 this directory lives beside the captures.
 """
-import argparse, base64, csv, io, json, math, os
+import argparse, base64, csv, glob, io, json, math, os, re
 
 import numpy as np
 from PIL import Image
@@ -158,7 +158,67 @@ def rep_path(shot, captures, reps):
     return None
 
 
-def build(rows, img, key, mcs):
+def periodic_index(captures):
+    """stem -> the periodic frame that was on the display while it was.
+
+    The capture photographs a scene when its pair settles. A scene that
+    never settles gets no picture of its own, and the backstop is a frame
+    taken every few seconds named p<nnnnnn>.jpeg, where nnnnnn is the
+    number of the sample it was taken at. Nothing in that filename says
+    which scene it shows; samples.csv is what says so, and until now
+    nothing read it.
+
+    The join runs through sig, not through stem. samples.csv writes stem
+    only on the sample that first records a scene and shot only on a
+    sample where a picture was taken, so the two columns are rarely on the
+    same row. sig is on every row: it is the scene that was on the display
+    when that sample was taken, which is exactly what the frame shows.
+
+    Both routes to the frame are taken - the shot column, and the sample
+    number parsed out of the filename - because they disagree on the
+    captures here: one session holds 68 files against 51 named, and five
+    whose number is past the end of the index. A file the index does not
+    mention is still attributable if its number lands on a row.
+    """
+    out = {}
+    for sdir in sorted(glob.glob(os.path.join(captures, "*"))):
+        idx = os.path.join(sdir, "samples.csv")
+        if not os.path.isdir(sdir) or not os.path.exists(idx):
+            continue
+        session = os.path.basename(sdir)
+        with open(idx, encoding="utf-8-sig", newline="") as fh:
+            rows = list(csv.DictReader(fh))
+        stem_of_sig = {}
+        for r in rows:
+            st = (r.get("stem") or "").strip()
+            sg = (r.get("sig") or "").strip()
+            if st and sg:
+                stem_of_sig.setdefault(sg, st)
+
+        def claim(sig, fname):
+            st = stem_of_sig.get(sig)
+            if not st or not fname.startswith("p"):
+                return
+            if os.path.exists(os.path.join(sdir, st + ".jpeg")):
+                return                      # it has one of its own
+            if os.path.exists(os.path.join(sdir, fname)):
+                out.setdefault("%s/%s" % (session, st),
+                               os.path.join(sdir, fname))
+
+        for r in rows:
+            claim((r.get("sig") or "").strip(), (r.get("shot") or "").strip())
+        for f in sorted(glob.glob(os.path.join(sdir, "p*.jpeg"))):
+            m = re.match(r"p(\d{6})\.jpeg$", os.path.basename(f))
+            if not m:
+                continue
+            n = int(m.group(1))
+            if 1 <= n <= len(rows):
+                claim((rows[n - 1].get("sig") or "").strip(),
+                      os.path.basename(f))
+    return out
+
+
+def build(rows, img, kind, key, mcs):
     V = VECTORS[key]
     F = [(n, k, w) for n, k, w, _ in V["cols"]]
 
@@ -210,6 +270,7 @@ def build(rows, img, key, mcs):
             "centre": centre,
             "reps": [{"scene": row_identity(rows[i]),
                       "img": img.get(row_identity(rows[i])),
+                      "imgsrc": kind.get(row_identity(rows[i])),
                       "cap": V["caption"](rows[i]),
                       "sil": (None if np.isnan(per[i]) else round(float(per[i]), 2))}
                      for i in idx],
@@ -248,13 +309,23 @@ def main():
     # INV-NO-SILENT-SCENE-LOSS: every measured row reaches the payload or is
     # reported in it. A scene with no picture is still measured and still
     # clustered; only its tile is poorer for it.
-    img, missing, unmatched = {}, [], []
+    # The frames taken for no scene in particular, so a scene that never
+    # settled can still show what was on the display while it was.
+    periodic = periodic_index(a.captures) if a.captures else {}
+
+    img, kind, missing, unmatched = {}, {}, [], []
+    borrowed = 0
     for r in rows:
         sid = row_identity(r)
         shot = (r.get("shot") or "").strip()
         path = rep_path(shot, a.captures, a.reps)
         if path:
             img[sid] = thumbnail(path, a.thumb)
+            kind[sid] = "own"
+        elif sid in periodic:
+            img[sid] = thumbnail(periodic[sid], a.thumb)
+            kind[sid] = "periodic"
+            borrowed += 1
         else:
             missing.append(sid)
             if shot:
@@ -268,6 +339,11 @@ def main():
               "there: %s" % (len(unmatched), ", ".join(unmatched[:5])
                              + (" and %d more" % (len(unmatched) - 5)
                                 if len(unmatched) > 5 else "")))
+    print("  pictures: %d taken for the scene, %d borrowed from a periodic "
+          "frame, %d none" % (len(img) - borrowed, borrowed, len(missing)))
+    if a.captures and not borrowed and periodic:
+        print("  (the periodic index found %d frame(s) but none belonged to a "
+              "scene that needed one)" % len(periodic))
     if missing:
         print("ERR-SCENE-WITHOUT-REP: %d of %d scenes have no screenshot; they "
               "are measured and clustered, and their tiles carry no picture."
@@ -279,10 +355,11 @@ def main():
                   % (len(missing) - 10))
 
     out = {"_audit": {"rows": len(rows), "shown": len(img),
+                      "own": len(img) - borrowed, "periodic": borrowed,
                       "missing": missing,
                       "captures": a.captures or None, "reps": a.reps or None}}
     for key in VECTORS:
-        out[key] = build(rows, img, key, a.min_cluster)
+        out[key] = build(rows, img, kind, key, a.min_cluster)
         v = out[key]
         print("%-16s %d clusters, %d fitting none (%.0f%%), silhouette %s"
               % (v["title"], v["k"], v["outliers"],
