@@ -5,8 +5,8 @@ own, and puts every scene on one page.
 
 ```sh
 python rs_pattern.py    ../../captures --out patterns.csv
-python vectors_build.py patterns.csv --reps patreps --out payload.json
-python vectors_page.py  payload.json --out vectors.html
+python vectors_build.py patterns.csv --captures ../../captures
+python vectors_page.py  two_payload.json --out vectors.html
 ```
 
 | | |
@@ -89,7 +89,13 @@ reported in their own row rather than forced into the nearest group.
 
 ## Inputs that are not in this repository
 
-`--reps` is a directory of one jpeg per scene, named after the row's `shot`
-column with the separators replaced by `__`. Screenshots are pictures of a real
-phone in real use and never enter the repository, so that directory lives
-beside the captures.
+`--captures` is the capture tree. A scene's picture is `<captures>/<shot>`,
+and where a scene has none of its own, `samples.csv` points at the backstop
+frame taken while it was on the display. Screenshots are pictures of a real
+phone in real use and never enter the repository, so the tree lives on the
+capture machine.
+
+`--reps` still exists and is a fallback nothing builds: a flat directory of
+one jpeg per scene, named after the row's `shot` with the separators replaced
+by `__`. It was made by hand once, it was incomplete, and resolving against it
+alone is what silently dropped 71 of 250 scenes. Use `--captures`.

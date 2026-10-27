@@ -25,7 +25,7 @@ that measures two things from each dump and clusters each on its own.
 rs_capture.ps1          device  ->  *.rstree.txt, *.client.txt, display.txt
   rs_extract.py                     parse the dumps into a tree
   rs_pattern.py                     measure the two vectors   -> patterns.csv
-  vectors_build.py                  cluster each              -> payload.json
+  vectors_build.py                  cluster each         -> two_payload.json
   vectors_page.py                   every scene, on one page  -> vectors.html
 ```
 
@@ -82,9 +82,9 @@ screenshots of a real phone in real use.
 
 ```sh
 # anywhere, against those files
-python tools/cluster/rs_pattern.py   captures --out patterns.csv
-python tools/cluster/vectors_build.py patterns.csv --reps patreps --out payload.json
-python tools/cluster/vectors_page.py  payload.json --out vectors.html
+python tools/cluster/rs_pattern.py    captures --out patterns.csv
+python tools/cluster/vectors_build.py patterns.csv --captures captures
+python tools/cluster/vectors_page.py  two_payload.json --out vectors.html
 ```
 
 `tools/cluster/requirements.txt` pins what the Python needs.
