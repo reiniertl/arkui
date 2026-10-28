@@ -99,75 +99,132 @@ ORDER
 
   Every item this list was written with has run; what each one found is
   under WHAT IS DONE. Records 1 to 6 hold the decisions that produced them.
-  One item stands after them, found on 2026-10-27 by looking at the page
-  the earlier items had been building blind.
+  One item stands after them. It replaces the item that was here - the
+  clustering out of the vectors - because the audit of 2026-10-28 found
+  that the viewer itself was never specified, and removing the clustering
+  without specifying what the page shows would have drifted again.
 
-  1. /cb-green — the clustering out of the vectors
+  1. /cb-green — the viewer specified, three tabs, and the clustering moved
 
-  After it: nothing is planned, except the open point that item carries.
+  After it: nothing is planned.
 
 
-- 1 - /cb-green — the clustering out of the vectors
-  - What: the pattern of a scene is the cell PSI assigns it. Clustering
-    does not produce it and is not what this project builds. HDBSCAN is
-    still what build() does and still what the page leads with, so the
-    deliverable is fronted by the old approach.
-    Out of vectors_build.py: transform(), the sklearn and numpy imports,
-    and build()'s matrix, standardisation, weighting, HDBSCAN, silhouette
-    and PCA. build() groups each vector's scenes by PSI cell instead.
-    VECTORS columns lose t and w, which only ever fed the distance.
-    --min-cluster goes.
-    Out of vectors_page.py: the cluster count, silhouette and mcs from the
-    meta line; transform, weight and PCA variance from the columns table;
-    sil from each tile; the cluster headers, which become cells.
-    tools/checks/no_silent_scene_loss.py reads v["groups"] and follows.
-  - Read: vectors_build.py and vectors_page.py in full; record 2 and
-    record 6; both PSI implementations.
-  - Spec areas: ALG-VECTOR-CLUSTER, IF-PAGE-PAYLOAD, IF-PATTERNS-ROW,
-    ERR-COLUMN-CONSTANT, INV-ABSENT-NOT-ZERO.
-  - Spec work:
-      modify ALG-VECTOR-CLUSTER - it is NOT removed. It bears satisfies
-        edges to INV-ABSENT-NOT-ZERO, INV-NO-SILENT-SCENE-LOSS,
-        INV-NO-SCENE-CLASS and INV-UNPLACED-SCENES-NAMED, and emits three
-        error codes; deleting it would leave four invariants with no
-        bearer. Its description becomes what it then does - group each
-        vector's scenes by PSI cell - and min_cluster_size leaves its
-        preconditions. THUMB_W stays.
-      modify IF-PAGE-PAYLOAD - it says "one block per vector with its
-        clusters" and that each tile carries its cells "alongside its
-        cluster". Both are written again without clusters.
-      the two open points below are answered before the envelope.
-  - Open points, for the human, before any node is written:
-      (a) ERR-COLUMN-CONSTANT fires only on the standardised matrix, which
-          goes. Does the emits edge go with it, or does the zero-variance
-          check move onto the raw columns? A column that measured nothing
-          over a whole capture is still a finding about the measurement.
-      (b) INV-ABSENT-NOT-ZERO holds either way, but its bearer moves: it
-          is transform() returning nan today, and PSI reading an empty
-          field as none afterwards. Confirm the invariant stands as
-          written, or have it written again against the new bearer.
-      (c) Do the weights and transforms stay in IF-PATTERNS-ROW's
-          description as a record of what was tried, or go with the rest?
-      (d) Nothing in tools/checks/ executes the page's JavaScript. On
-          2026-10-28 that let a page which threw before rendering pass
-          every check: 20.9 MB of sound payload opening as a blank main,
-          found by a human opening it and not by the suite. This item
-          rewrites the page's rendering wholesale, so it is the moment to
-          decide. A check that loads the built page, runs its script
-          against a DOM stub and asserts #pane is non-empty with each
-          declared block present is perhaps forty lines. If it is wanted
-          it needs an invariant authored before the code, and the obvious
-          one - a built page renders every block its payload declares -
-          belongs over IF-PAGE-PAYLOAD. If it is not wanted, say so here,
-          because the alternative is that a human opens the page every
-          time and that is what just failed.
-  - Test: the page rebuilt and opened, scenes grouped by cell; the counts
-    read back against psi_rules.py over the same patterns.csv; all four
-    checks run; npm run spec:check, no violations.
+- 1 - /cb-green — the viewer specified, three tabs, and the clustering moved
+  - What: the one viewer, scene_feature_reference.html, specified as nodes
+    and then built to them. No node specifies the page today - IF-PAGE-
+    PAYLOAD says what the payload carries, not what the page shows - and
+    that is why every item that touched it rewrote it. Its generator,
+    feature_doc_build.py, was deleted in 5fce8c6 and replaced by
+    vectors_page.py writing vectors.html; the viewer in ark_work is a
+    stale 2026-10-26 build nothing can regenerate.
+    The viewer is one self-contained file with three tabs, in this order:
+      PATTERN - one group per declared PSI_p cell, in declared order. Each
+        group shows, in this order: (1) the motif drawn from the cell's
+        medians, as schematic() already draws it; (2) the cell's
+        description; (3) its scene count against the total; (4) every
+        scene in the cell, each tile with its screenshot.
+      SURFACE - one group per declared PSI_s cell, in the same order:
+        (1) the cell's median composition drawn as proportions of the six
+        coordinates; (2) its description; (3) its count; (4) every scene.
+        The undescribed scenes (unnamed content over half of content) are
+        named under their cell, as now.
+      CLUSTERING - one clustering over BOTH vectors together. It matches
+        no pattern: its input is the two vectors' columns and nothing else,
+        no PSI cell, no label, and a cluster is named by its id. A header of
+        general stats - scenes, clusters, the share left unclustered,
+        silhouette over clustered points, PCA variance explained - then the
+        rotatable 3D PCA map, recovered from tools/cluster/viewer.html at
+        4421f9b^ (its own canvas projection, drag to rotate, no library),
+        coloured by cluster; then each cluster with its scene count and
+        screenshots, the unclustered scenes last. On 2026-10-27 the joint
+        clustering left 172 of 299 scenes unclustered; the tab states the
+        share whatever it is.
+    In every tab an empty declared cell is drawn empty and kept in place,
+    and a scene with no picture is shown as such.
+    DESCRIPTIONS ARE GENERATED FROM MEASUREMENT. Decided by the human on
+    2026-10-28. The old ones - feature_motifs.DESC, deleted in 4421f9b -
+    were keyed by the 28 pre-written shape names of describe() and said
+    which apps land in each, which is the taxonomy INV-NO-SCENE-CLASS
+    records as deleted. A description is written by code from the cell's
+    coordinates and its members' measured medians only, for example: "Grid
+    covering more than half the window: median 2 columns, 6 items each
+    0.21 display heights tall, items hold images and text. 47 scenes." It
+    never names an app, a scene or a use.
+    Per-vector clustering goes. HDBSCAN on each vector alone was ruled out
+    by the human on 2026-10-27 18:36; ALG-VECTOR-CLUSTER becomes the joint
+    clustering. vectors.html is retired.
+  - Read: the audit audit-view-spec (.combobul/runs/audit-view-spec);
+    vectors_build.py and vectors_page.py in full; both PSI
+    implementations; from git, feature_doc_build.py and feature_motifs.py
+    at 5fce8c6^ for the old group layout, and tools/cluster/viewer.html at
+    4421f9b^ for the 3D map; record 6.
+  - Spec areas: IF-PAGE-PAYLOAD, ALG-VECTOR-CLUSTER, ALG-PSI-PATTERN,
+    ALG-PSI-SURFACE, INV-NO-SCENE-CLASS, INV-NO-SILENT-SCENE-LOSS,
+    INV-UNPLACED-SCENES-NAMED, ERR-COLUMN-CONSTANT.
+  - Spec work, authored before any code:
+      add interface IF-VIEWER (SUB-FEATURE-RESEARCH, file-contract):
+        scene_feature_reference.html, its three tabs in order and the
+        content of a group in order, as above; contains.
+      add algorithm ALG-DESCRIBE-CELL (SUB-FEATURE-RESEARCH): a cell's
+        description from its coordinates and its members' measured medians;
+        contains; satisfies INV-DESCRIPTION-FROM-MEASUREMENT.
+      add algorithm ALG-VIEWER-RENDER (SUB-FEATURE-RESEARCH):
+        vectors_page.py writing scene_feature_reference.html; contains;
+        input-of IF-PAGE-PAYLOAD; output-of IF-VIEWER; emits
+        ERR-VIEWER-RENDER-FAILED.
+      add invariant INV-VIEWER-RENDERS: the built viewer runs without error
+        and renders every tab, every declared cell and every cluster its
+        payload declares; held by tools/checks/viewer_renders.py, which
+        executes the page's script against a DOM stub; protects IF-VIEWER.
+      add invariant INV-GROUP-ORDER: within every group, the picture, then
+        the description, then the screenshots; protects IF-VIEWER.
+      add invariant INV-DESCRIPTION-FROM-MEASUREMENT: a description reads
+        nothing but cell coordinates and measured columns - no owner, no
+        app name, no screenshot, no table keyed to names; protects
+        INV-NO-SCENE-CLASS.
+      add invariant INV-CLUSTERING-MATCHES-NO-PATTERN: the clustering's
+        input matrix is the two vectors' columns and nothing else; a
+        cluster is named by its id.
+      add invariant INV-EVERY-SCENE-IN-EVERY-TAB: every measured scene
+        appears exactly once in each tab, the unclustered group counted;
+        extends INV-NO-SILENT-SCENE-LOSS.
+      add error-code ERR-VIEWER-RENDER-FAILED (ERROR, py).
+      modify ALG-VECTOR-CLUSTER: the joint clustering over both vectors.
+        Each column standardised and weighted as now, then each vector's
+        block scaled to equal total variance so the vector with more
+        columns does not dominate. Reports cluster count, unclustered
+        share, silhouette over clustered points, PCA variance explained and
+        the 3D PCA coordinates. Per-vector clustering removed. Keeps every
+        satisfies and emits edge it carries.
+      modify IF-PAGE-PAYLOAD: per-cell groups carrying the description and
+        their member scene ids, for both spaces; one joint clustering block
+        with the 3D PCA coordinates; no per-vector cluster blocks.
+      ERR-COLUMN-CONSTANT keeps firing, on the joint input matrix.
+      INV-ABSENT-NOT-ZERO stands as written: transform() survives in the
+        joint clustering and still turns an empty field into nan.
+      The weights and transforms stay in IF-PATTERNS-ROW: they feed the
+        joint clustering.
+  - Code path: tools/cluster/vectors_build.py, tools/cluster/
+    vectors_page.py, tools/checks/no_silent_scene_loss.py, new
+    tools/checks/viewer_renders.py.
+  - Test: the viewer built from the real 299-scene capture on the capture
+    machine and opened; viewer_renders.py over it; every cell count read
+    back against psi_rules.py over the same patterns.csv; every scene
+    found once per tab; npm run spec:check, no violations.
   - BOUNDARY: combobul and ArkUI are two projects. combobul/spec/spec.db
     holds the specification of this project's code, in combobul's ontology,
     written only through combobul's ril. No rule, kind, check or store of
     one is carried to the other.
+
+  - IMPORTANT: Every figure is measured in this session against a real capture and written into the report.
+  - INVIOLABLE: SPECIFICATION SURFACE IS AUTHORITATIVE. Every node above exists before the code it governs.
+  - INVIOLABLE: NO SCENE CLASSES. A description is a function of measurement; a word chosen by looking at screenshots is a class.
+  - INVIOLABLE: DO NOT EMIT P3_SKIPPED.
+  - FORBIDDEN: MULTI-AGENT execution is not allowed. DO NOT SPAWN MULTIPLE AGENTS.
+  - WHEN TO COMMIT: Before "silk run finalize".
+  - AFTER COMMIT: end FINAL_STATUS with an explicit NOT PUSHED line naming /cb-ops.
+  - DECISION PROTOCOL: If a decision must be made, ask for direct feedback. DO NOT DECIDE ALONE.
+  - AT THE END: update this list as the rule at the head of the list states.
 
 
 ===============================================================================
@@ -479,6 +536,29 @@ WHAT IS DONE
      the tools copy, every output including scene_feature_reference.html,
      and ark.ps1, a launcher that names the VM and so stays out of the
      repository.
+
+  2026-10-28  /cb-audit  the viewer has no specification   (audit-view-spec)
+     Verdict FAIL. Recorded here by the /cb-free session after it, as an
+     audit cannot write. The human reported that the view had been changed
+     without instruction; the audit confirmed why: no node specifies the
+     page. IF-PAGE-PAYLOAD says what the payload carries, nothing says what
+     the page shows, so every item that touched it rewrote it.
+     Found in git: the designated viewer, scene_feature_reference.html, was
+     generated by feature_doc_build.py, deleted in 5fce8c6 on 2026-10-26
+     and replaced by vectors_page.py writing vectors.html. Its motifs()
+     section showed each motif drawn first, then its description, then
+     every scene in it - the layout the human asked for. The rotatable 3D
+     PCA map was tools/cluster/viewer.html, deleted in 4421f9b, a
+     self-contained canvas projection and recoverable as it was.
+     The old descriptions cannot come back as they were: feature_motifs.DESC
+     was keyed by describe()'s 28 pre-written shape names and said which
+     apps land in each - the third deleted taxonomy. The human chose
+     descriptions generated from measurement.
+     Per-vector clustering, ruled out on 2026-10-27, is still what build()
+     does; the joint clustering tab does not exist.
+     The open item - the clustering out of the vectors - was replaced by
+     one item that specifies the viewer first, its open points (a) to (d)
+     answered inside it.
 
 
 
