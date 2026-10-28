@@ -45,14 +45,17 @@ same session, before the gate is cleared:
 An audit cannot write; the list update an audit owes is done by the /cb-free
 session after it, which names it in its report.
 
-An item pushes before its gate is cleared. Authoring happens on the VM and
-the list is read on the capture machine, so a committed-but-unpushed update
-leaves the next item to be chosen from a list that is behind the work. That
-happened once: the first item was executed, deleted from this list, and
-committed, and because nothing was pushed the same item was read and run a
-second time against a graph that already held its nodes. The item is not
-finished when the list is written; it is finished when the list the human
-reads says so.
+An item pushes before its gate is cleared. This rule was written when the
+work was authored on one machine and the list read on another, so that a
+committed-but-unpushed update could leave the next item to be chosen from a
+list behind the work. That happened once: the first item was executed,
+deleted from this list, and committed, and because nothing was pushed the
+same item was read and run a second time against a graph that already held
+its nodes. Since 2026-10-28 there is one tree — the capture machine's, which
+the authoring machine mounts — so the list a human reads and the list an
+item writes are the same file and cannot drift. The rule stands on its
+remaining ground: an unpushed commit exists on one disk only, and the item
+is not finished until the work is somewhere a disk failure cannot take it.
 
 Every prompt carries a Spec work section naming its specification work node
 by node: each node it adds (id, kind, module, and every edge it carries),
@@ -94,10 +97,94 @@ The baseline the executions read (read each file in full):
 ORDER
 ===============================================================================
 
-  Nothing remains. Every item of this list has run; what each one found is
+  Every item this list was written with has run; what each one found is
   under WHAT IS DONE. Records 1 to 6 hold the decisions that produced them.
+  Two items stand after them, both found on 2026-10-27 by looking at the
+  page the earlier items had been building blind.
 
-  After this list: nothing is planned.
+  1. /cb-free — the page renders nothing
+  2. /cb-green — the clustering out of the vectors
+
+  After those two: nothing is planned.
+
+
+- 1 - /cb-free — the page renders nothing
+  - What: vectors_page.py's show() throws a ReferenceError on its first
+    statement, so #pane is never written and the page is a nav beside a
+    blank main. The nav renders because it is built before show() is
+    called, which is why the file is 20.9 MB of real payload and still
+    looks empty.
+    Five references, all written against names that do not exist in the
+    emitted function - the function is show(k) and the global is DATA:
+      115  (D._unplaced || {})[key]   ->  (DATA._unplaced || {})[k]
+      139  key === "pattern"          ->  k === "pattern"
+      140  key === "surface"          ->  k === "surface"
+      141  D[cellKey]                 ->  DATA[cellKey]
+      142  cs = D[cellKey]            ->  cs = DATA[cellKey]
+    They came in with the unplaced-scenes block and the PSI-cells block.
+    Both items reported their numbers from the payload and neither ever
+    saw the page, which is the finding under the finding: nothing in
+    tools/checks/ executes the page's JavaScript, so a page that throws
+    before rendering passes every check. The item says whether that gap
+    is closed here or written down as its own item.
+  - Read: vectors_page.py in full; the two items in WHAT IS DONE that
+    added the blocks.
+  - Spec areas: IF-PAGE-PAYLOAD.
+  - Spec work: decided in the session. The candidate is none - the payload
+    contract is unchanged and the defect is a typo in the consumer - but
+    if the check gap is closed here it needs an invariant, and that is
+    authored before the code.
+  - Test: the page opened and both new blocks seen; the scene counts in
+    them read back against what vectors_build.py printed.
+
+- 2 - /cb-green — the clustering out of the vectors
+  - What: the pattern of a scene is the cell PSI assigns it. Clustering
+    does not produce it and is not what this project builds. HDBSCAN is
+    still what build() does and still what the page leads with, so the
+    deliverable is fronted by the old approach.
+    Out of vectors_build.py: transform(), the sklearn and numpy imports,
+    and build()'s matrix, standardisation, weighting, HDBSCAN, silhouette
+    and PCA. build() groups each vector's scenes by PSI cell instead.
+    VECTORS columns lose t and w, which only ever fed the distance.
+    --min-cluster goes.
+    Out of vectors_page.py: the cluster count, silhouette and mcs from the
+    meta line; transform, weight and PCA variance from the columns table;
+    sil from each tile; the cluster headers, which become cells.
+    tools/checks/no_silent_scene_loss.py reads v["groups"] and follows.
+  - Read: vectors_build.py and vectors_page.py in full; record 2 and
+    record 6; both PSI implementations.
+  - Spec areas: ALG-VECTOR-CLUSTER, IF-PAGE-PAYLOAD, IF-PATTERNS-ROW,
+    ERR-COLUMN-CONSTANT, INV-ABSENT-NOT-ZERO.
+  - Spec work:
+      modify ALG-VECTOR-CLUSTER - it is NOT removed. It bears satisfies
+        edges to INV-ABSENT-NOT-ZERO, INV-NO-SILENT-SCENE-LOSS,
+        INV-NO-SCENE-CLASS and INV-UNPLACED-SCENES-NAMED, and emits three
+        error codes; deleting it would leave four invariants with no
+        bearer. Its description becomes what it then does - group each
+        vector's scenes by PSI cell - and min_cluster_size leaves its
+        preconditions. THUMB_W stays.
+      modify IF-PAGE-PAYLOAD - it says "one block per vector with its
+        clusters" and that each tile carries its cells "alongside its
+        cluster". Both are written again without clusters.
+      the two open points below are answered before the envelope.
+  - Open points, for the human, before any node is written:
+      (a) ERR-COLUMN-CONSTANT fires only on the standardised matrix, which
+          goes. Does the emits edge go with it, or does the zero-variance
+          check move onto the raw columns? A column that measured nothing
+          over a whole capture is still a finding about the measurement.
+      (b) INV-ABSENT-NOT-ZERO holds either way, but its bearer moves: it
+          is transform() returning nan today, and PSI reading an empty
+          field as none afterwards. Confirm the invariant stands as
+          written, or have it written again against the new bearer.
+      (c) Do the weights and transforms stay in IF-PATTERNS-ROW's
+          description as a record of what was tried, or go with the rest?
+  - Test: the page rebuilt and opened, scenes grouped by cell; the counts
+    read back against psi_rules.py over the same patterns.csv; all four
+    checks run; npm run spec:check, no violations.
+  - BOUNDARY: combobul and ArkUI are two projects. combobul/spec/spec.db
+    holds the specification of this project's code, in combobul's ontology,
+    written only through combobul's ril. No rule, kind, check or store of
+    one is carried to the other.
 
 
 ===============================================================================
@@ -299,6 +386,31 @@ WHAT IS DONE
     figure. My first pass read 0.310 and 0.138; computing it the page's way
     reproduced its 0.475 and 0.625 exactly, and only then was the
     three-way comparison sound.
+
+  2026-10-28  /cb-free   one tree, mounted, and the skills working again
+    Not an item of this list; recorded because it changed how every item
+    after it runs. The repository had been kept on both machines and the
+    split had cost this list three stale updates and a re-run item. The
+    copy on the authoring machine was deleted on 2026-10-27 — and with it
+    .claude/, which is gitignored local config rather than repository
+    content and did not have to go. That is what took the skills away:
+    slash commands resolve from the working directory, and the working
+    directory no longer existed. The capture machine cannot run the agent,
+    so moving the agent there was never the answer I had twice proposed.
+    The capture machine's tree is now mounted over sshfs at ~/ark_ui_mnt
+    and the agent runs against it. No repository bytes sit on the
+    authoring machine; it holds a mountpoint. Verified end to end before
+    this was written: /cb-free resolves, CLAUDE.md loads, silk gate-mark
+    init writes the marker the gate hook reads, Write and Edit land on the
+    capture machine's disk, git sees them, npm run spec:check reports 0
+    violations over 56 nodes, and ril queries the real graph.
+    What did not move: the Python pipeline still runs on the capture
+    machine over ssh in its own venv. The authoring machine has no numpy,
+    sklearn or PIL, and the captures are 5.6 GB local to the capture
+    machine — reading them across the mount would be slower for no gain.
+    Two corrections this turned up. CLAUDE.md's repository-layout table
+    says spec/spec.db; the spec is at combobul/spec/. And its commit
+    discipline still names Claude Opus 4.6 as co-author.
 
 
 
