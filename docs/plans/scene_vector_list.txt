@@ -99,45 +99,15 @@ ORDER
 
   Every item this list was written with has run; what each one found is
   under WHAT IS DONE. Records 1 to 6 hold the decisions that produced them.
-  Two items stand after them, both found on 2026-10-27 by looking at the
-  page the earlier items had been building blind.
+  One item stands after them, found on 2026-10-27 by looking at the page
+  the earlier items had been building blind.
 
-  1. /cb-free — the page renders nothing
-  2. /cb-green — the clustering out of the vectors
+  1. /cb-green — the clustering out of the vectors
 
-  After those two: nothing is planned.
+  After it: nothing is planned, except the open point that item carries.
 
 
-- 1 - /cb-free — the page renders nothing
-  - What: vectors_page.py's show() throws a ReferenceError on its first
-    statement, so #pane is never written and the page is a nav beside a
-    blank main. The nav renders because it is built before show() is
-    called, which is why the file is 20.9 MB of real payload and still
-    looks empty.
-    Five references, all written against names that do not exist in the
-    emitted function - the function is show(k) and the global is DATA:
-      115  (D._unplaced || {})[key]   ->  (DATA._unplaced || {})[k]
-      139  key === "pattern"          ->  k === "pattern"
-      140  key === "surface"          ->  k === "surface"
-      141  D[cellKey]                 ->  DATA[cellKey]
-      142  cs = D[cellKey]            ->  cs = DATA[cellKey]
-    They came in with the unplaced-scenes block and the PSI-cells block.
-    Both items reported their numbers from the payload and neither ever
-    saw the page, which is the finding under the finding: nothing in
-    tools/checks/ executes the page's JavaScript, so a page that throws
-    before rendering passes every check. The item says whether that gap
-    is closed here or written down as its own item.
-  - Read: vectors_page.py in full; the two items in WHAT IS DONE that
-    added the blocks.
-  - Spec areas: IF-PAGE-PAYLOAD.
-  - Spec work: decided in the session. The candidate is none - the payload
-    contract is unchanged and the defect is a typo in the consumer - but
-    if the check gap is closed here it needs an invariant, and that is
-    authored before the code.
-  - Test: the page opened and both new blocks seen; the scene counts in
-    them read back against what vectors_build.py printed.
-
-- 2 - /cb-green — the clustering out of the vectors
+- 1 - /cb-green — the clustering out of the vectors
   - What: the pattern of a scene is the cell PSI assigns it. Clustering
     does not produce it and is not what this project builds. HDBSCAN is
     still what build() does and still what the page leads with, so the
@@ -178,6 +148,19 @@ ORDER
           written, or have it written again against the new bearer.
       (c) Do the weights and transforms stay in IF-PATTERNS-ROW's
           description as a record of what was tried, or go with the rest?
+      (d) Nothing in tools/checks/ executes the page's JavaScript. On
+          2026-10-28 that let a page which threw before rendering pass
+          every check: 20.9 MB of sound payload opening as a blank main,
+          found by a human opening it and not by the suite. This item
+          rewrites the page's rendering wholesale, so it is the moment to
+          decide. A check that loads the built page, runs its script
+          against a DOM stub and asserts #pane is non-empty with each
+          declared block present is perhaps forty lines. If it is wanted
+          it needs an invariant authored before the code, and the obvious
+          one - a built page renders every block its payload declares -
+          belongs over IF-PAGE-PAYLOAD. If it is not wanted, say so here,
+          because the alternative is that a human opens the page every
+          time and that is what just failed.
   - Test: the page rebuilt and opened, scenes grouped by cell; the counts
     read back against psi_rules.py over the same patterns.csv; all four
     checks run; npm run spec:check, no violations.
@@ -411,6 +394,26 @@ WHAT IS DONE
     Two corrections this turned up. CLAUDE.md's repository-layout table
     says spec/spec.db; the spec is at combobul/spec/. And its commit
     discipline still names Claude Opus 4.6 as co-author.
+
+  2026-10-28  /cb-free   the page renders again
+     vectors_page.py's show() threw a ReferenceError on its first
+     statement, so #pane was never written: a nav beside a blank main,
+     over 20.9 MB of entirely sound payload. Five references written
+     against names the emitted function does not have — it is show(k) and
+     the global is DATA, and the code said D and key. They arrived with
+     the unplaced-scenes block and the PSI-cells block.
+     Fixed and PROVEN, which is the part that matters here. The page's own
+     <script> was executed against a DOM stub: no exception, 10.4 MB into
+     #pane, and all four blocks present — the unplaced block, the PSI
+     cells, the scene tiles and the columns table. 227 tiles carry a
+     picture, which is the payload's 216 own plus 11 backstop exactly.
+     The finding under the finding, now open point (d) of the item left:
+     both items that wrote these blocks reported their numbers from the
+     payload and NEITHER EVER SAW THE PAGE. Nothing in tools/checks/
+     executes the page's JavaScript, so a page that throws before
+     rendering passes every check there is. The harness that proved this
+     fix was a throwaway in a scratchpad, deliberately — making it a
+     permanent check is a decision, not a side effect of a bug fix.
 
 
 

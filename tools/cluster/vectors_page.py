@@ -112,7 +112,7 @@ var DATA = __DATA__;
     // the scenes are named, because a count cannot be traced to a scene.
     // The spaces are not symmetric and the note says which is which rather
     // than inventing a cell so they look alike.
-    var up = (D._unplaced || {})[key];
+    var up = (DATA._unplaced || {})[k];
     if (up) {
       var tot = v.n;
       function pop(label, ids, why) {
@@ -136,10 +136,10 @@ var DATA = __DATA__;
     // partition: a cell is what a scene IS, a cluster is where it sits
     // relative to the others. An empty cell is drawn dashed and kept in
     // place, because a declared cell nobody reached is a result.
-    var cellKey = key === "pattern" ? "_pattern_cells"
-                : key === "surface" ? "_surface_cells" : null;
-    if (cellKey && D[cellKey]) {
-      var cs = D[cellKey], mt = cs.filter(function(c){return !c.n;});
+    var cellKey = k === "pattern" ? "_pattern_cells"
+                : k === "surface" ? "_surface_cells" : null;
+    if (cellKey && DATA[cellKey]) {
+      var cs = DATA[cellKey], mt = cs.filter(function(c){return !c.n;});
       h += "<div class='fld'><div class='k'>PSI cells \u00b7 "
          + cs.length + " declared, " + (cs.length - mt.length) + " reachable"
          + (mt.length ? ", <span class='flag'>" + mt.length + " empty</span>" : "")
