@@ -54,7 +54,7 @@ vectors_build.py, vectors_page.py, and the checks under tools/checks/.
 ORDER
 ===============================================================================
 
-  1. /cb-green — clipping and rotation in the visibility walk
+  1. /cb-green — only what is on the display: clipping, rotation, visible area, owner
   2. /cb-green — the pattern dictionary and the matcher
 
 
@@ -98,36 +98,73 @@ DEFERRED
 PROMPTS
 ===============================================================================
 
-/cb-green — clipping and rotation in the visibility walk
-  - What: two things the geometry does not yet do, measured on the capture
+/cb-green — only what is on the display: clipping, rotation, visible area, owner
+  - What: every algorithm that reads a node satisfies one invariant: only
+    what is on the display is processed, and of a node only the part that
+    is on the display. Four places break it today, measured on the capture
     of 2026-10-28 over 64,878 visible nodes in 300 scenes.
     CLIPPING. A parent with ClipToBounds[True] cuts what its children show
-    to its own rectangle. 10,541 visible nodes lie partly outside a
-    clipping ancestor and 1,140 wholly outside one, in 298 scenes; the
-    wholly outside ones are counted visible and are not on the display. A
-    node's on-display rectangle becomes its rectangle intersected with
-    every clipping ancestor's, and the walk measures that.
+    to its own rectangle. 1,140 visible nodes lie wholly outside a clipping
+    ancestor, in 298 scenes, and 10,541 partly outside. A node's on-display
+    rectangle is its rectangle intersected with every clipping ancestor's,
+    the display and its window's VisibleRegion; the walk measures that.
     ROTATION. Rotation, RotationX and RotationY are not composed. 1,889
     visible nodes in 72 scenes sit under a non-zero rotation. How a rotated
     rectangle is represented on an axis-aligned raster - its bounding box,
     or the rotated quadrilateral - is put to the human before the spec.
-  - Read: rs_extract.py (compose_geometry), rs_visibility.py,
-    tools/checks/geometry_visibility.py; the property lines of one rstree
-    dump carrying ClipToBounds and a Rotation.
+    VISIBLE AREA. A visible node enters a feature with its visible cells,
+    never its whole rectangle. ALG-BRANCH-GROUP measures pat1_cover and
+    overlay_frac from each member's rectangle clipped to the display only,
+    so the occluded part of a visible node is counted. Every area any
+    feature reports is a union of cells ALG-VISIBILITY found visible.
+    OWNER. ALG-OWNER-SELECT, through window_weight, reads every node of
+    every window before the walk runs. It runs after the walk instead, on
+    each window's visible nodes and their visible cells.
+  - Read: rs_extract.py (compose_geometry, window_weight),
+    rs_visibility.py, rs_pattern.py (Scene, analyse, owner_of,
+    media_surface, visible_surface), tools/checks/geometry_visibility.py;
+    the property lines of one rstree dump carrying ClipToBounds and a
+    Rotation.
   - Spec work:
-      modify INV-GEOMETRY-FROM-TREE: rotation, as the human decides.
+      modify INV-VISIBLE-ONLY: no algorithm reads a node that is not on the
+        display - feature columns and owner selection alike; a node is on
+        the display when its on-display rectangle holds a cell no occluder
+        outside its subtree covers.
+      add invariant INV-VISIBLE-AREA-ONLY (SUB-FEATURE-RESEARCH, runtime):
+        every area a feature reports is a union of cells ALG-VISIBILITY
+        found visible, and no node contributes area beyond its own visible
+        cells; checked-at AUT-PIPELINE-RUN.
       add invariant INV-CLIP-TO-BOUNDS (SUB-FEATURE-RESEARCH, runtime): a
         node's on-display rectangle lies inside every ancestor's that clips
         to its bounds; checked-at AUT-PIPELINE-RUN.
-      modify ALG-VISIBILITY: measures the clipped rectangle; satisfies
-        INV-CLIP-TO-BOUNDS.
-  - Code path: rs_extract.py, rs_visibility.py,
+      modify INV-GEOMETRY-FROM-TREE: rotation, as the human decides.
+      modify ALG-VISIBILITY: measures the on-display rectangle; satisfies
+        INV-CLIP-TO-BOUNDS; returns every visible node's visible cells.
+      satisfies INV-VISIBLE-ONLY and INV-VISIBLE-AREA-ONLY, each with the
+        edge added: ALG-BRANCH-GROUP, ALG-VISIBLE-SURFACE,
+        ALG-MEDIA-SURFACE, ALG-OWNER-SELECT. ALG-OWNER-SELECT calls
+        ALG-VISIBILITY.
+  - Code path: rs_extract.py, rs_visibility.py, rs_pattern.py,
     tools/checks/geometry_visibility.py.
+  - Check: geometry_visibility.py tests the display, not agreement with
+    the walk. It recomputes each admitted node's on-display region
+    independently - exact rectangle arithmetic, no raster: the rectangle,
+    intersected with every clipping ancestor, the display and the
+    VisibleRegion, minus every occluding rectangle outside the node's
+    subtree painted above it - and fails when:
+      - a node any algorithm admits has an empty on-display region;
+      - a node no algorithm admits has a non-empty one and alpha above 0;
+      - a feature's reported area exceeds the union of its contributors'
+        independently computed visible regions by more than the raster
+        error of one 4 px cell per edge;
+      - the owner chosen differs from the one chosen on visible nodes
+        alone.
   - Test, on the real capture: the seven confirmed video rectangles still
     whole and wholly visible; the 0192 GridItems at y 2070 still visible;
     the visible-node count before and after, and how many of the 1,140 are
-    no longer visible; geometry_visibility.py and parsing_rules.py hold;
-    npm run spec:check, no violations.
+    no longer visible; pat1_cover and overlay_frac before and after, and
+    the number of scenes whose owner window changes; geometry_visibility.py
+    and parsing_rules.py hold; npm run spec:check, no violations.
   - BOUNDARY: as in RULES FOR EVERY ITEM.
 
   - IMPORTANT: Every figure is measured in this session against a real capture and written into the report.
@@ -211,6 +248,9 @@ PROMPTS
         IF-PATTERN-VECTOR.
       add invariant INV-DICTIONARY-DESIGNED: no pattern is computed from a
         capture.
+      ALG-PATTERN-MATCH satisfies INV-VISIBLE-ONLY and
+        INV-VISIBLE-AREA-ONLY: it reads only visible nodes, and a pattern's
+        share is the union of its matches' visible cells.
       add invariant INV-STRUCTURE-NOT-DRAW-STATE: no element depends on
         shouldPaint or draw slots.
       add invariant INV-DISTANCE-ORDER-FREE: the distance is unchanged
