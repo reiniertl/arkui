@@ -19,14 +19,15 @@ That component does not exist yet, and this repository is not it.
 ## What is here
 
 A capture that pulls RenderService dumps off a device, and a Python pipeline
-that measures two things from each dump and clusters each on its own.
+that measures two things from each dump, places every scene in one declared
+cell of each, and clusters the scenes once over both together.
 
 ```
 rs_capture.ps1          device  ->  *.rstree.txt, *.client.txt, display.txt
   rs_extract.py                     parse the dumps into a tree
   rs_pattern.py                     measure the two vectors   -> patterns.csv
-  vectors_build.py                  cluster each         -> two_payload.json
-  vectors_page.py                   every scene, on one page  -> vectors.html
+  vectors_build.py                  cells, descriptions, one clustering -> two_payload.json
+  vectors_page.py                   the viewer, three tabs -> scene_feature_reference.html
 ```
 
 **The pattern vector** — what repeats in the layout, and how much of the window
@@ -84,7 +85,7 @@ screenshots of a real phone in real use.
 # anywhere, against those files
 python tools/cluster/rs_pattern.py    captures --out patterns.csv
 python tools/cluster/vectors_build.py patterns.csv --captures captures
-python tools/cluster/vectors_page.py  two_payload.json --out vectors.html
+python tools/cluster/vectors_page.py  two_payload.json --out scene_feature_reference.html
 ```
 
 `tools/cluster/requirements.txt` pins what the Python needs.

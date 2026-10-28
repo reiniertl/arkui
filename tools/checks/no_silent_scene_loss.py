@@ -59,6 +59,14 @@ def payload_scenes(path):
                     shown.add(sid)
                 else:
                     anonymous += 1
+    # The cell groups show scenes too, by id (IF-PAGE-PAYLOAD).
+    for key in ("_pattern_cells", "_surface_cells"):
+        for c in d.get(key) or []:
+            for sid in c.get("members", []):
+                if sid:
+                    shown.add(sid)
+                else:
+                    anonymous += 1
     for m in audit.get("missing", []):
         missing.add(m)
     return shown, missing, audit, anonymous
@@ -120,15 +128,11 @@ def main():
               "backstop frame" % (own, per))
         d = json.load(open(a.payload, encoding="utf-8"))
         marked, unmarked = set(), set()
-        for key, v in d.items():
-            if key.startswith("_"):
+        # Every scene's tile is stored once, in _scenes; the tabs refer to it.
+        for sid, s in (d.get("_scenes") or {}).items():
+            if not s.get("img"):
                 continue
-            for g in v.get("groups", []):
-                for r in g.get("reps", []):
-                    if not r.get("img"):
-                        continue
-                    (marked if r.get("imgsrc") == "backstop" else unmarked).add(
-                        r.get("scene"))
+            (marked if s.get("imgsrc") == "backstop" else unmarked).add(sid)
         print("  tiles marked backstop   : %d" % len(marked))
         if per is not None and len(marked) != per:
             print("  the audit says %s from a backstop but %d tile(s) say so"

@@ -1,18 +1,17 @@
 #!/usr/bin/env python3
-"""Build the payload behind the two-vector page.
+"""Build the payload behind the viewer (IF-PAGE-PAYLOAD).
 
-    ./vectors_build.py patterns.csv --reps patreps --out two_payload.json
-    ./vectors_page.py  two_payload.json --out vectors.html
+    ./vectors_build.py patterns.csv --captures captures --out two_payload.json
+    ./vectors_page.py  two_payload.json --out scene_feature_reference.html
 
-Two vectors are under development. Each is clustered on its own, over the
-scenes rs_pattern.py covers, and every scene appears in the output - ordered
-from its cluster's centre outwards, so the last tiles are where the cluster
-frays.
+Two vectors are measured. Each scene is placed by PSI into one declared cell
+of each vector's space, and the viewer shows every cell as a group: its
+picture, its description, its count, its scenes. Separately, one clustering
+runs over both vectors together and matches no pattern (ALG-VECTOR-CLUSTER).
 
 Nothing here names a scene. There is no motif table, no class list and no
-label taxonomy: a cluster is reported by its id, its size, its cohesion and
-the median of its own columns, and a scene by the values measured from it.
-What the groups mean, if anything, is read off the tiles by a person.
+label taxonomy: a cell is named by its coordinates, a cluster by its id, and
+a description is assembled from measurement alone (ALG-DESCRIBE-CELL).
 
 This script was an inline fragment for one session and the page it produced
 could not be rebuilt from the repository. It is tracked now because the page
@@ -25,13 +24,16 @@ Inputs
                 real phone in real use and never enter the repository, so
                 this directory lives beside the captures.
 """
-import argparse, base64, csv, glob, io, json, math, os, re
+import argparse, base64, csv, glob, io, json, math, os, re, sys
 
 import numpy as np
 from PIL import Image
 from sklearn.cluster import HDBSCAN
 from sklearn.decomposition import PCA
 from sklearn.metrics import silhouette_score, silhouette_samples
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from rs_pattern import TAG_KIND                 # noqa: E402
 
 
 def transform(kind, raw):
@@ -330,6 +332,75 @@ def schematic(cols, rows, h, aspect, arr):
     return "".join(p) + "</svg>"
 
 
+# The only words a description may use for content are the measurement's own
+# (INV-DESCRIPTION-FROM-MEASUREMENT). The tag-derived kinds are named by the
+# tag rs_pattern.TAG_KIND reads them from; the geometry-derived ones by what
+# mark_kind tests. Nothing here was chosen by looking at a screenshot.
+KIND_WORDS = {k: t for t, k in TAG_KIND.items()}
+KIND_WORDS.update({"V": "composed surface", "i": "icon-sized box",
+                   "t": "text-line-shaped box", "b": "other painted box"})
+SURF_WORDS = {c[0][4:]: c[3] for c in VECTORS["surface"]["cols"]}
+SURF_WORDS["glyph"] = "nodes tagged SymbolGlyph or Divider"
+SURF_SIX = ("xcomp", "image", "text", "glyph", "content", "substrate")
+
+
+def _median(members, col):
+    xs = [float(m[col]) for m in members if (m.get(col) or "").strip() != ""]
+    return float(np.median(xs)) if xs else None
+
+
+def describe_cell(space, cell, members):
+    """A cell's description, from its coordinates and its members' medians.
+
+    ALG-DESCRIBE-CELL. Reads the vector columns, pat1_arr, pat1_cover and
+    pat1_pat, and nothing that says where a scene came from: no owner, no
+    shot, no window name. The replacement for feature_motifs.DESC, which was
+    keyed by describe()'s pre-written shape names and said which apps land
+    in each - a sentence written by looking at screenshots, and so a class.
+    """
+    n = len(members)
+    if not n:
+        return "No scene reached this cell."
+    tail = " %d scene%s." % (n, "" if n == 1 else "s")
+    if space == "surface":
+        a, b = cell.split("/")
+        comp = ", ".join("%s %.2f" % (k, _median(members, "vis_" + k) or 0.0)
+                         for k in SURF_SIX)
+        return ("Largest share of the display: %s; second: %s. "
+                "Median composition %s." % (SURF_WORDS[a], SURF_WORDS[b], comp)
+                + tail)
+    if cell == CELL_NONE:
+        return ("No repeating group: no two sibling branches of the window "
+                "shared a description, so there is no motif to draw." + tail)
+    arr, band = cell.split("/")
+    cover = _median(members, "pat1_cover")
+    lead = "%s covering %s half the window" % (
+        arr.capitalize(), "more than" if band == "major" else "at most")
+    parts = []
+    cols, items = _median(members, "pat1_cols"), _median(members, "pat1_n")
+    if arr == "grid" and cols:
+        parts.append("%d columns" % round(cols))
+    h, asp = _median(members, "pat1_h"), _median(members, "pat1_aspect")
+    if items:
+        parts.append("%d items%s" % (
+            round(items),
+            " each %.2f display heights tall" % h if h is not None else ""))
+    if asp is not None:
+        parts.append("width/height %.2f" % asp)
+    # The kinds present in at least half the members' signatures, most
+    # frequent first: what the repeating item holds, in the alphabet's words.
+    seen = {}
+    for m in members:
+        for k in set((m.get("pat1_pat") or "").strip()):
+            seen[k] = seen.get(k, 0) + 1
+    kinds = [KIND_WORDS.get(k, k) for k, c in
+             sorted(seen.items(), key=lambda kv: (-kv[1], kv[0])) if c * 2 >= n]
+    hold = ("items hold %s" % " and ".join(kinds)) if kinds \
+        else "no content kind is common to half the items"
+    return ("%s: median cover %.2f, %s, %s." % (
+        lead, cover or 0.0, ", ".join(parts) or "no item geometry", hold) + tail)
+
+
 def backstop_index(captures):
     """stem -> the backstop frame that was on the display while it was.
 
@@ -392,11 +463,29 @@ def backstop_index(captures):
     return out
 
 
-def build(rows, img, kind, key, mcs):
-    V = VECTORS[key]
-    F = [(n, k, w) for n, k, w, _ in V["cols"]]
+def joint_columns():
+    """The clustering's input columns: the two vectors' and nothing else.
 
-    X = np.array([[transform(k, r.get(n)) for n, k, _ in F] for r in rows], float)
+    INV-CLUSTERING-MATCHES-NO-PATTERN. No PSI cell, label or name is among
+    them, so the clustering cannot confirm the partition and the partition
+    cannot steer the clustering.
+    """
+    return [(n, k, w, d, key) for key in ("pattern", "surface")
+            for n, k, w, d in VECTORS[key]["cols"]]
+
+
+def build_joint(rows, mcs):
+    """One clustering over both vectors together (ALG-VECTOR-CLUSTER).
+
+    Each column through transform(), standardised and weighted as the
+    VECTORS table states; then each vector's block scaled to equal total
+    variance, so the vector with more columns does not own the distance.
+    HDBSCAN on that. A scene it cannot place is reported in the
+    unclustered group, never forced into the nearest cluster.
+    """
+    F = joint_columns()
+    X = np.array([[transform(k, r.get(n)) for n, k, _, _, _ in F] for r in rows],
+                 float)
     for j in range(X.shape[1]):
         m = np.isnan(X[:, j])
         if m.any():
@@ -405,61 +494,68 @@ def build(rows, img, kind, key, mcs):
     flat = [F[j][0] for j in range(X.shape[1]) if sd[j] < 1e-9]
     if flat:
         print("ERR-COLUMN-CONSTANT: %s measured nothing on this capture - no "
-              "variance, so %s dropped from the %s matrix before clustering"
-              % (", ".join(flat), "they are" if len(flat) > 1 else "it is", key))
-    sd[sd < 1e-9] = 1.0
-    Z = (X - X.mean(0)) / sd * np.array([w for _, _, w in F])
-    Z = Z[:, Z.std(0) > 1e-9]
+              "variance, so %s dropped from the joint matrix before clustering"
+              % (", ".join(flat), "they are" if len(flat) > 1 else "it is"))
+    keep = sd >= 1e-9
+    sd[~keep] = 1.0
+    Z = (X - X.mean(0)) / sd * np.array([w for _, _, w, _, _ in F])
+    for key in ("pattern", "surface"):
+        cols = [j for j, f in enumerate(F) if f[4] == key and keep[j]]
+        tot = float(Z[:, cols].var(0).sum()) if cols else 0.0
+        if tot > 0:
+            Z[:, cols] /= math.sqrt(tot)
+    Z = Z[:, keep]
 
     lab = HDBSCAN(min_cluster_size=mcs).fit_predict(Z)
     m = lab >= 0
-    sil = float(silhouette_score(Z[m], lab[m]))
+    clustered = len(set(lab[m])) > 1
+    sil = float(silhouette_score(Z[m], lab[m])) if clustered else None
     per = np.full(len(Z), np.nan)
-    per[m] = silhouette_samples(Z[m], lab[m])
+    if clustered:
+        per[m] = silhouette_samples(Z[m], lab[m])
     pca = PCA(n_components=min(3, Z.shape[1])).fit(Z)
+    P = pca.transform(Z)
+    if P.shape[1] < 3:
+        P = np.hstack([P, np.zeros((len(P), 3 - P.shape[1]))])
 
     groups = []
     for cid in sorted(set(lab)):
         idx = [i for i in range(len(rows)) if lab[i] == cid]
         # Centre outwards: the tiles at the end are where the cluster frays.
         idx.sort(key=lambda i: -(per[i] if not np.isnan(per[i]) else -9))
-        # The cluster's own columns, at their median. This replaces the label
-        # histogram that used to sit here: a name would be a scene class, and
-        # the clustering is not here to confirm one.
+        # The cluster's own columns at their median. A cluster is named by its
+        # id; a word for it would be a scene class.
         centre = []
-        for n, k, _ in F[:4]:
+        for n, k, _, _, _ in F:
             vals = [float(rows[i][n]) for i in idx
                     if str(rows[i].get(n, "")).strip() not in ("", "-")]
             if vals:
                 centre.append("%s %s" % (n, round(float(np.median(vals)), 2)))
-        if not centre:
-            # Every member left these fields empty - no repeating group was
-            # found at all. That is a measurement, so it is reported as one.
-            centre = ["nothing measured on these columns"]
         groups.append({
             "id": int(cid),
             "n": len(idx),
-            "cohesion": (None if cid < 0
+            "cohesion": (None if cid < 0 or not clustered
                          else round(float(np.nanmean([per[i] for i in idx])), 2)),
             "centre": centre,
             "reps": [{"scene": row_identity(rows[i]),
-                      "img": img.get(row_identity(rows[i])),
-                      "imgsrc": kind.get(row_identity(rows[i])),
-                      "cell": psi_pattern(rows[i]),
-                      "scell": psi_surface(rows[i]),
-                      "sig": (rows[i].get("pat1_pat") or "").strip(),
-                      "cap": V["caption"](rows[i]),
-                      "sil": (None if np.isnan(per[i]) else round(float(per[i]), 2))}
+                      "sil": (None if np.isnan(per[i]) else round(float(per[i]), 2)),
+                      "x": round(float(P[i, 0]), 4), "y": round(float(P[i, 1]), 4),
+                      "z": round(float(P[i, 2]), 4)}
                      for i in idx],
         })
     groups.sort(key=lambda g: (g["id"] < 0, -g["n"]))
 
-    return {"title": V["title"], "blurb": V["blurb"],
-            "cols": [{"name": "rs_" + n, "t": k, "w": w, "what": d}
-                     for n, k, w, d in V["cols"]],
+    return {"title": "Clustering over both vectors",
+            "blurb": ("Every scene clustered on the two vectors' twelve columns "
+                      "together, each vector's block scaled to equal variance. "
+                      "It matches no pattern: a cluster is where scenes sit "
+                      "relative to each other, named only by its id."),
+            "cols": [{"name": "rs_" + n, "t": k, "w": w, "what": d, "vector": v}
+                     for n, k, w, d, v in F],
             "n": len(rows), "k": len(set(lab) - {-1}),
             "outliers": int((lab < 0).sum()),
-            "silhouette": round(sil, 3), "mcs": mcs,
+            "silhouette": (round(sil, 3) if sil is not None else None),
+            "mcs": mcs,
             "explained": [round(float(v), 3) for v in pca.explained_variance_ratio_],
             "groups": groups}
 
@@ -544,6 +640,10 @@ def main():
               if (m.get(col) or "").strip() != ""]
         return _st.median(xs) if xs else default
 
+    def _f(r, c):
+        v = (r.get(c) or "").strip()
+        return float(v) if v else 0.0
+
     cells = []
     for c in psi_pattern_cells():
         mem = by_cell[c]
@@ -565,6 +665,11 @@ def main():
                 "h %.2f" % _med(mem, "pat1_h"),
                 "%d cols" % round(_med(mem, "pat1_cols", 1)),
                 "%d members" % round(_med(mem, "pat1_n", 1))]),
+            "desc": describe_cell("pattern", c, mem),
+            # Every scene in the cell, largest cover first, so the weak end
+            # of a group is visible rather than hidden behind its best.
+            "members": [row_identity(r) for r in
+                        sorted(mem, key=lambda r: -_f(r, "pat1_cover"))],
         })
     SIX = ["vis_xcomp", "vis_image", "vis_text", "vis_glyph",
            "vis_content", "vis_substrate"]
@@ -574,14 +679,20 @@ def main():
     scells = []
     for c in psi_surface_cells():
         mem = by_scell[c]
+        lead = "vis_" + c.split("/")[0]
         scells.append({
             "cell": c,
             "n": len(mem),
             # The median composition of the scenes in the cell, which is
-            # what the cell looks like. No drawing: a composition is not a
-            # layout, and a renderer would need a node of its own.
+            # what the cell looks like. The viewer draws it as proportions
+            # (IF-VIEWER); an empty cell has no composition to draw.
             "centre": ([] if not mem else
                        ["%s %.2f" % (k[4:], _med(mem, k)) for k in SIX]),
+            "comp": ({} if not mem else
+                     {k[4:]: round(_med(mem, k), 4) for k in SIX}),
+            "desc": describe_cell("surface", c, mem),
+            "members": [row_identity(r) for r in
+                        sorted(mem, key=lambda r: -_f(r, lead))],
         })
     s_empty = [c["cell"] for c in scells if not c["n"]]
 
@@ -596,10 +707,6 @@ def main():
     # coordinates always exist and sum to one - so its unplaced population
     # is empty, and what stands in for undescribed is the scene whose
     # content is mostly nodes nothing can name.
-    def _f(r, c):
-        v = (r.get(c) or "").strip()
-        return float(v) if v else 0.0
-
     unplaced = {
         "pattern": {
             "undescribed": [row_identity(r) for r in rows
@@ -657,23 +764,32 @@ def main():
     # skips those keys. Adding `pattern_cells` without it told
     # no_silent_scene_loss.py that a list of cells was a vector block, and
     # it crashed reaching for .groups on a list.
+    # Every scene's tile once, by id. The three tabs refer to scenes by id,
+    # so a picture is embedded once however many tabs show it.
+    scenes = {}
+    for r in rows:
+        sid = row_identity(r)
+        scenes[sid] = {"img": img.get(sid), "imgsrc": kind.get(sid),
+                       "cell": psi_pattern(r), "scell": psi_surface(r),
+                       "sig": (r.get("pat1_pat") or "").strip(),
+                       "cap": VECTORS["pattern"]["caption"](r)
+                              + VECTORS["surface"]["caption"](r)}
     out = {"_unplaced": unplaced,
+           "_scenes": scenes,
            "_pattern_cells": cells,
            "_surface_cells": scells,
            "_audit": {"rows": len(rows), "shown": len(img),
                       "own": len(img) - borrowed, "backstop": borrowed,
                       "missing": missing,
                       "captures": a.captures or None, "reps": a.reps or None}}
-    for key in VECTORS:
-        out[key] = build(rows, img, kind, key, a.min_cluster)
-        v = out[key]
-        print("%-16s %d clusters, %d fitting none (%.0f%%), silhouette %s"
-              % (v["title"], v["k"], v["outliers"],
-                 100 * v["outliers"] / v["n"], v["silhouette"]))
-        for g in v["groups"]:
-            nm = "none" if g["id"] < 0 else "c%d" % g["id"]
-            print("     %-5s n=%3d coh %-5s %s"
-                  % (nm, g["n"], g["cohesion"], " · ".join(g["centre"])))
+    out["clustering"] = v = build_joint(rows, a.min_cluster)
+    print("\n%s: %d clusters, %d unclustered (%.0f%%), silhouette %s, "
+          "PCA explained %s"
+          % (v["title"], v["k"], v["outliers"], 100 * v["outliers"] / v["n"],
+             v["silhouette"], " / ".join("%.0f%%" % (100 * x) for x in v["explained"])))
+    for g in v["groups"]:
+        nm = "none" if g["id"] < 0 else "c%d" % g["id"]
+        print("     %-5s n=%3d coh %s" % (nm, g["n"], g["cohesion"]))
 
     with open(a.out, "w", encoding="utf-8") as fh:
         json.dump(out, fh, ensure_ascii=False)

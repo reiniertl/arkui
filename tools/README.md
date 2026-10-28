@@ -50,6 +50,6 @@ See [cluster/README.md](cluster/README.md). In short:
 ```sh
 python cluster/rs_pattern.py    captures --out patterns.csv
 python cluster/vectors_build.py patterns.csv --captures captures
-python cluster/vectors_page.py  two_payload.json --out vectors.html
+python cluster/vectors_page.py  two_payload.json --out scene_feature_reference.html
 ```
 

@@ -16,7 +16,9 @@ combobul and is not yet bound to spec nodes; binding it is the work ahead.
 There are no scene classes in this repository and that is deliberate. Three
 asserted taxonomies - a C enum of 20, a PowerShell classifier of 23, and a
 naming function of 28 shapes - have been deleted. Two feature vectors are
-measured and each is clustered on its own; nothing confirms a class list.
+measured; each scene is placed in one declared cell of each vector's space,
+and one clustering runs over both vectors together and matches no pattern.
+Nothing confirms a class list.
 
 ## Where things are
 
@@ -24,8 +26,9 @@ measured and each is clustered on its own; nothing confirms a class list.
 |---|---|
 | `tools/cluster/rs_extract.py` | RenderService dump -> tree, surfaces, ownership |
 | `tools/cluster/rs_pattern.py` | the pattern and surface vectors |
-| `tools/cluster/vectors_build.py` | clustering, page payload |
-| `tools/cluster/vectors_page.py` | the page |
+| `tools/cluster/vectors_build.py` | cells, descriptions, the joint clustering, the payload |
+| `tools/cluster/vectors_page.py` | the viewer, `scene_feature_reference.html` |
+| `tools/checks/viewer_renders.py` | executes the viewer and checks what it rendered |
 | `tools/rs_capture.ps1` | capture on the device |
 | `combobul/spec/` | this project's spec; the engine is installed per machine, at `~/combobul` (see below) |
 
