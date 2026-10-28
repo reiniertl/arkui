@@ -24,7 +24,8 @@ cell of each, and clusters the scenes once over both together.
 
 ```
 rs_capture.ps1          device  ->  *.rstree.txt, *.client.txt, display.txt
-  rs_extract.py                     parse the dumps into a tree
+  rs_extract.py                     parse the dumps into a tree, with each node's rectangle
+  rs_visibility.py                  what of each window is on the display, by alpha
   rs_pattern.py                     measure the two vectors   -> patterns.csv
   vectors_build.py                  cells, descriptions, one clustering -> two_payload.json
   vectors_page.py                   the viewer, three tabs -> scene_feature_reference.html
@@ -64,7 +65,8 @@ the tiles by a person looking at them.
 | Path | What |
 |---|---|
 | `tools/rs_capture.ps1` | the device side. Pulls dumps, computes nothing |
-| `tools/cluster/rs_extract.py` | parse a RenderService dump into a tree |
+| `tools/cluster/rs_extract.py` | parse a RenderService dump into a tree, with each node's rectangle |
+| `tools/cluster/rs_visibility.py` | what of each window is on the display, by alpha alone |
 | `tools/cluster/rs_pattern.py` | measure the two vectors |
 | `tools/cluster/vectors_build.py` | cluster each vector, build the page payload |
 | `tools/cluster/vectors_page.py` | render the payload |

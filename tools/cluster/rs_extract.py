@@ -6,7 +6,9 @@ PowerShell one, 26 columns wide, most of them later pruned or superseded. The
 extractor is gone; rs_pattern.py is the only one, and this is the parsing it
 stands on.
 
-    parse_tree(lines)        the RSTree dump -> nodes, surfaces, order
+    parse_tree(lines)        the RSTree dump -> nodes, surfaces, order, and
+                             every node's absolute rectangle (INV-GEOMETRY-
+                             FROM-TREE)
     parse_client(lines)      the client dump -> node id -> component tag
     paint_order(tree)        real paint order: ReverseChildren and PositionZ
     set_ownership(tree)      which window-level surface each node belongs to
@@ -22,8 +24,6 @@ SIG_FLOOR = 20.0       # permille of the display: below this a rect is noise
 SIG_CEIL = 600.0       # and above it a rect is a container every app has
 
 RX_NODE = re.compile(r'^(\s*\|?\s*)([A-Z_]+NODE)\[(\d+)\]')
-RX_ABS = re.compile(r'innerAbsDrawRect: \[\s*(-?\d+),\s*(-?\d+),\s*(-?\d+),\s*(-?\d+)\s*\]')
-RX_OLD = re.compile(r'oldDirty: \[\s*(-?\d+),\s*(-?\d+),\s*(-?\d+),\s*(-?\d+)\s*\]')
 RX_KIDS = re.compile(r'sortedChildren:\s*\d+\(([^)]*)\)')
 RX_NAME = re.compile(r'Name \[([^\]]+)\]')
 RX_NODENAME = re.compile(r'nodeName:\s*\[([^\]]*)\]')
@@ -47,7 +47,30 @@ RX_SURFTAG = re.compile(r'XComponent|Web|UIExtension|Embedded|Plugin')
 RX_POSZ = re.compile(r'PositionZ\[(-?[\d.]+)\]')
 RX_SHOULD = re.compile(r'shouldPaint_\[([01])\]')
 
-RX_LOCAL = re.compile(r'Properties:\s*Bounds\[\s*(-?[\d.]+)\s+(-?[\d.]+)\s+(-?[\d.]+)\s+(-?[\d.]+)\s*\]')
+RX_LOCAL = re.compile(r'Properties:\s*Bounds\[\s*(-?[\d.]+|-?inf)\s+(-?[\d.]+|-?inf)\s+(-?[\d.]+|-?inf)\s+(-?[\d.]+|-?inf)\s*\]')
+# The layout properties a node's position is composed from. Each is printed
+# only when it differs from its default.
+RX_TX = re.compile(r'\bTranslateX\[(-?[\d.]+)\]')
+RX_TY = re.compile(r'\bTranslateY\[(-?[\d.]+)\]')
+RX_SX = re.compile(r'\bScaleX\[(-?[\d.]+)\]')
+RX_SY = re.compile(r'\bScaleY\[(-?[\d.]+)\]')
+RX_PIVOT = re.compile(r'\bPivot\[(-?[\d.]+),\s*(-?[\d.]+)\]')
+RX_PALPHA = re.compile(r'\bAlpha\[(-?[\d.]+)\]')
+RX_BG = re.compile(r'\bBackgroundColor\[#([0-9A-Fa-f]{2})[0-9A-Fa-f]{6}\]')
+
+
+def _bounds(line):
+    """The node's own Bounds, or None when absent or not finite."""
+    m = RX_LOCAL.search(line)
+    if not m:
+        return None
+    v = [float(x) for x in m.groups()]
+    return tuple(v) if all(math.isfinite(x) for x in v) else None
+
+
+def _num(rx, line, dflt):
+    m = rx.search(line)
+    return float(m.group(1)) if m else dflt
 
 
 def _local_w(line):
@@ -146,9 +169,9 @@ def parse_tree(lines):
         if not m:
             continue
         nid = int(m.group(3))
-        a = RX_ABS.search(l)
-        od = RX_OLD.search(l)
         k = RX_KIDS.search(l)
+        pv = RX_PIVOT.search(l)
+        bg = RX_BG.search(l)
         hw = RX_HWC.search(l)
         if hw and hw.group(1).strip():
             hwc_ids.update(int(x) for x in RX_HWCID.findall(hw.group(1)))
@@ -159,8 +182,16 @@ def parse_tree(lines):
             # higher there. Flooring here put depth_mean out by half a level
             # on every scene.
             "depth": int(round(len(m.group(1).replace("|", "")) / 2)),
-            "abs": tuple(int(v) for v in a.groups()) if a else None,
-            "old": tuple(int(v) for v in od.groups()) if od else None,
+            # composed after the pass, once every parent is known
+            "abs": None,
+            "bounds": _bounds(l),
+            "tx": _num(RX_TX, l, 0.0), "ty": _num(RX_TY, l, 0.0),
+            "sx": _num(RX_SX, l, 1.0), "sy": _num(RX_SY, l, 1.0),
+            "pivot": (float(pv.group(1)), float(pv.group(2))) if pv else (0.5, 0.5),
+            "alpha": _num(RX_PALPHA, l, 1.0),
+            # the alpha byte of the background colour; None when the node
+            # has no background colour and so paints nothing of its own
+            "bga": int(bg.group(1), 16) if bg else None,
             "localw": _local_w(l),
             "kids": [int(x) for x in k.group(1).split()] if k else [],
             "blur": bool(re.search(r'BlurRadiusX|BackgroundFilter|HasFrostedGlassEffect|NeedFilter: true', l)),
@@ -248,8 +279,66 @@ def parse_tree(lines):
         if sp:
             # the renderer's own verdict on whether it will draw this node
             nodes[nid]["should"] = sp.group(1) == "1"
+    compose_geometry(nodes, order)
     return {"nodes": nodes, "order": order, "surfaces": surfaces,
             "vsync": vsync, "animating": animating}
+
+
+def compose_geometry(nodes, order, transforms=True):
+    """Every node's absolute rectangle, from the tree's own layout.
+
+    INV-GEOMETRY-FROM-TREE. A node's rectangle is its Bounds placed by the
+    transform composed down the parent chain: at each level the Bounds
+    offset and Translate, then Scale about the Pivot. Scroll is already in
+    Bounds. The dump's cached draw rectangles, oldDirty and
+    innerAbsDrawRect, are left from earlier frames - on the capture they
+    disagree with the layout for 43 percent of nodes, and read for position
+    they put a gallery 4000 px below the display - so they are not read.
+
+    The transform is axis-aligned, kept as (sx, sy, ox, oy): x maps to
+    sx * x + ox. Rotation is not composed. With transforms=False only the
+    Bounds offsets are, which is how the check measures what Translate and
+    Scale change. Returns {id: rect} when transforms is False, and sets
+    each node's "abs" otherwise.
+    """
+    parent = {}
+    for nid in order:
+        for k in nodes[nid]["kids"]:
+            parent.setdefault(k, nid)
+    M, out = {}, {}
+
+    def place(nid):
+        chain = []
+        while nid is not None and nid not in M:
+            chain.append(nid)
+            nid = parent.get(nid)
+        for c in reversed(chain):
+            p = parent.get(c)
+            a, d, e, f = M[p] if p in M else (1.0, 1.0, 0.0, 0.0)
+            n = nodes[c]
+            b = n["bounds"] or (0.0, 0.0, 0.0, 0.0)
+            ox, oy, sx, sy = b[0], b[1], 1.0, 1.0
+            if transforms:
+                px, py = n["pivot"][0] * b[2], n["pivot"][1] * b[3]
+                sx, sy = n["sx"], n["sy"]
+                ox += n["tx"] + px - sx * px
+                oy += n["ty"] + py - sy * py
+            M[c] = (a * sx, d * sy, e + a * ox, f + d * oy)
+
+    for nid in order:
+        place(nid)
+        b = nodes[nid]["bounds"]
+        r = None
+        if b is not None:
+            a, d, e, f = M[nid]
+            x0, x1 = sorted((e, e + a * b[2]))
+            y0, y1 = sorted((f, f + d * b[3]))
+            r = (x0, y0, x1 - x0, y1 - y0)
+        if transforms:
+            nodes[nid]["abs"] = r
+        else:
+            out[nid] = r
+    return out
 
 
 def paint_order(tree):

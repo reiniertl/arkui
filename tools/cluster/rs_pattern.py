@@ -32,6 +32,7 @@ from collections import defaultdict
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import rs_extract as R
+import rs_visibility as V
 
 # content kinds. Upper case came from a component tag, lower case was inferred
 # from geometry because the tag was a wrapper - on one app 103 of 135 leaves
@@ -263,7 +264,7 @@ def vis_kind(n, sc=None, nid=None):
                                    # none of them compete for pixels
 
 
-def visible_surface(sc, dw, dh, own_area, order, step=4):
+def visible_surface(sc, dw, dh, own_area, vis):
     """What you can actually SEE, by content type.
 
     A painter's pass, topmost first: every mark claims only the area that
@@ -272,19 +273,20 @@ def visible_surface(sc, dw, dh, own_area, order, step=4):
     container - the nesting case resolved by construction rather than by a
     rule. The result is a composition of the display that sums to one.
 
-    Rasterised at `step` pixels rather than unioned rectangle by rectangle,
+    What hides what is ALG-VISIBILITY's, not this pass's: a mark claims only
+    the cells the walk found uncovered by occluders outside its subtree,
+    and only cells no mark above it claimed. Rasterised on the walk's grid,
     because the incremental union is O(n^2) in sweep-line calls and costs
     more than the whole rest of the extractor. At 4 px the area error is
     under a percent.
     """
-    W, H = int(dw // step) + 1, int(dh // step) + 1
+    step = V.STEP
+    W, H = int(-(-dw // step)), int(-(-dh // step))
     grid = np.zeros((H, W), dtype=np.uint8)
     idx = {k: i + 1 for i, k in enumerate(VIS_KINDS)}
     marks = []
     for nid, n in sc.N.items():
-        if not sc._mine(nid):
-            continue
-        if not (is_drawn(n) or is_composed(n)):
+        if not sc._mine(nid) or "free" not in vis.get(nid, {}):
             continue
         k = vis_kind(n, sc, nid)
         if not k:
@@ -295,25 +297,22 @@ def visible_surface(sc, dw, dh, own_area, order, step=4):
         # painted over a video and the display read as 87% plain fill.
         if _area(n["abs"]) > OVERSIZE * own_area:
             continue
-        q = clipped(n["abs"], dw, dh) if n["abs"] and n["abs"][2] > 0 else None
-        if not q:
-            continue
         # A node with no client-dump entry has no tag because none exists:
         # it is a CANVAS_NODE below the component layer. Carried so the
         # share it claims can be reported apart from content the dump named
         # and the mapping failed to cover (INV-UNNAMED-CONTENT-REPORTED).
-        marks.append((order.get(nid, 0), q, k, not (n["tag"] or "")))
+        marks.append((sc.order.get(nid, 0), vis[nid]["box"], vis[nid]["free"],
+                      k, not (n["tag"] or "")))
     marks.sort(key=lambda m: -m[0])              # topmost first
     # A second grid, same shape, marking only the content cells whose node
     # was unnameable. Painted in lockstep so it cannot drift from the first.
     unnamed = np.zeros((H, W), dtype=np.uint8)
-    for _, q, k, anon in marks:
-        x0, y0 = int(q[0] // step), int(q[1] // step)
-        x1, y1 = int((q[0] + q[2]) // step) + 1, int((q[1] + q[3]) // step) + 1
+    for _, (y0, y1, x0, x1), free, k, anon in marks:
         sub = grid[y0:y1, x0:x1]
+        take = free & (sub == 0)
         if k == "content" and anon:
-            np.putmask(unnamed[y0:y1, x0:x1], sub == 0, 1)
-        np.putmask(sub, sub == 0, idx[k])
+            unnamed[y0:y1, x0:x1][take] = 1
+        sub[take] = idx[k]
     cell = float(step * step)
     tot = float(dw * dh)
     out = {}
@@ -365,9 +364,13 @@ def leaf_kind(n, density):
 
 
 class Scene:
-    def __init__(self, nodes, owner, density, order=None):
+    def __init__(self, nodes, owner, density, order=None, vis=None):
         self.N = nodes
         self.own = owner
+        self.order = order or {}
+        # INV-VISIBLE-ONLY: a node the visibility walk did not find on the
+        # display is not this window's for any feature
+        self.vis = vis
         self.d = density
         self.kids = {}
         self.overlay = set()
@@ -377,7 +380,8 @@ class Scene:
     def _mine(self, nid):
         n = self.N.get(nid)
         return n is not None and n["surf"] == self.own["id"] \
-            and n["kind"] != "SURFACE_NODE"
+            and n["kind"] != "SURFACE_NODE" \
+            and (self.vis is None or self.vis.get(nid, {}).get("visible", False))
 
     def _effective(self, nid):
         """Descend through coincident single-child wrappers to the node that
@@ -477,7 +481,7 @@ class Scene:
 SURF_BANDS = (0.25, 0.50, 0.75, 1.00)
 
 
-def media_surface(sc, dw, dh, own_area, used, order):
+def media_surface(sc, dw, dh, own_area, used, vis):
     """The externally rendered surface holding the scene, graded by how much
     of the window you can actually SEE of it.
 
@@ -485,9 +489,10 @@ def media_surface(sc, dw, dh, own_area, used, order):
 
     It measures the surface UNOCCLUDED. A player with a comment sheet pulled
     half over it is a different scene from the same player uncovered, and the
-    raw rect says they are identical. Everything painted after the surface
-    that lands on it is subtracted, so what is reported is the media you can
-    see rather than the media that exists.
+    raw rect says they are identical. What is hidden is ALG-VISIBILITY's
+    answer - the share of the rectangle covered by occluding nodes outside
+    the surface's subtree - so what is reported is the media you can see
+    rather than the media that exists.
 
     And the coverage is graded rather than thresholded. A quarter of the
     window and the whole of it are different scenes with different costs;
@@ -527,50 +532,8 @@ def media_surface(sc, dw, dh, own_area, used, order):
         return empty
     area, nid, n, c = best
 
-    # everything painted after it that lands on it, whether it was classed as
-    # an overlay or is simply a later sibling: a sheet dragged over a player
-    # hides it either way
-    on_top = []
-    mine_after = order.get(nid, 0)
-    for mid, m in sc.N.items():
-        if mid == nid or not sc._mine(mid) or order.get(mid, 0) <= mine_after:
-            continue
-        # Leaves only. A BRANCH that paints is almost always a scrim or a
-        # wrapper whose children are the real content: on one scene two
-        # untagged full-window branches with paints=True covered the player
-        # 100% each, and the surface was reported as entirely invisible. A
-        # sheet genuinely dragged over the player is still caught, because
-        # its leaves overlap too.
-        if m["kids"]:
-            continue
-        # It must actually be drawn this frame. shouldPaint_ alone: the
-        # Image that reported a plainly visible player as covered carries
-        # shouldPaint_[0], while IsSubTreeSkipped marks cached content that
-        # is still on display and would discard most of it.
-        if not (is_drawn(m) or is_composed(m)):
-            continue
-        q = clipped(m["abs"], dw, dh) if m["abs"] and m["abs"][2] > 0 else None
-        if not q:
-            continue
-        # A node sharing the surface's box is the surface's own content, not
-        # something over it: a player's poster frame is drawn as an Image at
-        # exactly the XComponent's rect, and counting it hid the video
-        # completely on 70 of 88 scenes. Same rule as the coincident wrapper
-        # collapse - the same box is the same thing.
-        # The same blur and shadow sources the pattern block bounds: Rect
-        # nodes of 8198x8198 px at negative origins, four times the window.
-        # They cover everything and occlude nothing.
-        if _area(m["abs"]) > OVERSIZE * own_area:
-            continue
-        qa, ca2 = q[2] * q[3], c[2] * c[3]
-        if ca2 > 0 and qa / ca2 >= COINCIDENT and abs(q[0] - c[0]) < 4 and abs(q[1] - c[1]) < 4:
-            continue
-        x0, y0 = max(q[0], c[0]), max(q[1], c[1])
-        x1, y1 = min(q[0] + q[2], c[0] + c[2]), min(q[1] + q[3], c[1] + c[3])
-        if x1 > x0 and y1 > y0:
-            on_top.append((x0, y0, x1 - x0, y1 - y0))
-    hidden = R.region_area(on_top)
-    visible = max(0.0, area - hidden)
+    visible = area * vis[nid]["frac"]
+    hidden = area - visible
 
     out = {"surf_kind": 3, "_surf_id": nid,
            "surf_cover": round(min(1.0, area / own_area), 3),
@@ -638,7 +601,11 @@ def draw_state(sc, dw, dh, own_area, surf_id):
 
 def analyse(tree, owner, density, dw, dh):
     order = R.paint_order(tree)
-    sc = Scene(tree["nodes"], owner, density, order)
+    # The walk runs first and everything after reads it: only what is on
+    # the display enters a feature (INV-VISIBLE-ONLY).
+    vis = V.walk(tree["nodes"], owner, dw, dh, order,
+                 keep=lambda nid: bool(vis_kind(tree["nodes"][nid])))
+    sc = Scene(tree["nodes"], owner, density, order, vis)
     own_area = R.region_area(owner["vis"]) or 1.0
 
     groups = []
@@ -759,11 +726,11 @@ def analyse(tree, owner, density, dw, dh):
                                             "cover", "h", "aspect", "top")})
     out["has_slot2"] = 1 if len(groups) >= 2 else 0
 
-    ms = media_surface(sc, dw, dh, own_area, used, order)
+    ms = media_surface(sc, dw, dh, own_area, used, vis)
     surf_id = ms.pop("_surf_id", None)
     out.update(ms)
     out.update(draw_state(sc, dw, dh, own_area, surf_id))
-    out.update(visible_surface(sc, dw, dh, own_area, order))
+    out.update(visible_surface(sc, dw, dh, own_area, vis))
     if False:
         # the feed page itself, when nothing else qualified as a surface
         g = max(pages, key=lambda g: g["area"])

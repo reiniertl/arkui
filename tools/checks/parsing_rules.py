@@ -13,8 +13,9 @@ output long before it was visible in the source.
   INV-FIRST-PASS-COUNTS       the two passes of RSTree are split, and the
                               node set comes from the first alone
   INV-OCCLUSION-PAINT-ORDER   depth is paint order, not dump position
-  INV-OCCLUDER-PAINTS         only a node that paints may claim pixels;
-                              IsSubTreeSkipped is caching, not invisibility
+  INV-OCCLUDER-PAINTS         no draw state decides visibility: nodes
+                              with shouldPaint_ 0 and skipped nodes are
+                              visible exactly as their alpha says
   INV-OWN-RECT-BOUNDS         size is judged on the unclipped rect
   INV-SUBSTRATE-IS-COMPLEMENT substrate is what nothing claimed, and never
                               a competitor in the painter's pass
@@ -29,6 +30,7 @@ CLUSTER = os.path.join(os.path.dirname(HERE), "cluster")
 sys.path.insert(0, CLUSTER)
 import rs_extract as R            # noqa: E402
 import rs_pattern as P            # noqa: E402
+import rs_visibility as V         # noqa: E402
 
 
 def sessions(root):
@@ -52,9 +54,9 @@ def check_first_pass(dumps):
     re-printed with DrawableVec and shouldPaint_ - so comparing id sets can
     never detect a leak, and an earlier version of this check passed a parse
     that deliberately read both. What a leak actually does is overwrite each
-    node's geometry with the second pass's line, where innerAbsDrawRect is
-    absent. So the check compares each node's parsed rect against the rect on
-    its FIRST line in the file.
+    node's geometry with the second pass's line, where Bounds is absent. So
+    the check compares each node's parsed Bounds against the Bounds on its
+    FIRST line in the file.
     """
     bad, split_seen, checked = [], 0, 0
     for tf, lines, tree in dumps:
@@ -70,8 +72,7 @@ def check_first_pass(dumps):
                     repeat_at = i
                 continue                      # a later pass; not the source
             seen_line.add(nid)
-            g = R.RX_ABS.search(l)
-            first_abs[nid] = tuple(int(v) for v in g.groups()) if g else None
+            first_abs[nid] = R._bounds(l)
         if repeat_at is not None:
             split_seen += 1
         for nid, n in tree["nodes"].items():
@@ -80,10 +81,10 @@ def check_first_pass(dumps):
                             "node %d is in the tree but on no first-pass line" % nid))
                 continue
             checked += 1
-            if n["abs"] != first_abs[nid]:
+            if n["bounds"] != first_abs[nid]:
                 bad.append((os.path.basename(tf),
-                            "node %d has rect %s; its first-pass line says %s"
-                            % (nid, n["abs"], first_abs[nid])))
+                            "node %d has Bounds %s; its first-pass line says %s"
+                            % (nid, n["bounds"], first_abs[nid])))
     print("  INV-FIRST-PASS-COUNTS")
     print("    %d dump(s); %d carry a second pass; %d node rect(s) compared "
           "against the first-pass line" % (len(dumps), split_seen, checked))
@@ -123,30 +124,50 @@ def check_paint_order(dumps):
 
 
 def check_occluder_paints(dumps):
-    """Every admitted mark paints; skipped neither admits nor rejects."""
+    """No draw state decides visibility; the walk reads alpha alone.
+
+    The walk's source names none of shouldPaint_, the drawable slots or
+    IsSubTreeSkipped; that is the invariant. What the dumps add is evidence
+    of its effect. Skipped nodes are found visible in quantity, which reading
+    IsSubTreeSkipped as invisibility would make zero. And shouldPaint_ 0 is
+    reported against the alpha rule: on the capture of 2026-10-28 all 1302
+    such nodes have effective alpha 0, so the renderer and the rule agree
+    there, and a shouldPaint_ 0 node found visible would be the walk keeping
+    what the renderer drops, by alpha, as it should.
+    """
     bad = []
-    admitted = skipped_admitted = 0
+    src = open(V.__file__, encoding="utf-8").read()
+    code = "\n".join(l.split("#")[0] for l in src.split('"""')[-1].splitlines())
+    for word in ("should", "slot", "skipped", "paints"):
+        if word in code:
+            bad.append(("rs_visibility.py", "the walk's code reads %r" % word))
+    nopaint = nopaint_vis = nopaint_a0 = skipped = skipped_vis = 0
     for tf, lines, tree in dumps:
-        for nid, n in tree["nodes"].items():
-            if not P.vis_kind(n):
+        R.set_ownership(tree)
+        order = R.paint_order(tree)
+        for s in tree["surfaces"]:
+            if s["nested"] or s["visible"] != 1 or not s["vis"]:
                 continue
-            paints = P.is_drawn(n) or P.is_composed(n)
-            if not paints:
-                continue            # not admitted; correct
-            admitted += 1
-            if n.get("skipped"):
-                skipped_admitted += 1
-    # If skipped were being read as invisible, no skipped node would ever be
-    # admitted. That it is admitted in quantity is the evidence.
-    if admitted and not skipped_admitted:
-        bad.append(("all dumps", "no skipped node was admitted at all, which is "
-                    "what reading IsSubTreeSkipped as invisibility looks like"))
+            for nid, v in V.walk(tree["nodes"], s, R.DISPLAY_DEFAULT["w"],
+                                       R.DISPLAY_DEFAULT["h"], order).items():
+                n = tree["nodes"][nid]
+                if not n.get("should", True):
+                    nopaint += 1
+                    nopaint_vis += 1 if v["visible"] else 0
+                    nopaint_a0 += 1 if v["state"] == V.INVISIBLE else 0
+                if n.get("skipped"):
+                    skipped += 1
+                    skipped_vis += 1 if v["visible"] else 0
+    if skipped and not skipped_vis:
+        bad.append(("all dumps", "no skipped node is visible, which is what "
+                    "reading IsSubTreeSkipped as invisibility looks like"))
     print("  INV-OCCLUDER-PAINTS")
-    print("    %d mark(s) admitted, of which %d are IsSubTreeSkipped - "
-          "skipped is reported, never read as invisible"
-          % (admitted, skipped_admitted))
-    for f, nid in bad[:5]:
-        print("    %s: node %s rejected for being skipped" % (f, nid))
+    print("    the walk names no draw state; of %d skipped node(s) %d are visible"
+          % (skipped, skipped_vis))
+    print("    of %d shouldPaint_ 0 node(s): %d have effective alpha 0, %d are "
+          "visible by alpha" % (nopaint, nopaint_a0, nopaint_vis))
+    for f, why in bad[:5]:
+        print("    %s: %s" % (f, why))
     return not bad
 
 

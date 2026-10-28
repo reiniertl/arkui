@@ -54,7 +54,7 @@ vectors_build.py, vectors_page.py, and the checks under tools/checks/.
 ORDER
 ===============================================================================
 
-  1. /cb-green — geometry and visibility from the tree
+  1. /cb-green — clipping and rotation in the visibility walk
   2. /cb-green — the pattern dictionary and the matcher
 
 
@@ -64,16 +64,19 @@ DEFERRED
 
   - /cb-green — the surface partition without substrate
 
-    Its code is left as it is. While it is deferred, the clustering runs on
-    the pattern vector alone.
+    Its occlusion is ALG-VISIBILITY's; the kind of each claim still comes
+    from the tag and the content slot (vis_kind). While it is deferred, the
+    clustering runs on the pattern vector alone.
 
 /cb-green — the surface partition without substrate
   - What: PSI_s ranks four candidate coordinates - xcomp, image, text and
     content - and a scene's cell is (largest, second largest). vis_substrate
     stays measured, in the vector and on the page, and is not a coordinate
     of the cell. 12 cells are declared.
-    It runs on the geometry and visibility of item 1, so it is moved into
-    ORDER only after item 1 is done.
+    It runs on the geometry and visibility of ALG-VISIBILITY.
+    Open point: vis_kind admits a claim only for a node carrying the content
+    slot 28, which is draw state; whether the kind of a visible node may
+    depend on it is put to the human.
   - Read: ALG-PSI-SURFACE, IF-SURFACE-SPACE; psi_surface, psi_surface_cells,
     VIS_RANKED and describe_cell in vectors_build.py; tools/checks/
     psi_rules.py.
@@ -95,54 +98,36 @@ DEFERRED
 PROMPTS
 ===============================================================================
 
-/cb-green — geometry and visibility from the tree
-  - What: two things every feature stands on.
-    GEOMETRY. A node's absolute rectangle is its Bounds composed down the
-    parent chain, with Translate and scale applied at each level. Scroll is
-    already in Bounds and is not applied again. The dump's cached draw
-    rectangles - oldDirty, innerAbsDrawRect - are not read for position.
-    VISIBILITY. Per window, inside its VisibleRegion, nodes are walked from
-    the topmost in paint order down. A node's effective alpha is its Alpha
-    multiplied by every ancestor's. Each node is in one of three states:
-      invisible   - effective alpha 0: the node and its subtree contribute
-                    nothing;
-      occluding   - effective alpha 1 and background colour alpha FF: it
-                    draws and hides everything painted beneath it within
-                    its rectangle;
-      translucent - otherwise: it draws and is visible, and what is beneath
-                    it stays visible.
-    A node with no background colour paints nothing itself and never
-    occludes. A container is visible when anything inside it is visible.
-    Only visible nodes enter any feature.
-  - Read: rs_extract.py (parse_tree, set_ownership, paint_order) and
-    rs_pattern.py (owner_of, visible_surface) in full; the node lines of
-    one rstree dump, both the main-thread and the uni-thread sections.
+/cb-green — clipping and rotation in the visibility walk
+  - What: two things the geometry does not yet do, measured on the capture
+    of 2026-10-28 over 64,878 visible nodes in 300 scenes.
+    CLIPPING. A parent with ClipToBounds[True] cuts what its children show
+    to its own rectangle. 10,541 visible nodes lie partly outside a
+    clipping ancestor and 1,140 wholly outside one, in 298 scenes; the
+    wholly outside ones are counted visible and are not on the display. A
+    node's on-display rectangle becomes its rectangle intersected with
+    every clipping ancestor's, and the walk measures that.
+    ROTATION. Rotation, RotationX and RotationY are not composed. 1,889
+    visible nodes in 72 scenes sit under a non-zero rotation. How a rotated
+    rectangle is represented on an axis-aligned raster - its bounding box,
+    or the rotated quadrilateral - is put to the human before the spec.
+  - Read: rs_extract.py (compose_geometry), rs_visibility.py,
+    tools/checks/geometry_visibility.py; the property lines of one rstree
+    dump carrying ClipToBounds and a Rotation.
   - Spec work:
-      add annotation ANN-DISPLAY-WINDOW-SCREEN (SUB-FEATURE-RESEARCH): the
-        three terms as RULES FOR EVERY ITEM defines them.
-      add invariant INV-GEOMETRY-FROM-TREE (SUB-FEATURE-RESEARCH, runtime):
-        every node's absolute rectangle equals its Bounds composed down the
-        parent chain with Translate and scale; no position is read from
-        oldDirty or innerAbsDrawRect.
-      add invariant INV-OPACITY (SUB-FEATURE-RESEARCH, runtime): the three
-        states, as above.
-      add invariant INV-VISIBLE-ONLY (SUB-FEATURE-RESEARCH, runtime): only
-        nodes visible on the display after the walk enter any feature.
-      add algorithm ALG-VISIBILITY (SUB-FEATURE-RESEARCH): the walk;
-        satisfies INV-OPACITY and INV-VISIBLE-ONLY; runs-at
-        AUT-PIPELINE-RUN.
-      every new invariant checked-at AUT-PIPELINE-RUN.
-  - Code path: tools/cluster/rs_extract.py (geometry), a visibility module
-    beside it, tools/checks/ (a geometry and visibility check).
-  - Test, on the real capture:
-      - the video XComponent comes out at 701x1247 at (307, 0) in
-        20261022_123014/0102, 0049, 0179, 0027 and 20261022_110104/0002, at
-        1316x740 at (0, 253) in 20261022_123014/0192, and at 1316x979 at
-        (0, 134) in 20261027_102041/0010, each 100 percent visible;
-      - in 20261022_123014/0192 the GridItems are visible at y 2070;
-      - the number of visible nodes whose rectangle changes when Translate
-        and scale are applied, reported;
-      - npm run spec:check, no violations.
+      modify INV-GEOMETRY-FROM-TREE: rotation, as the human decides.
+      add invariant INV-CLIP-TO-BOUNDS (SUB-FEATURE-RESEARCH, runtime): a
+        node's on-display rectangle lies inside every ancestor's that clips
+        to its bounds; checked-at AUT-PIPELINE-RUN.
+      modify ALG-VISIBILITY: measures the clipped rectangle; satisfies
+        INV-CLIP-TO-BOUNDS.
+  - Code path: rs_extract.py, rs_visibility.py,
+    tools/checks/geometry_visibility.py.
+  - Test, on the real capture: the seven confirmed video rectangles still
+    whole and wholly visible; the 0192 GridItems at y 2070 still visible;
+    the visible-node count before and after, and how many of the 1,140 are
+    no longer visible; geometry_visibility.py and parsing_rules.py hold;
+    npm run spec:check, no violations.
   - BOUNDARY: as in RULES FOR EVERY ITEM.
 
   - IMPORTANT: Every figure is measured in this session against a real capture and written into the report.
@@ -187,8 +172,8 @@ PROMPTS
     MATCHING. A window with under half of its nodes tagged
     (ERR-PATTERN-ROOT-UNTAGGED, INV-CLIENT-TAG-COVERAGE) is not matched; it
     is named, and counts as untagged rather than as having no pattern.
-    Per window, for each pattern, at every visible node whose
-    label is the pattern's root: the element set of its subtree down to the
+    Per window, for each pattern, at every node ALG-VISIBILITY finds
+    visible whose label is the pattern's root: the element set of its subtree down to the
     pattern's depth, through pass-through nodes; d = 1 - Jaccard(subtree
     set, pattern set). The pattern's distance in the window is the minimum
     over those nodes, and 1 when no node carries the root. Found when

@@ -24,11 +24,13 @@ Nothing confirms a class list.
 
 | Path | What |
 |---|---|
-| `tools/cluster/rs_extract.py` | RenderService dump -> tree, surfaces, ownership |
+| `tools/cluster/rs_extract.py` | RenderService dump -> tree, surfaces, ownership, geometry |
+| `tools/cluster/rs_visibility.py` | the visibility walk: alpha states, occlusion, visible nodes |
 | `tools/cluster/rs_pattern.py` | the pattern and surface vectors |
 | `tools/cluster/vectors_build.py` | cells, descriptions, the joint clustering, the payload |
 | `tools/cluster/vectors_page.py` | the viewer, `scene_feature_reference.html` |
 | `tools/checks/viewer_renders.py` | executes the viewer and checks what it rendered |
+| `tools/checks/geometry_visibility.py` | geometry and visibility, against the confirmed scenes |
 | `tools/rs_capture.ps1` | capture on the device |
 | `combobul/spec/` | this project's spec; the engine is installed per machine, at `~/combobul` (see below) |
 
