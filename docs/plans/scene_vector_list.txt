@@ -97,10 +97,23 @@ The baseline the executions read (read each file in full):
 ORDER
 ===============================================================================
 
-  Nothing remains. Every item of this list has run; what each one found is
+  Every item this list was written with has run; what each one found is
   under WHAT IS DONE. Records 1 to 6 hold the decisions that produced them.
+  Two items stand after them, both from looking at the viewer on
+  2026-10-28: the joint clustering left 58 percent of scenes unclustered,
+  and one scene's pattern cell contradicted its own picture.
 
-  After this list: nothing is planned.
+  1. /cb-green — features from fixed maps, and pictures from the same moment
+  2. /cb-green — the surface partition without substrate
+
+  Open, with no item yet, because it is the human's to define: what a
+  pattern is. Today two siblings with the same description form a
+  "repeating group" (rs_pattern.py analyse(), len(mem) < 2), so 268 of 299
+  scenes have one and 87 sit in row/minor at a median cover of 0.02 - two
+  icons, two buttons, two lines of text. How many repeats, of what, and
+  covering how much of the display, decides what PSI_p partitions.
+
+  After those: nothing is planned.
 
 
 ===============================================================================
@@ -971,3 +984,173 @@ THE DECISIONS IN FORCE
 PROMPTS
 ===============================================================================
 
+/cb-green — features from fixed maps, and pictures from the same moment
+  - What: two defects found on 2026-10-28, each closed by invariants
+    authored before any code.
+    NORMALIZATION. A feature today is not a function of its scene. Twelve
+    columns go through transform(), an empty value is replaced by the
+    column mean, every column is standardised by the capture's own mean
+    and deviation, multiplied by a hand-set weight (0.7 or 1.2 on six of
+    twelve, with no evidence recorded anywhere), and each vector's block is
+    scaled to equal variance. Measured over the 299-scene capture:
+      - after standardising, columns reach from 1.5 to 5.5 deviations and
+        most are skewed (pat1_h 2.5, vis_xcomp 2.0, vis_image 1.8,
+        vis_content 1.8), so a few scenes stretch each axis and the rest
+        crowd a dense core - the shape HDBSCAN reports as noise;
+      - 31 scenes (10%) have no repeating group and are given the average
+        group's geometry in five columns: a fabricated point;
+      - vis_substrate is 1 minus the other five (they sum to 1.000-1.005),
+        so it counts emptiness twice;
+      - removing the weights alone changes nothing (58% to 61%
+        unclustered); the normalization is the defect.
+    A feature that depends on the capture cannot be computed online for a
+    single new scene, and a rank or z-score does exactly that. The human
+    ruled on 2026-10-28: no weights without evidence, no imputation, every
+    feature in the same range, and nothing that fails online.
+    SAMPLE TIMING. vectors_build.py joins a picture to its scene by file
+    name. Measured from samples.csv - the capture's own timestamps, never
+    file write times, which are the batch transfer at the end of a session
+    and say nothing - 206 of 216 pictures were taken under 2 s after their
+    dump on the same signature. Ten were not, all from the 2026-10-22
+    sessions and none from 2026-10-27, so the capture fix holds for what it
+    captured. The worst, 20261022_123014/0045, was photographed 465 s after
+    its dump with 1572 samples and 58 other scenes in between - the case
+    the human reported on 2026-10-23, still shown in the viewer as that
+    scene's own picture.
+  - Read: vectors_build.py (transform, VECTORS, build_joint) and
+    rs_pattern.py analyse() in full; samples.csv of one 2026-10-22 and one
+    2026-10-27 session; the spec nodes below.
+  - Spec areas: ALG-VECTOR-CLUSTER, IF-PATTERNS-ROW, IF-PATTERN-SPACE,
+    IF-SURFACE-SPACE, INV-ABSENT-NOT-ZERO, ERR-SCENE-WITHOUT-REP,
+    IF-CAPTURE-SESSION.
+  - Spec work, authored before any code:
+      add invariant INV-FEATURE-FIXED-MAP: every feature is a fixed
+        function of one scene's own measurements; no statistic of the
+        capture - mean, deviation, rank, percentile, min, max - enters a
+        feature value. Checked at runtime by computing every scene's vector
+        alone and inside the capture and requiring them identical: the
+        online test.
+      add invariant INV-FEATURE-UNIT-RANGE: every feature lies in [0, 1]
+        for every scene by construction of its map - fractions of the
+        display as they are, counts through n/(n+1), aspect through
+        (2/pi)*atan(w/h) - and nothing is clamped to force it there.
+        Checked at runtime, with each map's bound stated on its node.
+      add invariant INV-FEATURE-TOTAL: every feature is defined for every
+        scene by its own definition. A scene with no pattern takes each
+        feature's declared no-pattern value. No value is imputed, filled or
+        defaulted from other scenes. Checked at runtime (no empty or NaN
+        enters the vector) and statically (no nanmean or fill in the
+        feature path).
+      add invariant INV-NO-FEATURE-WEIGHTS: the distance treats every
+        feature equally; no per-feature or per-vector weight exists unless
+        an annotation node records the evidence for it. Checked statically
+        over the feature table and the payload's columns.
+      add invariant INV-NO-REDUNDANT-FEATURE: no feature is an exact
+        function of the others; vis_substrate leaves the feature set.
+        Checked statically and by the rank of the matrix.
+      add invariant INV-COVER-WITHIN-VISIBLE: every coverage is the area of
+        its members clipped to the visible region, over its denominator, and
+        is at most 1 without clamping. Scene 20261022_123014/0090 has two
+        top-bar buttons lying wholly outside its window's 226x258 visible
+        region, and their area over that region's area gave cover 0.998.
+      add invariant INV-PICTURE-SAME-MOMENT: a scene's picture is accepted
+        only if, in its session's samples.csv, no sample with a different
+        signature lies between the dump's sample and the picture's sample;
+        otherwise the scene is shown with no picture of its own and the
+        reason is named. Derived, not fitted: no time threshold appears.
+        Checked at the join and by a check that recomputes it.
+      add invariant INV-NO-FILE-TIME: no code orders or pairs samples by
+        file modification time; only the capture's ts column does. Checked
+        statically over the pairing path.
+      add error-code ERR-PICTURE-NOT-SAME-MOMENT (WARN, py): a picture was
+        rejected, and the scene is named.
+      add error-code ERR-FEATURE-OUT-OF-RANGE (ERROR, py).
+      add error-code ERR-FEATURE-UNDEFINED (ERROR, py).
+      replace INV-ABSENT-NOT-ZERO by INV-FEATURE-TOTAL. Its predicate
+        requires build() to replace every empty value with its column mean,
+        so it codifies the imputation the human rejected. Rule 2 forbids
+        deleting an invariant to suppress a finding; this one is superseded
+        by a stricter one, and the human confirms that before the envelope.
+      modify ALG-VECTOR-CLUSTER: it takes the feature vector as defined -
+        no transform, no standardisation, no weights, no block scaling.
+      modify IF-PATTERNS-ROW: the weights and transforms leave it.
+  - Open points, for the human, before any node is written:
+      (a) The no-pattern value of each pattern feature. Cover, item count
+          and columns have a natural one, 0. Item height and aspect do not:
+          there is no item. Either they take a declared value, or they
+          leave the vector for features that exist for every scene.
+      (b) The coverage denominator: the display, which means the same in
+          every scene, or the attributed window's visible region, which is
+          what the code uses now and which on 0090 was 1.6 percent of the
+          display.
+  - Code path: tools/cluster/vectors_build.py, tools/cluster/rs_pattern.py,
+    tools/checks/ (a feature check and a pairing check), the viewer's
+    clustering tab.
+  - Test: on the real capture - every scene's vector identical alone and
+    in batch; every feature in [0, 1] with no clamp; no empty value in the
+    matrix; the ten late pictures rejected and named, 0090's kept; the
+    clustering re-run and its unclustered share reported against 58
+    percent; npm run spec:check, no violations.
+  - BOUNDARY: combobul and ArkUI are two projects. combobul/spec/spec.db
+    holds the specification of this project's code, in combobul's ontology,
+    written only through combobul's ril. No rule, kind, check or store of
+    one is carried to the other.
+
+  - IMPORTANT: Every figure is measured in this session against a real capture and written into the report.
+  - IMPORTANT: Sample timing is read from samples.csv. A file's write time is never evidence of when anything happened.
+  - INVIOLABLE: SPECIFICATION SURFACE IS AUTHORITATIVE. Every node above exists before the code it governs.
+  - INVIOLABLE: NO SCENE CLASSES.
+  - INVIOLABLE: DO NOT EMIT P3_SKIPPED.
+  - FORBIDDEN: MULTI-AGENT execution is not allowed. DO NOT SPAWN MULTIPLE AGENTS.
+  - WHEN TO COMMIT: Before "silk run finalize", after `npm run ril -- journal coalesce`.
+  - AFTER COMMIT: end FINAL_STATUS with an explicit NOT PUSHED line naming /cb-ops.
+  - DECISION PROTOCOL: If a decision must be made, ask for direct feedback. DO NOT DECIDE ALONE.
+  - AT THE END: update this list as the rule at the head of the list states.
+
+/cb-green — the surface partition without substrate
+  - What: PSI_s today ranks all five candidate coordinates, substrate
+    included, and takes the largest two. Measured over the 299-scene
+    capture: substrate leads 179 scenes (60 percent), so most cells say
+    "mostly nothing" before they say what the display holds; behind it the
+    second coordinate has a median of 0.13 of the display; in 53 scenes
+    (18 percent) the second and third coordinates are within 0.02, so the
+    second slot is decided by noise - which INV-PSI-DISJOINT does not see,
+    since it tests the declared tie-break order and not near-ties; and
+    text never beats substrate, which is why the four text/* cells are
+    empty and INV-PSI-MINIMAL fails.
+    Decided by the human on 2026-10-28, option A: substrate leaves the
+    ranking. A cell is (largest, second largest) among xcomp, image, text
+    and content. On the same capture that declares 12 cells and reaches all
+    12, text included, the largest holding 38 scenes (13 percent, against
+    23 now), so INV-PSI-MINIMAL holds. Substrate stays measured, in the
+    vector and on the page; it is just not a coordinate of the cell.
+    Measured for B, rejected: (largest named) x (substrate over half the
+    display) declared 8, reached 7, largest 22 percent.
+  - Read: ALG-PSI-SURFACE, IF-SURFACE-SPACE; psi_surface,
+    psi_surface_cells, VIS_RANKED and describe_cell in vectors_build.py;
+    tools/checks/psi_rules.py.
+  - Spec areas: ALG-PSI-SURFACE, INV-PSI-TOTAL, INV-PSI-DISJOINT,
+    INV-PSI-MINIMAL, INV-PSI-ORTHOGONAL, IF-VIEWER.
+  - Spec work:
+      modify ALG-PSI-SURFACE: the four-candidate ranking, its 12 cells, the
+        measured reach, and why substrate is not a candidate.
+      the near-tie measure for the new partition is reported, and whether
+        INV-PSI-DISJOINT should state near-ties as well as exact ties is
+        put to the human.
+  - Code path: vectors_build.py (VIS_RANKED, psi_surface,
+    psi_surface_cells, describe_cell), tools/checks/psi_rules.py, the
+    viewer's surface tab.
+  - Test: psi_rules.py on the real capture - 12 declared, 12 reached;
+    the payload's cells agree with a fresh assignment; viewer_renders.py
+    holds; npm run spec:check, no violations.
+  - BOUNDARY: as above.
+
+  - IMPORTANT: Every figure is measured in this session against a real capture and written into the report.
+  - INVIOLABLE: SPECIFICATION SURFACE IS AUTHORITATIVE.
+  - INVIOLABLE: NO SCENE CLASSES.
+  - INVIOLABLE: DO NOT EMIT P3_SKIPPED.
+  - FORBIDDEN: MULTI-AGENT execution is not allowed. DO NOT SPAWN MULTIPLE AGENTS.
+  - WHEN TO COMMIT: Before "silk run finalize", after `npm run ril -- journal coalesce`.
+  - AFTER COMMIT: end FINAL_STATUS with an explicit NOT PUSHED line naming /cb-ops.
+  - DECISION PROTOCOL: If a decision must be made, ask for direct feedback. DO NOT DECIDE ALONE.
+  - AT THE END: update this list as the rule at the head of the list states.
