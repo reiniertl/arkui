@@ -1,1156 +1,335 @@
-SCENE VECTOR LIST — THE FEATURE RESEARCH BROUGHT UNDER SPECIFICATION
+SCENE VECTOR LIST — WHAT IS TO BE DONE
 
-This list is the work that puts the scene-vector research under a
-specification. The project does two things: it collects ArkUI data off a
-HarmonyOS device, and it clusters the scenes it finds in that data. What is
-decided here is the quality of that collection and that clustering.
+The project collects ArkUI data from a HarmonyOS device and describes the
+scene on the display. This list holds the work still to be done, in order,
+and nothing else. What was done, and why, is in git and in the transcripts.
 
-Two things make this list what it is, and both were decided in the session
-that preceded it. The first: there are no scene classes, and three attempts
-at one were deleted — a C enum of twenty, a PowerShell classifier of
-twenty-three, a naming function of twenty-eight shapes. The clustering is
-not here to confirm a class list; it is given the vectors and nothing else.
-The second: the spec graph is empty over 3,298 lines of tracked code, so
-the governance adopted in 2da1e4d has nothing to verify with. Every item
-below exists to close one of those two gaps or to repair something the
-audits found while looking.
+HOW THE LIST WORKS
 
-Each item is one skill execution, run in the order below.
+- ORDER holds one line per item, in the order they run.
+- PROMPTS holds each item's full prompt, starting "/cb-green — <title>" with
+  no prefix, ready to paste.
+- DEFERRED holds items kept for later, with their prompts. They are not run
+  until the human moves them into ORDER.
+- Each item is one skill execution.
 
-- /cb-audit executions read and report; they change nothing.
-- /cb-fix executions repair a defect against a reproduction.
-- /cb-free sessions bring each finding to the human, one at a time, and
-  write the decision into THE DECISIONS IN FORCE of this list.
-- /cb-green executions author spec nodes and change code.
+When an item is finished, in the same session, before its gate is cleared:
+- its line is deleted from ORDER and its prompt from PROMPTS;
+- every later item it changes is written again to match;
+- work it found and did not do is written as a new item in ORDER, with its
+  prompt, or as an open point inside the item it belongs to;
+- the list is committed, and the push is made through /cb-ops.
 
-Every item ends by bringing this list to the state its work leaves, in the
-same session, before the gate is cleared:
-- the item is deleted, with its line under What remains, and its prompt;
-- the item is appended to WHAT IS DONE, with its date, its commit and what
-  it actually found - including when what it found is that the item itself
-  was wrong. Deleting an item without recording it leaves a list that shows
-  only what is left, and a reader of that list cannot tell work that was
-  done from work that was dropped;
-- each record of THE DECISIONS IN FORCE the item applies is written again to
-  what is still to do, its "Applied by" line naming only the items left, and
-  deleted when no item is left;
-- each finding the item reports and does not resolve is written as an open
-  point of the record it bears on when it is a question for the human, and
-  as an item in its place in the order, with its prompt, when it is work;
-- each name the item wrote differently from the record is written into the
-  record and into every later item that cites it, in the form the item
-  wrote;
-- every reference in the list to the deleted item, or to a name it changed,
-  is written again or removed.
-An audit cannot write; the list update an audit owes is done by the /cb-free
-session after it, which names it in its report.
+RULES FOR EVERY ITEM
 
-An item pushes before its gate is cleared. This rule was written when the
-work was authored on one machine and the list read on another, so that a
-committed-but-unpushed update could leave the next item to be chosen from a
-list behind the work. That happened once: the first item was executed,
-deleted from this list, and committed, and because nothing was pushed the
-same item was read and run a second time against a graph that already held
-its nodes. Since 2026-10-28 there is one tree — the capture machine's, which
-the authoring machine mounts — so the list a human reads and the list an
-item writes are the same file and cannot drift. The rule stands on its
-remaining ground: an unpushed commit exists on one disk only, and the item
-is not finished until the work is somewhere a disk failure cannot take it.
+- Specification first. Every node an item adds, modifies or removes is
+  authored through ril before the code it governs. A removal of an
+  invariant is confirmed by the human, node by node, before the envelope.
+- No scene classes. A pattern names a structure of components; nothing in
+  the repository maps a measurement onto the name of a scene, an app or a
+  use.
+- Only what is visible on the display enters a feature.
+- Terms: the display is the coordinate space every area and fraction is
+  measured in; a window is one top-level surface, and several coexist on a
+  display; the screen is the physical panel, and is used only for motion.
+- Sample timing is read from the capture's samples.csv, never from file
+  times.
+- Every figure an item reports is measured in that session on a real
+  capture. npm run spec:check passes, and the checks that read the changed
+  files are run and named.
+- Before committing spec work: npm run ril -- journal coalesce.
+- BOUNDARY: combobul and ArkUI are two projects. combobul/spec/spec.db holds
+  the specification of this project's code, written only through ril. No
+  rule, kind, check or store of one is carried to the other.
+- The repository lives only on the VM. The capture machine reads it as a
+  read-only share and runs the tools from ~\ark_work, where the captures,
+  the venv and every output stay. Captures never enter the repository.
 
-Every prompt carries a Spec work section naming its specification work node
-by node: each node it adds (id, kind, module, and every edge it carries),
-each node it modifies (id and the fields written), each node and each edge
-it removes. An item that changes no node says so and gives the reason. The
-names a prompt gives are record 4's; the human confirms them before the
-envelope is written.
-
-Every prompt carries the BOUNDARY clause: combobul and ArkUI are two
-projects, and no rule, kind, check or store of one is carried to the other.
-
-An item runs, at its end, the checks that read the files it changed, and
-names them in its report: `npm run spec:check`, and the pipeline on a real
-capture where its change reaches the pipeline.
-
-A measurement that an item claims is verified is verified in that session,
-against a real capture, and the figures are written into the report. A
-figure carried from an earlier session is marked as such.
-
-The captures carry no weight on the design: they are two sessions of one
-device held by one person, and nothing in this list treats a number taken
-from them as settled beyond the capture it came from. Captures live on the
-capture machine and never in this repository — they are pictures of a real
-phone in real use.
-
-The baseline the executions read (read each file in full):
-- README.md, tools/README.md, tools/cluster/README.md — what the project is
-  and what each stage does.
-- tools/cluster/rs_extract.py (404 lines), rs_pattern.py (795),
-  vectors_build.py (209), vectors_page.py (137) — the measurement.
-- tools/rs_capture.ps1 (424) — the device side.
-- CLAUDE.md — the governance in force.
-- .combobul/runs/audit-spec-genesis/contract.json and
-  .combobul/runs/audit-subfeature-spec/contract.json — the two audits this
-  list carries out, findings F1–F9 and S1–S11 with their classifications.
+The baseline each item reads in full: README.md, tools/README.md, CLAUDE.md,
+tools/rs_capture.ps1, tools/cluster/rs_extract.py, rs_pattern.py,
+vectors_build.py, vectors_page.py, and the checks under tools/checks/.
 
 
 ===============================================================================
 ORDER
 ===============================================================================
 
-  Every item this list was written with has run; what each one found is
-  under WHAT IS DONE. Records 1 to 6 hold the decisions that produced them.
-  Two items stand after them, both from looking at the viewer on
-  2026-10-28: the joint clustering left 58 percent of scenes unclustered,
-  and one scene's pattern cell contradicted its own picture.
-
-  1. /cb-green — features from fixed maps, and pictures from the same moment
-  2. /cb-green — the surface partition without substrate
-
-  Open, with no item yet, because it is the human's to define: what a
-  pattern is. Today two siblings with the same description form a
-  "repeating group" (rs_pattern.py analyse(), len(mem) < 2), so 268 of 299
-  scenes have one and 87 sit in row/minor at a median cover of 0.02 - two
-  icons, two buttons, two lines of text. How many repeats, of what, and
-  covering how much of the display, decides what PSI_p partitions.
-
-  After those: nothing is planned.
+  1. /cb-green — every visible window's components in the capture
+  2. /cb-green — geometry and visibility from the tree
+  3. /cb-green — the pattern dictionary and the matcher
 
 
 ===============================================================================
-WHAT IS DONE
+DEFERRED
 ===============================================================================
 
-  Appended by each item before its gate is cleared, oldest first. The commit
-  is where the work is; this is what it found.
+  - /cb-green — the surface partition without substrate
 
-  2026-10-27  /cb-free   the scope restated: collection and clustering only
-    92caf92.  Not an item of this list - the human stopped an item in flight.
-    The power experiment was removed in full: correlate.py, sample_power.sh,
-    scene_records.py, run_experiment.ps1, the CLOCK_MONOTONIC column added to
-    the capture index, and the spec nodes IF-SCENE-RECORD,
-    INV-SCENE-RECORD-CLOCK, ALG-SCENE-RECORDS and ALG-CORRELATE. correlate.py
-    and sample_power.sh predated the session and had never been run. The
-    instrumentation worked - 1391 power samples over 100 percent of a capture
-    window - and none of it was this project's business.
+    Its code is left as it is. While it is deferred, the clustering runs on
+    the pattern vector alone.
 
-  2026-10-27  /cb-green  the 71 scenes given a picture from the periodic shots
-    23a8f0e.  THE ITEM'S PREMISE WAS FALSE. samples.csv is now read and the
-    association works, through the sig of the sample whose number the
-    filename carries. It recovers almost nothing: 167 of the 169 periodic
-    frames land on a scene that already had its own picture, so the count of
-    scenes without one fell 74 to 72, not to near zero. Two independent joins
-    agree. The cause was the capture's rule, which became the next item.
-
-  2026-10-27  /cb-green  the capture photographs what never settles
-    30d20b9.  The backstop fired on a 5-second wall clock, so it photographed
-    whatever sat on the display longest - the scene that had already earned a
-    settled frame - and never the short-lived ones. It now fires on arrival at
-    a scene with no picture yet. Measured on a new capture: 27 scenes, 18
-    settled, 9 backstop, 0 with none, at 0.33s per sample. The 72 already
-    without a picture stay without one permanently; their frames were never
-    taken. INV-EVERY-DISTINCT-SCENE-PHOTOGRAPHED and capture_coverage.py.
-
-  2026-10-27  /cb-free   the list rebuilt around the vectors separating scenes
-    1eb92fc, and 095e2de for the READMEs that documented a command producing
-    an undeclared artefact and still advertised the --reps directory that
-    silently dropped 71 scenes.
-
-  2026-10-27  /cb-audit  the surface vector's collapse diagnosed
-    No commit; an audit changes nothing. Findings in record 3. The headline
-    one was WRONG and the item after it proved so - see below.
-
-  2026-10-27  /cb-free   the list rebuilt around PHI and PSI
-    9fb3fe5.  Record 6 written: the pipeline is two mappings, PSI is the one
-    that is missing, and a pattern set must be total, disjoint, minimal and
-    orthogonal.
-
-  2026-10-27  /cb-green  the surface mapping gap closed
-    bbe00ad.  THE AUDIT'S CENTRAL CLAIM WAS WRONG, and measuring the right
-    population before authoring is what caught it. The audit said the content
-    bucket is dominated by layout containers; it had measured the vocabulary
-    of every client-dump node and asserted it of a population it never
-    measured. Stack, Row and Column carry no slot 28 and never reach the
-    bucket at all. What is in it: 6,151 nodes under eleven tags, and by area
-    NO-TAG 0.184 and WaterFlow 0.158 of 0.393. The rule is structural, not a
-    vocabulary: a node that paints with a painting descendant is painting
-    background. vis_content 0.393 to 0.177, vis_substrate 0.320 to 0.488, and
-    image, xcomp and text all ROSE, because real content had been occluded by
-    untyped backdrops. AND THE CLUSTERING BARELY MOVED - 132 outliers to 130 -
-    so the collapse was never the mapping gap.
-
-  2026-10-27  /cb-green  line endings declared by the repository
-    3723a23.  Not an item of this list. The capture machine has
-    core.autocrlf=true and the repo had no .gitattributes, so git wrote CRLF
-    on checkout while every tool that rewrote a file wrote LF back; git called
-    that a modification though the bytes were identical and the pull refused.
-    The machine fell four commits behind in silence, the list read there was
-    stale, and an item already finished was run a second time. I had recorded
-    the cause as an agent habit - copying files over instead of pulling - and
-    that habit was real but was not the mechanism. INV-TEXT-STORED-LF.
-    Verified on the capture machine: ril rebuild twice, tree clean both times.
-
-  2026-10-27  /cb-green  the two feature spaces formalized, PHI and PSI declared
-    ff38b9b.  PSI_p = (arrangement, coverage above half) plus a none cell: 9
-    cells, 9 reachable. PSI_s = (largest, second largest) with vis_glyph
-    excluded and no threshold anywhere: 20 cells, 16 reachable. The
-    (argmax, above half) alternative was measured and rejected - one cell
-    would hold 60 percent of the capture. INV-PSI-MINIMAL DOES NOT HOLD for
-    the surface space: 4 cells empty, all of them where vis_text leads,
-    because text is never the largest coordinate in any of 299 scenes.
-    Authored with the failure rather than with a weakened predicate.
-    docs/design/feature-spaces.md carries the reasoning.
-
-  2026-10-27  /cb-green  PSI for the pattern vector: the motif derived and drawn
-    afad8d6.  psi_pattern assigns every row one of nine declared cells and
-    psi_pattern_cells declares them, so a cell nobody reaches can be named as
-    empty. schematic() recovered from 4421f9b; the DESC table of 13 names
-    beside it was not and must not be. Verified on the capture: 299 of 299
-    assigned, 9 of 9 cells reachable, grid 47/46, row 1/87, column 5/78,
-    stack 1/3, none 31, and the payload re-derived rather than trusted.
-    The content signature was measured as a candidate third axis and
-    rejected - 9 kind sets, 36 cells, most under ten scenes - rather than
-    silently dropped. IF-PAGE-PAYLOAD authored, no longer held.
-    THIS ITEM REPORTED SUCCESS WHILE CARRYING A BUG. Its own test could not
-    run inside /cb-green, since the captures are on the other machine, so it
-    finalized on the authoring machine's gates alone and they were all green.
-
-  2026-10-27  /cb-free   the payload key that broke the scene-loss check
-    fc1091a.  The bug the item above shipped. PSI_p added the cells as
-    `pattern_cells`, a bare list at the top level, and no_silent_scene_loss.py
-    walks the top-level keys treating anything without a leading underscore as
-    a vector block - so it reached for .groups on a list and died. The check
-    against losing scenes silently could not be evaluated at all. Renamed to
-    _pattern_cells, which is the convention _audit already set, and the reader
-    hardened to skip a value that is not a block with groups. Reproduced
-    before and verified after on the real capture: exit 1 then exit 0, and all
-    five checks green.
-
-  2026-10-27  /cb-green  PSI for the surface vector: the composition cells
-    276f450.  psi_surface assigns every row one of twenty declared cells -
-    (largest coordinate, second largest), vis_glyph excluded, no threshold
-    anywhere. Ranked by value descending then by the declared coordinate
-    order, because exactly one scene in 299 ties for the largest and the
-    order is therefore part of the partition rather than an implementation
-    detail. psi_rules.py now evaluates the four properties over BOTH spaces
-    from one set of functions, so the two cannot drift. The payload gains
-    _surface_cells, underscored, and every tile carries both of its cells.
-    No drawing was added: a composition is not a layout, the item asked only
-    for the cells, and a renderer would have needed its own node first.
-    MEASURED on the capture machine after the push: 299 of 299 assigned, 20
-    declared cells, 16 reachable, 4 empty - text/xcomp, text/image,
-    text/content, text/substrate. Every empty cell is one where vis_text
-    leads, exactly as the formalization predicted and for the reason it
-    gave: text is never the largest coordinate in any scene. The largest
-    cell is substrate/xcomp at 69 scenes, 23 percent of the capture. Both
-    payload blocks re-derived and agree. Page 19.9 MB. no_silent_scene_loss,
-    boundary_rules, vector_rules and no_scene_class all hold; tree clean.
-    psi_rules exits VIOLATED, which is the correct result: INV-PSI-MINIMAL
-    does not hold for the surface space and the check says so rather than
-    being softened until it passes.
-    A DEFECT IN THE CHECK ITSELF was found by this run, and fixed in the
-    item below.
-
-  2026-10-27  /cb-green  the disjoint check parameterised, and specified
-    f537527.  check_disjoint took (rows, name, psi, cells) like its three
-    siblings and used none of them: it read pat1_cover directly, so under
-    the PSI_s heading it reported the pattern space's boundary count - a
-    quantity with no meaning there - and disjointness went unverified for
-    the surface space. I had claimed a shared table meant the two spaces
-    could not drift; three of four checks were shared and the fourth was
-    not.
-    The fix is not two branches. Each assignment now takes its convention
-    as a parameter - psi_pattern(row, strict) for the boundary comparison,
-    psi_surface(row, order) for the tie-break - and the check assigns every
-    row twice, under the declared convention and under an equally
-    admissible alternative, reporting the rows whose cell differs. Those
-    rows and only those are the ones the convention decides, and the check
-    carries no copy of the ranking to drift from the real one.
-    INV-PSI-DISJOINT's predicate said "for every feature vector v", naming
-    no space and no method, which is how a single-space check satisfied it
-    on paper. It now names the convention per space AND the demonstration
-    required, so a hardcoded implementation cannot meet it again.
-
-  2026-10-27  /cb-green  every viewer names the cell, and what falls outside
-    247d964.  THE ITEM'S PREMISE WAS HALF WRONG and checking it before
-    authoring is what caught it. It assumed both spaces have a
-    none-of-the-above cell and that the undescribed and the unplaced are
-    distinct populations in each. Neither holds. In the pattern space a
-    scene with no repeating group is BOTH - PHI found nothing and PSI puts
-    it in the declared `none` cell - so they are the same 31 scenes. In the
-    surface space nothing is unplaced at all: PSI_s has no none-cell,
-    because the six coordinates always exist and sum to one, so every scene
-    ranks. Put to the human, who chose the unnameable-content scenes as the
-    surface analogue of undescribed - vis_unnamed averages 0.135 against a
-    vis_content of 0.177.
-    INV-UNPLACED-SCENES-NAMED states which population exists in which space
-    rather than inventing a cell to make them look alike, and requires the
-    scenes NAMED and not merely counted, because a count cannot be traced
-    back to a scene. ERR-SCENE-UNPLACED is WARN: the page is still correct,
-    what is missing is a description. unplaced_rules.py recomputes both
-    populations rather than reading the payload's word for them.
-    Also found: the page already printed the cluster outlier count and
-    percentage, so the defect the item cites as unrepaired was partly
-    repaired already.
-
-  2026-10-27  /cb-green  the two vectors together, and whether independent
-    4d22713.  The last item, and a negative one. Two measurements that
-    point opposite ways, both reported.
-    NOT REDUNDANT: over 299 scenes the contingency of the two cell
-    assignments gives chi-square 272.8 on 120 df, Cramers V 0.338 and
-    Goodman-Kruskal lambda 0.109. Predicting a scene's surface cell from
-    its pattern cell gives 31.4 percent against 23.1 for always guessing
-    the commonest, and 58 of 144 possible joint cells are occupied. Each
-    vector carries something the other does not.
-    AND NOT WORTH JOINING: pattern alone leaves 50 of 299 in no cluster,
-    surface alone 130, the two concatenated 172 - 58 percent - with 5
-    clusters instead of 7 and 9. Scaling the blocks to equal variance gives
-    173 and 5, so the imbalance is not the cause. The joint space places 42
-    percent of scenes where the pattern vector alone places 83.
-    So no joint view was built, which is what the item asked for when it
-    said "if it is warranted". The two results are consistent: vectors
-    sharing little structure gain dimensions without gaining agreement, and
-    a density clusterer finds less in the larger space.
-    A methodology note that mattered: build() computes silhouette over
-    CLUSTERED points only, so a figure over all points is not the page's
-    figure. My first pass read 0.310 and 0.138; computing it the page's way
-    reproduced its 0.475 and 0.625 exactly, and only then was the
-    three-way comparison sound.
-
-  2026-10-28  /cb-free   one tree, mounted, and the skills working again
-    Not an item of this list; recorded because it changed how every item
-    after it runs. The repository had been kept on both machines and the
-    split had cost this list three stale updates and a re-run item. The
-    copy on the authoring machine was deleted on 2026-10-27 — and with it
-    .claude/, which is gitignored local config rather than repository
-    content and did not have to go. That is what took the skills away:
-    slash commands resolve from the working directory, and the working
-    directory no longer existed. The capture machine cannot run the agent,
-    so moving the agent there was never the answer I had twice proposed.
-    The capture machine's tree is now mounted over sshfs at ~/ark_ui_mnt
-    and the agent runs against it. No repository bytes sit on the
-    authoring machine; it holds a mountpoint. Verified end to end before
-    this was written: /cb-free resolves, CLAUDE.md loads, silk gate-mark
-    init writes the marker the gate hook reads, Write and Edit land on the
-    capture machine's disk, git sees them, npm run spec:check reports 0
-    violations over 56 nodes, and ril queries the real graph.
-    What did not move: the Python pipeline still runs on the capture
-    machine over ssh in its own venv. The authoring machine has no numpy,
-    sklearn or PIL, and the captures are 5.6 GB local to the capture
-    machine — reading them across the mount would be slower for no gain.
-    Two corrections this turned up. CLAUDE.md's repository-layout table
-    says spec/spec.db; the spec is at combobul/spec/. And its commit
-    discipline still names Claude Opus 4.6 as co-author.
-
-  2026-10-28  /cb-free   the page renders again
-     vectors_page.py's show() threw a ReferenceError on its first
-     statement, so #pane was never written: a nav beside a blank main,
-     over 20.9 MB of entirely sound payload. Five references written
-     against names the emitted function does not have — it is show(k) and
-     the global is DATA, and the code said D and key. They arrived with
-     the unplaced-scenes block and the PSI-cells block.
-     Fixed and PROVEN, which is the part that matters here. The page's own
-     <script> was executed against a DOM stub: no exception, 10.4 MB into
-     #pane, and all four blocks present — the unplaced block, the PSI
-     cells, the scene tiles and the columns table. 227 tiles carry a
-     picture, which is the payload's 216 own plus 11 backstop exactly.
-     The finding under the finding, now open point (d) of the item left:
-     both items that wrote these blocks reported their numbers from the
-     payload and NEITHER EVER SAW THE PAGE. Nothing in tools/checks/
-     executes the page's JavaScript, so a page that throws before
-     rendering passes every check there is. The harness that proved this
-     fix was a throwaway in a scratchpad, deliberately — making it a
-     permanent check is a decision, not a side effect of a bug fix.
-
-  2026-10-28  /cb-free   one engine, on the VM, copied from know_kernel
-     ~/know_kernel is the source of the combobul build and is never
-     modified. The engine had instead been installed inside this tree on
-     the capture machine - combobul/cli and its siblings, gitignored - so
-     every machine holding the repository carried its own engine, and the
-     one running was the capture machine's, read across sshfs on every
-     call. Only combobul/spec/ is this project's: 26 tracked files, the
-     mutation log, a snapshot and the associations. It stays.
-     Done: the full build copied from ~/know_kernel/combobul to
-     ~/combobul on the VM with know_kernel's node_modules, every directory
-     byte-identical to its source and know_kernel's tree unchanged.
-     package.json's ril, silk and spec:check now run
-     ${COMBOBUL_HOME:-$HOME/combobul}, so no machine path enters the
-     public repository and the target defaults to the working directory.
-     The hooks are untouched and stay byte-identical to know_kernel's.
-     The engine copy in the capture machine's tree was moved out to
-     C:\ark_ui_engine_retired rather than deleted - deletion was refused
-     as irreversible - and can be removed by hand.
-     Measured: spec:check 57.4 s on the old engine, 13.3 s on the VM one,
-     same 0 violations over 56 nodes. The per-prompt reminder hook is
-     still 24.5 s, of which silk run state --compact is 20.5 s: it reads
-     the 26 run records and the spec across the mount. That is mount I/O,
-     not the build, and is left open - sshfs caching, or keeping the
-     gitignored .combobul/ state off the mount, are the two candidates and
-     the second touches the rule that nothing of this repository lives on
-     the VM.
-     node_modules in the capture machine's tree was left in place: it also
-     carries pptxgenjs for npm run deck, so it is not only the engine's.
-
-  2026-10-28  /cb-free   the repository on the VM, shared to the laptop
-     Reverses the 2026-10-27 arrangement at the human's instruction. The
-     repository now lives only on the VM, at ~/ark_ui, and the capture
-     machine reaches it as a read-only Samba share. The record above about
-     the reminder costing 24.5 s is closed by this: on local disk the three
-     per-prompt hooks take 0.5, 0.5 and 3.6 s, and spec:check 1.6 s.
-     The clone came from GitHub for full history, 185 commits, with the
-     three unpushed commits carried from the laptop as a git bundle. The
-     laptop's repository turned out to be SHALLOW, so a bundle of all of it
-     could not be complete; it also holds a stash, refs/stash 4398085,
-     which was not carried. HEAD and tree are identical to the laptop's.
-     The harness is know_kernel's, byte for byte; the spec database was
-     rebuilt from the mutation log, 56 nodes and 167 edges.
-     The share is read-only and forces no identity, and that is a finding
-     rather than a preference. This VM's accounts carry an @ in their name
-     (sssd, fully qualified names), and smbd's lookup_name reads
-     name@tphwai.local as a user in a domain called tphwai.local: getpwnam
-     finds the account and the SID lookup then fails, so force user and
-     force group both answer NO_SUCH_USER and NO_SUCH_GROUP. No smb.conf
-     spelling avoids it; only a change to how the VM resolves accounts
-     would, and that was not made. The laptop only reads, so it does not
-     need to write as anyone.
-     Running from the share was measured before it was trusted: 157 s for
-     a check that takes 0.7 s from local disk. Tailscale cannot connect the
-     two machines directly and relays through DERP in Dallas, 160-210 ms a
-     round trip, and Python's import search pays one for every path it
-     tries. So tools\py.ps1 now mirrors tools/ from the share into the
-     working folder at the start of every run and runs from there, 2.6 s
-     when nothing changed; the copy is overwritten every run and never
-     edited. A tool run end to end is 13-15 s. The venv was rebuilt from the
-     pinned requirements in the working folder.
-     The capture machine's working folder is ~\ark_work: captures, venv,
-     the tools copy, every output including scene_feature_reference.html,
-     and ark.ps1, a launcher that names the VM and so stays out of the
-     repository.
-
-  2026-10-28  /cb-audit  the viewer has no specification   (audit-view-spec)
-     Verdict FAIL. Recorded here by the /cb-free session after it, as an
-     audit cannot write. The human reported that the view had been changed
-     without instruction; the audit confirmed why: no node specifies the
-     page. IF-PAGE-PAYLOAD says what the payload carries, nothing says what
-     the page shows, so every item that touched it rewrote it.
-     Found in git: the designated viewer, scene_feature_reference.html, was
-     generated by feature_doc_build.py, deleted in 5fce8c6 on 2026-10-26
-     and replaced by vectors_page.py writing vectors.html. Its motifs()
-     section showed each motif drawn first, then its description, then
-     every scene in it - the layout the human asked for. The rotatable 3D
-     PCA map was tools/cluster/viewer.html, deleted in 4421f9b, a
-     self-contained canvas projection and recoverable as it was.
-     The old descriptions cannot come back as they were: feature_motifs.DESC
-     was keyed by describe()'s 28 pre-written shape names and said which
-     apps land in each - the third deleted taxonomy. The human chose
-     descriptions generated from measurement.
-     Per-vector clustering, ruled out on 2026-10-27, is still what build()
-     does; the joint clustering tab does not exist.
-     The open item - the clustering out of the vectors - was replaced by
-     one item that specifies the viewer first, its open points (a) to (d)
-     answered inside it.
-
-  2026-10-28  /cb-green  the viewer specified, three tabs, and the clustering
-                         moved   (viewer-spec-1159)
-     The viewer is specified before it is built. Nine nodes added: IF-VIEWER,
-     ALG-VIEWER-RENDER, ALG-DESCRIBE-CELL, ERR-VIEWER-RENDER-FAILED and five
-     invariants - INV-VIEWER-RENDERS, INV-GROUP-ORDER,
-     INV-DESCRIPTION-FROM-MEASUREMENT, INV-CLUSTERING-MATCHES-NO-PATTERN,
-     INV-EVERY-SCENE-IN-EVERY-TAB. ALG-VECTOR-CLUSTER rewritten as the joint
-     clustering, IF-PAGE-PAYLOAD as the new payload. 56 nodes to 65, 0
-     violations.
-     scene_feature_reference.html is built again, by vectors_page.py, with
-     three tabs. Pattern and surface show one group per declared cell, in
-     the order picture, description, count, screenshots; the surface picture
-     is the median composition drawn as proportions of the display.
-     Clustering shows the general stats, the 3D PCA map recovered from
-     4421f9b^, and every cluster with its scenes, the unclustered last. The
-     old map's per-cluster naming and download was NOT recovered: a typed
-     cluster name is a scene class.
-     Measured on the 299-scene capture: PSI_p 9 cells all reached, PSI_s 16
-     of 20 (the four text/* cells empty, as before). The joint clustering
-     gives 5 clusters and leaves 173 of 299 - 58 percent - unclustered,
-     silhouette 0.513 over the clustered, PCA 23/19/15 percent: the figure
-     measured on 2026-10-27, now shown on the page rather than argued
-     about. The payload halved, 20.9 MB to 10.0, because each picture is
-     stored once and referred to by id.
-     The descriptions are generated, e.g. "Grid covering more than half the
-     window: median cover 0.75, 2 columns, 7 items each 0.37 display
-     heights tall, width/height 0.61, items hold Image. 47 scenes." The
-     invariant's predicate was tightened during the item to name its one
-     vocabulary - the coordinate names, the arrangement axis and the
-     content-kind alphabet of TAG_KIND and mark_kind - because as first
-     written it forbade even translating the measurement's own letters.
-     viewer_renders.py executes the page under node: all five invariants
-     hold on the real page, and run against the retired vectors.html it
-     fails as it should, every tab empty, exit 1. The page has still to be
-     opened by a human; the check is what a script can see of it.
-     Two repairs the item needed before it could run. The cb-green triage
-     hook reads silk from the in-repo combobul/cli, which the engine's move
-     to ~/combobul had removed, so it died silently before opening the
-     contract; combobul/cli is now a gitignored link to ~/combobul/cli and
-     the hooks stay byte-identical to know_kernel's. And ril journals
-     mutations to .combobul/pending-mutations.jsonl and writes the tracked
-     .cbm only on `ril journal coalesce`, which a pre-commit hook used to
-     run; no clone carries git hooks, so it is run by hand before the
-     commit. ark.ps1 on the capture machine now hands its arguments to
-     py.ps1 as one array, because PowerShell read --out as -OutVariable.
-
-
-
-===============================================================================
-THE DECISIONS IN FORCE
-===============================================================================
-
-  Each record states a decision the items below carry out. Delete a record
-  when every item it names is done.
-
-  1. The scope. Decided by the human, restated 2026-10-27.
-       * This project collects ArkUI data and clusters the scenes in it.
-         That is the whole of it.
-       * Nothing else goes in: no measurement of anything the device does
-         in response to a scene, no joining of a scene to any other series,
-         and no code whose reason for existing is a question somebody
-         downstream of this data would ask.
-       * The test for a proposed item is whether it improves the collection
-         or the clustering. If it does not, it does not belong here, and no
-         item in this list can widen that.
-       * What exists is a capture, two measured vectors, a clustering and
-         a page.
-       * The research is one mechanism: PowerShell stops at the device
-         boundary and Python owns everything after it. The device side
-         derives no feature and names nothing; it drives hdc, decides from
-         the raw text whether a scene has been seen, and writes files.
-       * The human cannot run the agent on the capture machine. Authoring
-         happens on the VM; the capture machine is a clone that pulls, runs
-         the capture and runs the pipeline against its own data.
-
-     Applied by: every item.
-
-  2. The two vectors and their column contracts. Decided by the human.
-       * The pattern vector — what repeats in the layout, and how much of
-         the window it holds. Branches are grouped by a description of
-         their subtree, and the group covering the most area wins. Ties
-         break on vertical position, never on the nearly-tied area.
-
-           column         transform  weight  measures
-           pat1_cover     unit       1.0     share of the window that repeats
-           pat1_h         unit       1.0     the item's height, in display heights
-           pat1_aspect    logratio   1.0     its width / height
-           pat1_cols      clip6      1.2     distinct columns
-           pat1_n         log1p      0.7     members in the group
-           overlay_frac   unit       0.7     area drawn over the layout
-           pat_n_groups   log1p      0.7     how many repeating groups exist
-
-       * The surface vector — what the display is finally made of, after
-         occlusion. Every node that draws, and every externally composed
-         surface, walked topmost first, each claiming only the pixels
-         nothing above it claimed. Substrate is the complement.
-
-           column         transform  weight  measures
-           vis_xcomp      unit       1.0     externally composed surface
-           vis_image      unit       1.0     nodes tagged Image
-           vis_text       unit       1.0     nodes tagged Text
-           vis_content    unit       0.7     draws, but no tag names the type
-           vis_substrate  unit       0.7     claimed by nothing
-
-         vis_unnamed is written beside them and is NOT a term of the
-         partition: it is the part of vis_content claimed by nodes with no
-         client-dump entry, carried so that content nobody can name is
-         distinguishable from content a mapping failed to cover. It is a
-         subset of vis_content and is never added to the sum.
-
-       * A second pattern group is measured into pat2_* with has_slot2 and
-         is not in the vector. pat, arr, cols, rows stay as measurements —
-         content-kind letters off node tags, geometric arrangement, column
-         count — and are not matches against a library.
-       * Both are measurements. Neither is a class.
-       * Every tuned constant now states its contract as a precondition of
-         the algorithm that reads it: what it separates, what changing it
-         breaks, and that all of them were fitted by sweep on the two
-         sessions of 2026-10-22, 250 scenes of one device held by one
-         person, and have not been re-fitted since. Fourteen were expected
-         and ten were found: COINCIDENT, OVERLAY_IN, OVERLAY_MAX, POS_TOL,
-         BUDGET, OVERSIZE, SURF_MIN, FULLBLEED_H, SURF_BANDS and
-         SLOT_CONTENT, plus the capture's Tol and the clustering's
-         min_cluster_size and THUMB_W. ShotEvery was among them and is gone:
-         it named samples in one place and seconds in another, and the clock
-         it drove was deleted on 2026-10-27.
-       * Four were dead. SLOT_CHILDREN, SLOTS_BRACKET, SLOTS_BACKGROUND and
-         SLOTS_BORDER were defined and never read - the working notes of
-         the bracket-pair derivation, left behind when the substrate rule
-         replaced them. They are deleted; the derivation and the slot-50
-         caveat live in ALG-VISIBLE-SURFACE's contract beside SLOT_CONTENT,
-         which is the one slot still read. Nothing referenced them, so the
-         output over all 250 scenes is byte-identical.
-       * patterns.csv is 61 columns wide, of which these 12 are the vectors
-         and 4 identify the scene. The other 45 are measured and carried for
-         inspection, not clustered. IF-PATTERNS-ROW names every one and says
-         which is which; this record states the vectors alone, and the node
-         is where the full width is settled.
-
-
-     Applied by: the two feature spaces formalized; PSI for the pattern
-     vector; PSI for the surface vector.
-
-  3. What is measured and what is not. Decided by the evidence; verified
-     2026-10-26 against the two capture sessions, 250 scenes.
-       * Holds, and is now INV-SURFACE-SUMS-TO-ONE: the six surface columns
-         depart from one by at most 0.0060 over 250 rows, against a
-         tolerance of 0.01 that exists for the rounding of six numbers
-         written to three decimals. The five in the vector depart by at
-         most 0.0060 as well, because vis_glyph - the one they leave out -
-         never exceeds 0.0060 on this capture. Six is the number that sums
-         exactly: visible_surface claims pixels for xcomp, image, text,
-         glyph and content, and substrate is what none of them claimed.
-       * Holds, and is now INV-UNIT-COLUMNS-BOUNDED: nine columns are
-         declared unit - overlay_frac, pat1_cover, pat1_h and the six vis_*
-         - and over 250 rows none leaves [0,1]. pat1_cover and pat1_h carry
-         28 empty fields, which is a measurement not taken and is allowed.
-       * Holds, and is now INV-DETERMINISTIC-MEASUREMENT: a session measured
-         three times in separate processes under PYTHONHASHSEED 1, 7 and
-         4242 gives one sha256. Checked across hash seeds rather than by
-         running twice in one interpreter, because the realistic way for it
-         to break is a set or dict iteration order reaching the output and
-         two runs in one process share a seed.
-       * Did not hold, and does now: the slot ordering sorted on the
-         unclamped coverage while pat1_cover reports min(1.0, ratio). On
-         20261022_123014/0090 two groups both overflowed the window, both
-         reported 1.0, and the lower one took slot 1 because it overflowed
-         further - so the file could not explain its own ordering. The sort
-         clamps now, which is INV-TIEBREAK-NOT-ON-AREA. One row of 250
-         changed; the pattern silhouette moved 0.467 to 0.468.
-       * Holds, and is now INV-ABSENT-NOT-ZERO: those same 28 scenes have
-         no repeating group and none of them writes a zero. transform('')
-         and transform(None) are nan, transform('0') is 0.0, and a nan
-         column is filled with its mean. The rule spans two files and now
-         has a check that spans them too.
-       * Holds: the reduction of rs_extract.py from 1,028 lines to 404 left
-         the output byte-identical on ten real dumps. Determinism is what
-         made that reduction checkable rather than arguable.
-       * Does not hold: 71 of 250 measured scenes never reach the page.
-         Every number the page publishes — 6 clusters, 11 percent fitting
-         none, silhouette 0.499 at min_cluster_size 9 — is over the
-         remaining 179 and over an undeclared subset.
-       * Corrected 2026-10-26, by the item that repaired it. This record
-         said the cause was an addressing mistake and that all 250 scenes
-         had a picture. Both were wrong, and so was the measurement behind
-         them: the check joined <captures> to an empty shot column, which
-         yields the captures directory, and a directory exists - so 71
-         empty strings counted as 71 present files. The truth is that 179
-         of 250 scenes have a per-scene picture and 71 have none, because
-         the capture photographs a scene when a pair settles and 71 never
-         settled. Being dropped from the run entirely was the defect; they
-         are now measured, clustered and shown with an empty tile.
-       * The capture does NOT hold pictures for them, and this record said
-         it did until the claim was tested on 2026-10-27. It writes
-         periodic shots named p<nnnnnn>.jpeg - 169 across the two sessions
-         - and samples.csv does relate each to the scene that was on the
-         display, through the sig of the sample whose number the filename
-         carries. The index works. What it finds is that 167 of the 169
-         land on a scene that already has its own picture, and 2 on a scene
-         without one. samples.csv is now read by vectors_build.py and the
-         count fell from 74 to 72 of 272, not to near zero.
-       * The reason was the capture's rule, not the index, and it was
-         repaired on 2026-10-27. The backstop fired on a 5-second wall
-         clock, which at 0.3-0.5s per sample is every 10 to 16 samples,
-         while the scenes that lack a picture are the short-lived ones that
-         never settle; it photographed the scenes that least needed it. It
-         now fires on arrival at a scene that has no picture yet, which is
-         the only moment a one-sample scene is on the display, and the
-         clock is deleted: a scene held across two samples already earns a
-         settled frame from the twice-running rule, so the clock could only
-         ever fire for a scene that already had a picture.
-       * Measured. First capture under the new rule: 27 scenes, 18 settled,
-         9 carried by a backstop frame, 0 with none, at 0.33s per sample -
-         covering every scene cost nothing in sampling rate. Every session
-         captured before it still fails the check, and permanently: 73
-         scenes whose frames were never taken, which no later change
-         reaches backwards. INV-EVERY-DISTINCT-SCENE-PHOTOGRAPHED and
-         tools/checks/capture_coverage.py are what hold it from here.
-       * ShotEvery is gone. Its name meant a count of samples in
-         ALG-CAPTURE-LOOP's preconditions and a count of wall-clock seconds
-         in the code, and the two never agreed; deleting the clock removed
-         the disagreement rather than resolving it.
-       * What the repair changed, over the full capture: the pattern vector
-         goes from 6 clusters, 19 fitting none (11%) and silhouette 0.499
-         over 179 scenes, to 6 clusters, 27 fitting none (11%) and
-         silhouette 0.467 over 250. The surface vector goes from 4
-         clusters, 42 fitting none (23%) and silhouette 0.455, to 7
-         clusters, 106 fitting none (42%) and silhouette 0.665. A vector
-         that degrades as scenes are added is the collapse below showing
-         itself, not a result.
-       * Does not hold: the surface vector collapses towards a single axis
-         on this capture, substrate against content at about -0.8, and
-         clusters at 23 percent outliers with a silhouette of 0.455 that
-         rewards a split a person would not make. It separates an external
-         surface holding the display from everything else, which is real.
-         The rest is not settled.
-
-       * The surface vector measures its own failure more than it measures
-         a display, found 2026-10-27 over 299 scenes. vis_content - "draws,
-         but no tag names the type" - is the largest of the six columns in
-         131 scenes, 44 percent. vis_substrate - "claimed by nothing" - is
-         largest in another 110, 37 percent. So 81 percent of scenes are
-         dominated by a column that says nothing about what is on the
-         display. vis_text is never the largest in any scene and never
-         exceeds 0.312; vis_glyph never exceeds 0.006 and is, for every
-         practical purpose, always zero. The clustering calls 132 scenes
-         outliers, 44 percent, which is the same figure as the content-
-         dominated count and almost certainly the same scenes.
-       * That is a measurement problem before it is a vector problem. A
-         scene whose surface is 96 percent "we could not tell" has not been
-         measured, and no transform or weight on that column recovers it.
-
-       * The collapse was diagnosed on 2026-10-27 and the cause is a
-         mapping gap, not the display. Across every client dump of the
-         capture, 95,430 tagged nodes: 21,705 recognised by vis_kind (Image
-         9,617, Text 8,677, SymbolGlyph/Divider 2,791, SURF_TAGS 620) and
-         73,725 not - 77.3 percent. Only 1,370 carry an empty tag, so
-         absence from the client dump is NOT the cause: about 98 percent of
-         what feeds vis_content is a node the dump named, with a tag the
-         mapping does not cover. The device emits 60 distinct tag values and
-         vis_kind tests four families.
-       * CORRECTED 2026-10-27, same day, by the item that acted on it. The
-         sentence above said the unrecognised set is dominated by layout
-         containers - Stack 2,863, Row 1,734, Column 935 and the rest. That
-         was measured over the vocabulary of ALL client-dump nodes and then
-         asserted of the content bucket, a population the audit never
-         measured. It is wrong. Stack, Row and Column carry no slot 28, so
-         is_drawn rejects them and vis_kind is never called on them; they
-         cannot have been in the bucket at any time.
-       * What is actually in it, measured over all 299 scenes: 6,151 nodes
-         under eleven tags, not sixty - NO-TAG 4,275, Custom 582, Blank 520,
-         Rect 283, Canvas 195, Slider 148, WaterFlow 103, Path 37, Scroll 4,
-         RenderNode 3, Circle 1. 90.6 percent are drawn leaves. By AREA, of
-         0.393 mean content: NO-TAG 0.184 (46.8 percent), WaterFlow 0.158
-         (40.2 percent), all others together 0.051.
-       * So the container reading was right about a container and wrong
-         about which. WaterFlow is a container and its 103 nodes are 103 of
-         103 with a painting descendant; its backdrop was 40 percent of the
-         bucket. The other half has no tag because none can exist: those
-         nodes are CANVAS_NODE and CANVAS_DRAWING_NODE, 3,517 of 3,517
-         absent from the client dump, render-level primitives below the
-         component layer. No tag vocabulary reaches them.
-       * vis_kind does not read TAG_KIND. TAG_KIND serves mark_kind and the
-         pattern vector; the surface vector does its own substring test over
-         four families. The two halves of the measurement disagree about
-         what a tag means, and nothing said so.
-       * The substrate/content anti-correlation is arithmetic. Over 299
-         scenes corr(substrate, content) = -0.679, with content 0.393/0.391
-         and substrate 0.320/0.356 against xcomp 0.121/0.221, image
-         0.119/0.188, text 0.047/0.058, glyph 0.001/0.001. substrate is the
-         complement and content is the largest and most variable term, so
-         the two are near-mirrors by construction. Of the three causes the
-         audit was asked to separate - arithmetic, the capture, a defect in
-         the occlusion walk - the variance structure selects the first, and
-         no occlusion defect was found.
-       * Five columns, about three effective dimensions: content and
-         substrate hold 0.713 of the display between them as one axis, glyph
-         is a constant (max 0.006, largest in 0 of 299), text is bounded at
-         0.312 and largest in 0 of 299. Only xcomp and image vary freely.
-         132 of 299 scenes outside every cluster is the symptom of that, not
-         a property of the scenes.
-       * Not obtained by the audit: the area-weighted split of vis_content
-         by tag. cb-audit's forbidden set denied every route to running it,
-         and encoding the script to get it through was refused as a bypass.
-         The node-level vocabulary settles WHY content is large; the area
-         split settles HOW MUCH the fix recovers, and is the before/after of
-         the item that closes the gap.
-       * The repair, measured. A node that paints with a painting
-         descendant is painting background and claims nothing; only the
-         untyped branch is subject to it, since a tag is evidence of what
-         the paint is while descent is evidence only of where it sits. Over
-         299 scenes vis_content fell 0.393 to 0.177 and vis_substrate rose
-         0.320 to 0.488. The other three rose too - image 0.119 to 0.137,
-         xcomp 0.121 to 0.141, text 0.047 to 0.057 - which means real
-         content had been occluded by untyped backdrops painted over it.
-         vis_unnamed carries the remainder nobody can name: 0.135, which is
-         76 percent of what content still holds.
-       * And the clustering barely moved. Surface outliers went 132 of 299
-         to 130, 44 percent to 43, silhouette 0.655 to 0.625. The
-         measurement is far more honest and the collapse is still there, so
-         its cause is not the mapping gap. That is evidence for record 6:
-         what is missing is PSI, not a better column.
-       * Decided by the human, 2026-10-27: the surface vector is NOT
-         dropped. Its collapse has a cause the data says is fixable, and no
-         judgement of it is sound until it has been measured with the gap
-         closed. The "kept or dropped" framing was written into this list by
-         the agent in 10b5f72 and was never the human's; it is removed
-         wherever it appears.
-
-     Applied by: PSI for the surface vector.
-
-  4. Names, proposed by this list and confirmed by the human before each
-     envelope.
-       * One module: SUB-FEATURE-RESEARCH, role neutral, containmentProfile
-         unrestricted. The authority / implementation / test split is not
-         taken: at 3,298 lines with no test harness it would create an
-         authority module with nothing in it. Split when the first test
-         algorithm is written.
-       * Interfaces: IF-CAPTURE-SESSION (language meta), IF-PATTERNS-ROW
-         (py). IF-PAGE-PAYLOAD is held back — see record 5.
-       * Automatons: AUT-CAPTURE-RUN at order 0, the stage on the device;
-         AUT-TREE-CHECK at order 1, the gate where tree-level static checks
-         run; AUT-PIPELINE-RUN at order 2, the offline run. Every algorithm
-         runs at one of the three, which is what AUTH-009 requires.
-         AUT-TREE-CHECK: Every invariant needs exactly one checked-at edge to an
-         automaton (AUTH-008, AUTH-012), so the static family shares this
-         one. Authored 2026-10-26 with order=1.
-       * Authoring facts the engine dictates, learned by proposing against
-         it rather than by reading the template, which does not list them:
-         input-of runs interface to algorithm, which is the reverse of how
-         the plan's wording reads; every algorithm needs a runs-at edge to
-         an automaton or AUTH-009 warns;
-         an invariant needs a core `predicate` field, with `predicateNL`
-         beside it or AUTH-016 warns; `predicateAuthority` is engine-owned
-         and is refused on an add (AUTH-ERR-VERIFICATION-ESCALATION); an
-         automaton a checked-at edge points at must be variant
-         `totally-ordered-dfa`, not `singleton-state` (AUTH-031), and must
-         carry an `order` attribute or RI-L-006 fails at the L2 gate;
-         `protects` targets a relation, never an interface, and `assumes`
-         runs interface → invariant, not the reverse. Use `ril propose-batch`
-         to find these before `apply-batch`.
-       * Invariants: INV-NO-SCENE-CLASS, INV-OCCLUDER-PAINTS,
-         INV-OCCLUSION-PAINT-ORDER, INV-OWN-RECT-BOUNDS,
-         INV-FIRST-PASS-COUNTS, INV-ABSENT-NOT-ZERO,
-         INV-SURFACE-SUMS-TO-ONE, INV-UNIT-COLUMNS-BOUNDED,
-         INV-SUBSTRATE-IS-COMPLEMENT, INV-NO-SILENT-SCENE-LOSS,
-         INV-DETERMINISTIC-MEASUREMENT, INV-TIEBREAK-NOT-ON-AREA,
-         INV-DEVICE-COMPUTES-NOTHING, INV-NO-CAPTURES-TRACKED,
-         INV-GENERATED-HAS-TRACKED-PRODUCER.
-       * Algorithms: ALG-CAPTURE-LOOP, ALG-QUICK-SIG (both language meta),
-         ALG-PARSE-RSTREE, ALG-PAINT-ORDER, ALG-OWNERSHIP,
-         ALG-OWNER-SELECT, ALG-BRANCH-GROUP, ALG-VISIBLE-SURFACE,
-         ALG-MEDIA-SURFACE, ALG-VECTOR-CLUSTER.
-       * Invariants added since: INV-EVERY-DISTINCT-SCENE-PHOTOGRAPHED,
-         checked-at AUT-PIPELINE-RUN, emitting ERR-SCENE-WITHOUT-REP.
-       * Error codes: ERR-SCENE-WITHOUT-REP (WARN),
-         ERR-DISPLAY-DUMP-MISSING (WARN), ERR-CLIENT-DUMP-MISSING (WARN),
-         ERR-NO-OWNER-WINDOW (ERROR), ERR-JOIN-KEY-UNMATCHED (ERROR),
-         ERR-COLUMN-CONSTANT (WARN), ERR-SURFACE-SUM-OFF (ERROR),
-         ERR-SHOT-COMMAND-ABSENT (FATAL).
-       * Code: tools/rs_capture.ps1; tools/cluster/{rs_extract,rs_pattern,
-         vectors_build,vectors_page}.py.
-
-     Applied by: every /cb-green item.
-
-  5. What is deliberately not declared yet. Decided by the human.
-       * One item left this list without being run. "The two interfaces
-         given fields" existed to clear the two AUTH-024 warnings, and its
-         own prompt said to re-check the warning after the algorithms
-         landed before authoring 61 relation nodes. The algorithms carry
-         input-of and output-of edges to both interfaces, which is what
-         AUTH-024 asks for, so the warnings cleared on their own and the
-         item had nothing left to do. The relation nodes were never needed.
-       * IF-PAGE-PAYLOAD is held back, and the hold now has an end. The
-         payload's shape is settled once PSI exists for both vectors, since
-         a payload that carries a cell assignment is a different shape from
-         one that carries a cluster id. The 71 are no longer part of that
-         wait - they were tested on 2026-10-27 and all but 2 are
-         unrecoverable, because their frames were never taken.
-         The item "PSI for the pattern vector" is where the hold is lifted
-         or restated, because it is the first to change what the payload
-         carries. An interface authored while later items are about to
-         rewrite its shape would be authored twice; an interface the page
-         has already changed without one is the gap the hold exists to
-         avoid. The call is the human's, at that item.
-       * The surface vector keeps a caveat rather than an invariant
-         asserting it is meaningful. Asserting that would assert the thing
-         in doubt, and the 2026-10-27 measurement is why: it is dominated by
-         a column that names nothing in 81 percent of scenes. The caveat is
-         lifted by measurement, not by decision - the mapping gap closed,
-         then PSI derived, then the cells counted. It is not lifted by
-         dropping the vector, which was never asked for.
-       * The metamodel has no PowerShell: the language enum has 23 entries
-         and PowerShell is not among them, so the device side is declared
-         as meta. That costs nothing while its invariant is that it
-         computes nothing, and it is reported upstream rather than worked
-         around.
-
-
-     Applied by: PSI for the pattern vector; every viewer names the cell.
-
-  6. The two mappings, and what a pattern set must satisfy. Decided by the
-     human, 2026-10-27.
-       * The pipeline is two mappings, not one:
-
-             component tree --extract--> measurements --PHI--> feature vector
-             feature vector --PSI--> pattern
-
-         PHI exists and is rs_pattern.py. PSI does not: it was deleted along
-         with the asserted name tables and nothing replaced it. That is why
-         both vectors stop at stage 1, why "which pattern is this scene" has
-         no answer, and why the page could only ever report clusters.
-       * PSI is DERIVED, never asserted. The deleted sets - a C enum of 20,
-         a PowerShell classifier of 23, a naming function of 28 shapes, a
-         DESC table of 13 - were lists written first and matched against the
-         data afterwards. The pattern set is instead derived from the
-         structure of the measurement space, so that it can be written down
-         without looking at a single screenshot. That is the test which
-         keeps it a function rather than a class list, and it is why
-         INV-NO-SCENE-CLASS permits it: a partition of a space is a
-         function; a library of named shapes matched against data is not.
-       * PSI must be demonstrated to be all four of:
-           total       every feature vector maps to exactly one pattern. A
-                       scene fits nothing only by landing in a declared
-                       cell, never by falling through.
-           disjoint    no feature vector maps to two.
-           minimal     no two patterns are indistinguishable under PHI, and
-                       no cell is empty by construction.
-           orthogonal  the axes defining the cells are independent, so a
-                       pattern is a point in a product rather than an
-                       overlapping description.
-         A demonstration is the deliverable. An implementation whose mapping
-         is not shown to have all four has not done this work.
-       * The spaces have shapes, and the formalization starts from them:
-           surface   a simplex. Five non-negative columns summing to one, so
-                     the space is the standard 4-simplex. A partition of a
-                     simplex by dominant component and concentration is
-                     exhaustive and disjoint by construction. "What can be
-                     expected from a composition" is then the question of
-                     which cells are reachable, which the data answers
-                     rather than the author.
-           pattern   a product. arrangement is one axis and is closed
-                     because arrangement() can emit nothing but grid, row,
-                     column and stack; content signature is a second; scale
-                     and coverage bands a third. The pattern set is the
-                     realizable subset of that product.
-       * The number is not the target. The human recalls about 16 patterns
-         in the deleted set, and four arrangements by four signature classes
-         is also 16. That coincidence is worth noticing and is not evidence.
-         Whether that factorization is the right one is precisely what the
-         formalization has to establish.
-       * Orthogonality is also the test ACROSS the two vectors. If PSI of
-         the pattern vector and PSI of the surface vector produce outcomes
-         that are independent, the two vectors are measuring different
-         things and the joint view is worth building. If they do not, that
-         is the finding.
-       * ANSWERED 2026-10-27, and the two halves point opposite ways. The
-         vectors are NOT redundant: over 299 scenes the contingency of the
-         two cell assignments gives Cramers V 0.338 and Goodman-Kruskal
-         lambda 0.109, so knowing a scene's pattern cell lifts the guess of
-         its surface cell from 23.1 to 31.4 percent. Each carries something
-         the other does not. But the joint view is NOT worth building:
-         pattern alone leaves 50 of 299 scenes in no cluster, surface alone
-         130, the two concatenated 172 - 58 percent - with 5 clusters
-         instead of 7 and 9, and scaling the blocks to equal variance
-         changes nothing. The joint space places 42 percent of scenes where
-         pattern alone places 83.
-       * Both are consistent: vectors that share little structure gain
-         dimensions without gaining agreement when concatenated, and a
-         density clusterer finds less in the larger space. So the answer to
-         "is a joint view worth building" is no, and the reason is not that
-         the vectors measure the same thing - it is that they measure
-         different things and the clusterer cannot use both at once.
-       * FORMALIZED 2026-10-27. docs/design/feature-spaces.md carries the
-         reasoning; IF-PATTERN-SPACE, IF-SURFACE-SPACE, ALG-PSI-PATTERN,
-         ALG-PSI-SURFACE and INV-PSI-{TOTAL,DISJOINT,MINIMAL,ORTHOGONAL}
-         carry the contract. The two algorithms are DECLARED and not
-         implemented; the two items after this one write them.
-       * PSI_p = (arrangement, whether the group covers more than half the
-         window), plus one cell for a scene with no group. Nine cells, nine
-         reachable: grid 47/46, row 1/87, column 5/78, stack 1/3, none 31.
-         One half earns its place here - a group covering more than half IS
-         the screen's layout and one covering less is an element inside
-         another - and the arrangement axis is closed because arrangement()
-         can emit nothing but those four.
-       * PSI_s = (largest coordinate, second largest), vis_glyph excluded,
-         NO threshold anywhere. Twenty cells, sixteen reachable, largest
-         cell 23 percent. The rejected alternative was (argmax, above one
-         half): 12 cells, 8 reachable, and one cell holding 179 of 299
-         scenes, which separates almost nothing. Exactly one scene ties for
-         the largest coordinate, so the coordinate order is declared rather
-         than left to the sort.
-       * INV-PSI-MINIMAL DOES NOT HOLD for the surface space. Four of its
-         twenty cells are empty and they are exactly the row where vis_text
-         leads: text is never the largest coordinate in any of 299 scenes.
-         Either no text-dominant screen exists on this device and these
-         applications - two sessions of one person's phone is a thin basis
-         for believing it - or the measurement cannot express one because
-         text sits inside containers whose paint takes the pixels first.
-         The second is testable by capturing a reader or a document editor,
-         and that test is not scheduled by this list.
-       * The weakest step, recorded as such: vis_glyph is excluded as a
-         ranking candidate on an argument from the component - a glyph and
-         a hairline are bounded small by what they are - not on a proof. It
-         is the first thing to revisit if a device is captured where a
-         glyph fills a display.
-
-     Applied by: PSI for the pattern vector; PSI for the surface vector;
-     the viewers.
+/cb-green — the surface partition without substrate
+  - What: PSI_s ranks four candidate coordinates - xcomp, image, text and
+    content - and a scene's cell is (largest, second largest). vis_substrate
+    stays measured, in the vector and on the page, and is not a coordinate
+    of the cell. 12 cells are declared.
+    It runs on the geometry and visibility of item 2, so it is moved into
+    ORDER only after item 2 is done.
+  - Read: ALG-PSI-SURFACE, IF-SURFACE-SPACE; psi_surface, psi_surface_cells,
+    VIS_RANKED and describe_cell in vectors_build.py; tools/checks/
+    psi_rules.py.
+  - Spec work:
+      modify ALG-PSI-SURFACE: the four-candidate ranking and its 12 cells.
+      the share of scenes whose second and third coordinates are within
+        0.02 is measured and put to the human, with the question whether
+        INV-PSI-DISJOINT states near-ties as well as exact ties.
+  - Code path: vectors_build.py (VIS_RANKED, psi_surface,
+    psi_surface_cells, describe_cell), tools/checks/psi_rules.py, the
+    viewer's surface tab.
+  - Test: psi_rules.py on a real capture, every declared cell counted and
+    the reached ones named; the payload's cells agree with a fresh
+    assignment; viewer_renders.py holds; npm run spec:check, no violations.
+  - BOUNDARY: as in RULES FOR EVERY ITEM.
 
 
 ===============================================================================
 PROMPTS
 ===============================================================================
 
-/cb-green — features from fixed maps, and pictures from the same moment
-  - What: two defects found on 2026-10-28, each closed by invariants
-    authored before any code.
-    NORMALIZATION. A feature today is not a function of its scene. Twelve
-    columns go through transform(), an empty value is replaced by the
-    column mean, every column is standardised by the capture's own mean
-    and deviation, multiplied by a hand-set weight (0.7 or 1.2 on six of
-    twelve, with no evidence recorded anywhere), and each vector's block is
-    scaled to equal variance. Measured over the 299-scene capture:
-      - after standardising, columns reach from 1.5 to 5.5 deviations and
-        most are skewed (pat1_h 2.5, vis_xcomp 2.0, vis_image 1.8,
-        vis_content 1.8), so a few scenes stretch each axis and the rest
-        crowd a dense core - the shape HDBSCAN reports as noise;
-      - 31 scenes (10%) have no repeating group and are given the average
-        group's geometry in five columns: a fabricated point;
-      - vis_substrate is 1 minus the other five (they sum to 1.000-1.005),
-        so it counts emptiness twice;
-      - removing the weights alone changes nothing (58% to 61%
-        unclustered); the normalization is the defect.
-    A feature that depends on the capture cannot be computed online for a
-    single new scene, and a rank or z-score does exactly that. The human
-    ruled on 2026-10-28: no weights without evidence, no imputation, every
-    feature in the same range, and nothing that fails online.
-    SAMPLE TIMING. vectors_build.py joins a picture to its scene by file
-    name. Measured from samples.csv - the capture's own timestamps, never
-    file write times, which are the batch transfer at the end of a session
-    and say nothing - 206 of 216 pictures were taken under 2 s after their
-    dump on the same signature. Ten were not, all from the 2026-10-22
-    sessions and none from 2026-10-27, so the capture fix holds for what it
-    captured. The worst, 20261022_123014/0045, was photographed 465 s after
-    its dump with 1572 samples and 58 other scenes in between - the case
-    the human reported on 2026-10-23, still shown in the viewer as that
-    scene's own picture.
-  - Read: vectors_build.py (transform, VECTORS, build_joint) and
-    rs_pattern.py analyse() in full; samples.csv of one 2026-10-22 and one
-    2026-10-27 session; the spec nodes below.
-  - Spec areas: ALG-VECTOR-CLUSTER, IF-PATTERNS-ROW, IF-PATTERN-SPACE,
-    IF-SURFACE-SPACE, INV-ABSENT-NOT-ZERO, ERR-SCENE-WITHOUT-REP,
-    IF-CAPTURE-SESSION.
-  - Spec work, authored before any code:
-      add invariant INV-FEATURE-FIXED-MAP: every feature is a fixed
-        function of one scene's own measurements; no statistic of the
-        capture - mean, deviation, rank, percentile, min, max - enters a
-        feature value. Checked at runtime by computing every scene's vector
-        alone and inside the capture and requiring them identical: the
-        online test.
-      add invariant INV-FEATURE-UNIT-RANGE: every feature lies in [0, 1]
-        for every scene by construction of its map - fractions of the
-        display as they are, counts through n/(n+1), aspect through
-        (2/pi)*atan(w/h) - and nothing is clamped to force it there.
-        Checked at runtime, with each map's bound stated on its node.
-      add invariant INV-FEATURE-TOTAL: every feature is defined for every
-        scene by its own definition. A scene with no pattern takes each
-        feature's declared no-pattern value. No value is imputed, filled or
-        defaulted from other scenes. Checked at runtime (no empty or NaN
-        enters the vector) and statically (no nanmean or fill in the
-        feature path).
-      add invariant INV-NO-FEATURE-WEIGHTS: the distance treats every
-        feature equally; no per-feature or per-vector weight exists unless
-        an annotation node records the evidence for it. Checked statically
-        over the feature table and the payload's columns.
-      add invariant INV-NO-REDUNDANT-FEATURE: no feature is an exact
-        function of the others; vis_substrate leaves the feature set.
-        Checked statically and by the rank of the matrix.
-      add invariant INV-COVER-WITHIN-VISIBLE: every coverage is the area of
-        its members clipped to the visible region, over its denominator, and
-        is at most 1 without clamping. Scene 20261022_123014/0090 has two
-        top-bar buttons lying wholly outside its window's 226x258 visible
-        region, and their area over that region's area gave cover 0.998.
-      add invariant INV-PICTURE-SAME-MOMENT: a scene's picture is accepted
-        only if, in its session's samples.csv, no sample with a different
-        signature lies between the dump's sample and the picture's sample;
-        otherwise the scene is shown with no picture of its own and the
-        reason is named. Derived, not fitted: no time threshold appears.
-        Checked at the join and by a check that recomputes it.
+/cb-green — every visible window's components in the capture
+  - What: rs_capture.ps1 dumps the component tree of every process that
+    owns a visible window on the display, the system UI included, so that
+    every visible node can carry its component tag. Today one process is
+    dumped, and the nodes of every other window carry no tag. Each sample
+    holds one client dump per process, named by its pid, and rs_extract.py
+    reads all of them into one tag map.
+  - Read: tools/rs_capture.ps1 in full; rs_extract.py parse_client and the
+    session walk; IF-CAPTURE-SESSION.
+  - Spec work:
+      add invariant INV-CLIENT-DUMP-ALL-WINDOWS (SUB-FEATURE-RESEARCH,
+        runtime): for every sample, every process owning a window with a
+        non-empty visible region has its component tree in the sample.
+        checked-at AUT-PIPELINE-RUN; IF-CAPTURE-SESSION assumes it.
+      add error-code ERR-PATTERN-ROOT-UNTAGGED (WARN, py): a visible window
+        whose nodes carry no component tag, named with its window and
+        process; emitted by INV-CLIENT-DUMP-ALL-WINDOWS.
+      modify IF-CAPTURE-SESSION: the per-process client dumps of a sample.
+  - Code path: tools/rs_capture.ps1, tools/cluster/rs_extract.py.
+  - Test: a new capture on the phone that includes the launcher and one
+    app; for every visible window of every sample, the share of its nodes
+    with a component tag, reported; the launcher's window tagged;
+    npm run spec:check, no violations.
+  - BOUNDARY: as in RULES FOR EVERY ITEM.
+
+  - IMPORTANT: Every figure is measured in this session against a real capture and written into the report.
+  - INVIOLABLE: SPECIFICATION SURFACE IS AUTHORITATIVE. Every node above exists before the code it governs.
+  - INVIOLABLE: DO NOT EMIT P3_SKIPPED.
+  - FORBIDDEN: MULTI-AGENT execution is not allowed. DO NOT SPAWN MULTIPLE AGENTS.
+  - WHEN TO COMMIT: Before "silk run finalize", after `npm run ril -- journal coalesce`.
+  - AFTER COMMIT: end FINAL_STATUS with an explicit NOT PUSHED line naming /cb-ops.
+  - DECISION PROTOCOL: If a decision must be made, ask for direct feedback. DO NOT DECIDE ALONE.
+  - AT THE END: update this list as HOW THE LIST WORKS states.
+
+/cb-green — geometry and visibility from the tree
+  - What: two things every feature stands on.
+    GEOMETRY. A node's absolute rectangle is its Bounds composed down the
+    parent chain, with Translate and scale applied at each level. Scroll is
+    already in Bounds and is not applied again. The dump's cached draw
+    rectangles - oldDirty, innerAbsDrawRect - are not read for position.
+    VISIBILITY. Per window, inside its VisibleRegion, nodes are walked from
+    the topmost in paint order down. A node's effective alpha is its Alpha
+    multiplied by every ancestor's. Each node is in one of three states:
+      invisible   - effective alpha 0: the node and its subtree contribute
+                    nothing;
+      occluding   - effective alpha 1 and background colour alpha FF: it
+                    draws and hides everything painted beneath it within
+                    its rectangle;
+      translucent - otherwise: it draws and is visible, and what is beneath
+                    it stays visible.
+    A node with no background colour paints nothing itself and never
+    occludes. A container is visible when anything inside it is visible.
+    Only visible nodes enter any feature.
+  - Read: rs_extract.py (parse_tree, set_ownership, paint_order) and
+    rs_pattern.py (owner_of, visible_surface) in full; the node lines of
+    one rstree dump, both the main-thread and the uni-thread sections.
+  - Spec work:
+      add annotation ANN-DISPLAY-WINDOW-SCREEN (SUB-FEATURE-RESEARCH): the
+        three terms as RULES FOR EVERY ITEM defines them.
+      add invariant INV-GEOMETRY-FROM-TREE (SUB-FEATURE-RESEARCH, runtime):
+        every node's absolute rectangle equals its Bounds composed down the
+        parent chain with Translate and scale; no position is read from
+        oldDirty or innerAbsDrawRect.
+      add invariant INV-OPACITY (SUB-FEATURE-RESEARCH, runtime): the three
+        states, as above.
+      add invariant INV-VISIBLE-ONLY (SUB-FEATURE-RESEARCH, runtime): only
+        nodes visible on the display after the walk enter any feature.
+      add algorithm ALG-VISIBILITY (SUB-FEATURE-RESEARCH): the walk;
+        satisfies INV-OPACITY and INV-VISIBLE-ONLY; runs-at
+        AUT-PIPELINE-RUN.
+      every new invariant checked-at AUT-PIPELINE-RUN.
+  - Code path: tools/cluster/rs_extract.py (geometry), a visibility module
+    beside it, tools/checks/ (a geometry and visibility check).
+  - Test, on the real capture:
+      - the video XComponent comes out at 701x1247 at (307, 0) in
+        20261022_123014/0102, 0049, 0179, 0027 and 20261022_110104/0002, at
+        1316x740 at (0, 253) in 20261022_123014/0192, and at 1316x979 at
+        (0, 134) in 20261027_102041/0010, each 100 percent visible;
+      - in 20261022_123014/0192 the GridItems are visible at y 2070;
+      - the number of visible nodes whose rectangle changes when Translate
+        and scale are applied, reported;
+      - npm run spec:check, no violations.
+  - BOUNDARY: as in RULES FOR EVERY ITEM.
+
+  - IMPORTANT: Every figure is measured in this session against a real capture and written into the report.
+  - INVIOLABLE: SPECIFICATION SURFACE IS AUTHORITATIVE. Every node above exists before the code it governs.
+  - INVIOLABLE: DO NOT EMIT P3_SKIPPED.
+  - FORBIDDEN: MULTI-AGENT execution is not allowed. DO NOT SPAWN MULTIPLE AGENTS.
+  - WHEN TO COMMIT: Before "silk run finalize", after `npm run ril -- journal coalesce`.
+  - AFTER COMMIT: end FINAL_STATUS with an explicit NOT PUSHED line naming /cb-ops.
+  - DECISION PROTOCOL: If a decision must be made, ask for direct feedback. DO NOT DECIDE ALONE.
+  - AT THE END: update this list as HOW THE LIST WORKS states.
+
+/cb-green — the pattern dictionary and the matcher
+  - What: the pattern vector, built from a designed dictionary of
+    structural patterns matched against the visible components of each
+    window. It replaces the repeating-group detector and the pattern
+    columns entirely.
+    VOCABULARY. Elements are written over meaningful component tags.
+      - Pass-through, collapsed: __Common__, Custom, Stack, NodeContainer,
+        RelativeContainer, and untagged nodes.
+      - Size labels: XComponent:small under 0.15 of the display,
+        XComponent:medium up to 0.5, XComponent:large above. Image and
+        SymbolGlyph: icon when both sides are at most 56 dp and the aspect
+        is 0.7 to 1.4; thumb under 0.15 of the display; image_large
+        otherwise.
+      - Element forms: Tag; parent/child, the parent being the nearest
+        meaningful ancestor; parent/child* when that child kind occurs two
+        or more times.
+    DICTIONARY. Designed, not derived from any capture. Each pattern is a
+    root and an element set:
+      video_large    XComponent:large   {XComponent:large}
+      video_medium   XComponent:medium  {XComponent:medium}
+      video_small    XComponent:small   {XComponent:small}
+      web            Web                {Web}
+      gallery_flow   WaterFlow          {WaterFlow, WaterFlow/FlowItem*}
+      gallery_grid   Grid               {Grid, Grid/GridItem*}
+      list           List               {List, List/ListItem*}
+      tab_bar        Tabs               {Tabs, Tabs/TabBar}
+      text_input     TextInput          {TextInput}
+      icon_row       Row                {Row, Row/icon*}
+      icon_grid      composed: Column   {Column, Column/icon_row*}
+                               or Grid  {Grid, Grid/GridItem*, GridItem/icon}
+    MATCHING. Per window, for each pattern, at every visible node whose
+    label is the pattern's root: the element set of its subtree down to the
+    pattern's depth, through pass-through nodes; d = 1 - Jaccard(subtree
+    set, pattern set). The pattern's distance in the window is the minimum
+    over those nodes, and 1 when no node carries the root. Found when
+    d <= 0.2. Matches of one pattern never overlap: only the outermost
+    counts. Matching is bottom-up: a matched node becomes its pattern's
+    token for the patterns above it, and parts consumed by a composed
+    pattern are not counted on their own.
+    VECTOR. Per pattern: d, the minimum over the windows on the display;
+    share, the visible display area of the union of its matches, summed
+    over the windows; count, the number of its matches summed over the
+    windows, written n/(n+1). Every value lies in [0, 1].
+    VIEWER. The pattern tab holds one group per dictionary pattern: its
+    picture, its definition, its count, and every window it was found in.
+    A window appears under every pattern it matches, and in a "no pattern
+    found" group when it matches none. The picture is a schematic generated
+    from the pattern's definition alone: the root a labelled box; children
+    laid out by container kind - Row across, Column and List down, Grid and
+    WaterFlow in two columns; a repeated child drawn three times with an
+    ellipsis; sizes from the size labels.
+    TIMING. A scene's picture is accepted only if no sample with a
+    different signature lies between the dump's sample and the picture's
+    sample in samples.csv; otherwise the scene is shown with no picture of
+    its own and the reason is named.
+    CLUSTERING. Runs on the pattern vector alone while the surface item is
+    deferred.
+  - Read: rs_pattern.py, vectors_build.py, vectors_page.py in full;
+    tools/checks/viewer_renders.py, psi_rules.py, unplaced_rules.py,
+    no_silent_scene_loss.py; the spec nodes below.
+  - Spec work:
+      add interface IF-PATTERN-VOCABULARY: the vocabulary above.
+      add interface IF-PATTERN-DICTIONARY: the dictionary above.
+      add interface IF-PATTERN-VECTOR: the vector above.
+      add algorithm ALG-PATTERN-MATCH: the matching above; input-of
+        IF-PATTERN-DICTIONARY and IF-PATTERN-VOCABULARY; output-of
+        IF-PATTERN-VECTOR.
+      add invariant INV-DICTIONARY-DESIGNED: no pattern is computed from a
+        capture.
+      add invariant INV-STRUCTURE-NOT-DRAW-STATE: no element depends on
+        shouldPaint or draw slots.
+      add invariant INV-DISTANCE-ORDER-FREE: the distance is unchanged
+        under any permutation of its inputs.
+      add invariant INV-MATCHES-OUTERMOST: matches of one pattern never
+        overlap.
+      add invariant INV-COMPOSITION-CONSUMES: a part of a composed match is
+        not counted on its own.
+      add invariant INV-FEATURE-FIXED-MAP: every value of the vector is a
+        fixed function of one display's own measurements; checked by
+        computing a display's vector alone and inside the capture.
+      add invariant INV-FEATURE-UNIT-RANGE: every value lies in [0, 1] by
+        construction, with no clamping.
+      add invariant INV-FEATURE-TOTAL: every value is defined for every
+        display; nothing is imputed.
+      add invariant INV-NO-FEATURE-WEIGHTS: no weight is applied to any
+        value.
+      add invariant INV-PICTURE-SAME-MOMENT: the timing rule above.
       add invariant INV-NO-FILE-TIME: no code orders or pairs samples by
-        file modification time; only the capture's ts column does. Checked
-        statically over the pairing path.
-      add error-code ERR-PICTURE-NOT-SAME-MOMENT (WARN, py): a picture was
-        rejected, and the scene is named.
+        file time.
+      add error-code ERR-PICTURE-NOT-SAME-MOMENT (WARN, py).
       add error-code ERR-FEATURE-OUT-OF-RANGE (ERROR, py).
       add error-code ERR-FEATURE-UNDEFINED (ERROR, py).
-      replace INV-ABSENT-NOT-ZERO by INV-FEATURE-TOTAL. Its predicate
-        requires build() to replace every empty value with its column mean,
-        so it codifies the imputation the human rejected. Rule 2 forbids
-        deleting an invariant to suppress a finding; this one is superseded
-        by a stricter one, and the human confirms that before the envelope.
-      modify ALG-VECTOR-CLUSTER: it takes the feature vector as defined -
-        no transform, no standardisation, no weights, no block scaling.
-      modify IF-PATTERNS-ROW: the weights and transforms leave it.
-  - Open points, for the human, before any node is written:
-      (a) The no-pattern value of each pattern feature. Cover, item count
-          and columns have a natural one, 0. Item height and aspect do not:
-          there is no item. Either they take a declared value, or they
-          leave the vector for features that exist for every scene.
-      (b) The coverage denominator: the display, which means the same in
-          every scene, or the attributed window's visible region, which is
-          what the code uses now and which on 0090 was 1.6 percent of the
-          display.
-  - Code path: tools/cluster/vectors_build.py, tools/cluster/rs_pattern.py,
-    tools/checks/ (a feature check and a pairing check), the viewer's
-    clustering tab.
-  - Test: on the real capture - every scene's vector identical alone and
-    in batch; every feature in [0, 1] with no clamp; no empty value in the
-    matrix; the ten late pictures rejected and named, 0090's kept; the
-    clustering re-run and its unclustered share reported against 58
-    percent; npm run spec:check, no violations.
-  - BOUNDARY: combobul and ArkUI are two projects. combobul/spec/spec.db
-    holds the specification of this project's code, in combobul's ontology,
-    written only through combobul's ril. No rule, kind, check or store of
-    one is carried to the other.
+      modify INV-NO-SCENE-CLASS: a pattern name names a structure and is
+        permitted; a scene, app or use name is not.
+      modify IF-VIEWER: the pattern tab as above.
+      modify INV-EVERY-SCENE-IN-EVERY-TAB: in the pattern tab every scene
+        appears at least once, the "no pattern found" group counted.
+      modify INV-UNPLACED-SCENES-NAMED: in the pattern space, unplaced is
+        no pattern found in any window.
+      modify ALG-VECTOR-CLUSTER: input is the pattern vector.
+      modify IF-PAGE-PAYLOAD and IF-PATTERNS-ROW: the pattern vector and
+        the per-window matches in place of the pat1_*, pat2_*, pat_* and
+        overlay_* columns.
+      remove, each confirmed by the human first: ALG-PSI-PATTERN,
+        IF-PATTERN-SPACE, the pattern-space part of INV-PSI-TOTAL,
+        INV-PSI-DISJOINT, INV-PSI-MINIMAL and INV-PSI-ORTHOGONAL,
+        ALG-MOTIF-SCHEMATIC, INV-ABSENT-NOT-ZERO, and the pattern branch of
+        ALG-DESCRIBE-CELL.
+  - Code that goes:
+      rs_pattern.py: Scene.pattern, Scene.arrangement, Scene._split, the
+        grouping in analyse, fullbleed, leaf_kind, owner_of's choice of one
+        window, and every pat*, pat1_*, pat2_* and overlay_* column.
+      vectors_build.py: transform, the weights, the standardisation and
+        block scaling, the mean fill, psi_pattern, psi_pattern_cells,
+        schematic, the pattern branch of describe_cell, and the pattern
+        columns of VECTORS.
+      tools/checks/: the pattern parts of psi_rules.py and
+        unplaced_rules.py, and every read of the pat1_* columns.
+  - Code path: a pattern module under tools/cluster/, rs_pattern.py,
+    vectors_build.py, vectors_page.py, tools/checks/ (a matcher check and
+    a timing check).
+  - Test, on the real capture:
+      - 20261022_123014/0102, 0049, 0179, 0027, 20261022_110104/0002 and
+        20261027_102041/0010: video_medium and gallery_flow found at d = 0,
+        and no other pattern; 20261022_123014/0192: video_medium and
+        gallery_grid at d = 0;
+      - on the capture of item 1, the launcher's windows: icon_grid found;
+      - the share of displays with at least one pattern found, and the
+        count per pattern, reported;
+      - the distance unchanged when the inputs are shuffled;
+      - every display's vector identical computed alone and in the capture;
+      - viewer_renders.py holds on the rebuilt viewer;
+      - npm run spec:check, no violations.
+  - BOUNDARY: as in RULES FOR EVERY ITEM.
 
   - IMPORTANT: Every figure is measured in this session against a real capture and written into the report.
-  - IMPORTANT: Sample timing is read from samples.csv. A file's write time is never evidence of when anything happened.
   - INVIOLABLE: SPECIFICATION SURFACE IS AUTHORITATIVE. Every node above exists before the code it governs.
-  - INVIOLABLE: NO SCENE CLASSES.
+  - INVIOLABLE: NO SCENE CLASSES. A pattern names a structure of components.
   - INVIOLABLE: DO NOT EMIT P3_SKIPPED.
   - FORBIDDEN: MULTI-AGENT execution is not allowed. DO NOT SPAWN MULTIPLE AGENTS.
   - WHEN TO COMMIT: Before "silk run finalize", after `npm run ril -- journal coalesce`.
   - AFTER COMMIT: end FINAL_STATUS with an explicit NOT PUSHED line naming /cb-ops.
   - DECISION PROTOCOL: If a decision must be made, ask for direct feedback. DO NOT DECIDE ALONE.
-  - AT THE END: update this list as the rule at the head of the list states.
-
-/cb-green — the surface partition without substrate
-  - What: PSI_s today ranks all five candidate coordinates, substrate
-    included, and takes the largest two. Measured over the 299-scene
-    capture: substrate leads 179 scenes (60 percent), so most cells say
-    "mostly nothing" before they say what the display holds; behind it the
-    second coordinate has a median of 0.13 of the display; in 53 scenes
-    (18 percent) the second and third coordinates are within 0.02, so the
-    second slot is decided by noise - which INV-PSI-DISJOINT does not see,
-    since it tests the declared tie-break order and not near-ties; and
-    text never beats substrate, which is why the four text/* cells are
-    empty and INV-PSI-MINIMAL fails.
-    Decided by the human on 2026-10-28, option A: substrate leaves the
-    ranking. A cell is (largest, second largest) among xcomp, image, text
-    and content. On the same capture that declares 12 cells and reaches all
-    12, text included, the largest holding 38 scenes (13 percent, against
-    23 now), so INV-PSI-MINIMAL holds. Substrate stays measured, in the
-    vector and on the page; it is just not a coordinate of the cell.
-    Measured for B, rejected: (largest named) x (substrate over half the
-    display) declared 8, reached 7, largest 22 percent.
-  - Read: ALG-PSI-SURFACE, IF-SURFACE-SPACE; psi_surface,
-    psi_surface_cells, VIS_RANKED and describe_cell in vectors_build.py;
-    tools/checks/psi_rules.py.
-  - Spec areas: ALG-PSI-SURFACE, INV-PSI-TOTAL, INV-PSI-DISJOINT,
-    INV-PSI-MINIMAL, INV-PSI-ORTHOGONAL, IF-VIEWER.
-  - Spec work:
-      modify ALG-PSI-SURFACE: the four-candidate ranking, its 12 cells, the
-        measured reach, and why substrate is not a candidate.
-      the near-tie measure for the new partition is reported, and whether
-        INV-PSI-DISJOINT should state near-ties as well as exact ties is
-        put to the human.
-  - Code path: vectors_build.py (VIS_RANKED, psi_surface,
-    psi_surface_cells, describe_cell), tools/checks/psi_rules.py, the
-    viewer's surface tab.
-  - Test: psi_rules.py on the real capture - 12 declared, 12 reached;
-    the payload's cells agree with a fresh assignment; viewer_renders.py
-    holds; npm run spec:check, no violations.
-  - BOUNDARY: as above.
-
-  - IMPORTANT: Every figure is measured in this session against a real capture and written into the report.
-  - INVIOLABLE: SPECIFICATION SURFACE IS AUTHORITATIVE.
-  - INVIOLABLE: NO SCENE CLASSES.
-  - INVIOLABLE: DO NOT EMIT P3_SKIPPED.
-  - FORBIDDEN: MULTI-AGENT execution is not allowed. DO NOT SPAWN MULTIPLE AGENTS.
-  - WHEN TO COMMIT: Before "silk run finalize", after `npm run ril -- journal coalesce`.
-  - AFTER COMMIT: end FINAL_STATUS with an explicit NOT PUSHED line naming /cb-ops.
-  - DECISION PROTOCOL: If a decision must be made, ask for direct feedback. DO NOT DECIDE ALONE.
-  - AT THE END: update this list as the rule at the head of the list states.
+  - AT THE END: update this list as HOW THE LIST WORKS states.
