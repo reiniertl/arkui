@@ -54,9 +54,8 @@ vectors_build.py, vectors_page.py, and the checks under tools/checks/.
 ORDER
 ===============================================================================
 
-  1. /cb-green — every visible window's components in the capture
-  2. /cb-green — geometry and visibility from the tree
-  3. /cb-green — the pattern dictionary and the matcher
+  1. /cb-green — geometry and visibility from the tree
+  2. /cb-green — the pattern dictionary and the matcher
 
 
 ===============================================================================
@@ -73,8 +72,8 @@ DEFERRED
     content - and a scene's cell is (largest, second largest). vis_substrate
     stays measured, in the vector and on the page, and is not a coordinate
     of the cell. 12 cells are declared.
-    It runs on the geometry and visibility of item 2, so it is moved into
-    ORDER only after item 2 is done.
+    It runs on the geometry and visibility of item 1, so it is moved into
+    ORDER only after item 1 is done.
   - Read: ALG-PSI-SURFACE, IF-SURFACE-SPACE; psi_surface, psi_surface_cells,
     VIS_RANKED and describe_cell in vectors_build.py; tools/checks/
     psi_rules.py.
@@ -95,40 +94,6 @@ DEFERRED
 ===============================================================================
 PROMPTS
 ===============================================================================
-
-/cb-green — every visible window's components in the capture
-  - What: rs_capture.ps1 dumps the component tree of every process that
-    owns a visible window on the display, the system UI included, so that
-    every visible node can carry its component tag. Today one process is
-    dumped, and the nodes of every other window carry no tag. Each sample
-    holds one client dump per process, named by its pid, and rs_extract.py
-    reads all of them into one tag map.
-  - Read: tools/rs_capture.ps1 in full; rs_extract.py parse_client and the
-    session walk; IF-CAPTURE-SESSION.
-  - Spec work:
-      add invariant INV-CLIENT-DUMP-ALL-WINDOWS (SUB-FEATURE-RESEARCH,
-        runtime): for every sample, every process owning a window with a
-        non-empty visible region has its component tree in the sample.
-        checked-at AUT-PIPELINE-RUN; IF-CAPTURE-SESSION assumes it.
-      add error-code ERR-PATTERN-ROOT-UNTAGGED (WARN, py): a visible window
-        whose nodes carry no component tag, named with its window and
-        process; emitted by INV-CLIENT-DUMP-ALL-WINDOWS.
-      modify IF-CAPTURE-SESSION: the per-process client dumps of a sample.
-  - Code path: tools/rs_capture.ps1, tools/cluster/rs_extract.py.
-  - Test: a new capture on the phone that includes the launcher and one
-    app; for every visible window of every sample, the share of its nodes
-    with a component tag, reported; the launcher's window tagged;
-    npm run spec:check, no violations.
-  - BOUNDARY: as in RULES FOR EVERY ITEM.
-
-  - IMPORTANT: Every figure is measured in this session against a real capture and written into the report.
-  - INVIOLABLE: SPECIFICATION SURFACE IS AUTHORITATIVE. Every node above exists before the code it governs.
-  - INVIOLABLE: DO NOT EMIT P3_SKIPPED.
-  - FORBIDDEN: MULTI-AGENT execution is not allowed. DO NOT SPAWN MULTIPLE AGENTS.
-  - WHEN TO COMMIT: Before "silk run finalize", after `npm run ril -- journal coalesce`.
-  - AFTER COMMIT: end FINAL_STATUS with an explicit NOT PUSHED line naming /cb-ops.
-  - DECISION PROTOCOL: If a decision must be made, ask for direct feedback. DO NOT DECIDE ALONE.
-  - AT THE END: update this list as HOW THE LIST WORKS states.
 
 /cb-green — geometry and visibility from the tree
   - What: two things every feature stands on.
@@ -219,7 +184,10 @@ PROMPTS
       icon_row       Row                {Row, Row/icon*}
       icon_grid      composed: Column   {Column, Column/icon_row*}
                                or Grid  {Grid, Grid/GridItem*, GridItem/icon}
-    MATCHING. Per window, for each pattern, at every visible node whose
+    MATCHING. A window with under half of its nodes tagged
+    (ERR-PATTERN-ROOT-UNTAGGED, INV-CLIENT-TAG-COVERAGE) is not matched; it
+    is named, and counts as untagged rather than as having no pattern.
+    Per window, for each pattern, at every visible node whose
     label is the pattern's root: the element set of its subtree down to the
     pattern's depth, through pass-through nodes; d = 1 - Jaccard(subtree
     set, pattern set). The pattern's distance in the window is the minimum
@@ -297,6 +265,12 @@ PROMPTS
         INV-PSI-DISJOINT, INV-PSI-MINIMAL and INV-PSI-ORTHOGONAL,
         ALG-MOTIF-SCHEMATIC, INV-ABSENT-NOT-ZERO, and the pattern branch of
         ALG-DESCRIBE-CELL.
+  - Open point, for the human: the system UI's components have no source
+    on this device build. The client dump gives a fixed subset of them and
+    the window manager, ability manager and RenderService dumps give none,
+    so the launcher, the status bar's neighbours and the gesture layers
+    stay outside the patterns. Whether to look for another source, and
+    where, is open.
   - Code that goes:
       rs_pattern.py: Scene.pattern, Scene.arrangement, Scene._split, the
         grouping in analyse, fullbleed, leaf_kind, owner_of's choice of one
@@ -315,7 +289,7 @@ PROMPTS
         20261027_102041/0010: video_medium and gallery_flow found at d = 0,
         and no other pattern; 20261022_123014/0192: video_medium and
         gallery_grid at d = 0;
-      - on the capture of item 1, the launcher's windows: icon_grid found;
+      - icon_grid: the number of displays where it is found, reported;
       - the share of displays with at least one pattern found, and the
         count per pattern, reported;
       - the distance unchanged when the inputs are shuffled;

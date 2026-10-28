@@ -358,6 +358,44 @@ def window_weight(tree, surf):
     return {"nodes": len(adm), "paint_px": round(region_area(paint))}
 
 
+UNTAGGED_BELOW = 0.5      # ERR-PATTERN-ROOT-UNTAGGED: under half of a window's
+                          # nodes named, no structure can be read from it
+
+
+def window_tag_coverage(tree, tags):
+    """Per visible window, how many of its canvas nodes carry a component tag.
+
+    INV-CLIENT-TAG-COVERAGE. The tag comes from the client dump, which every
+    process with a UI answers - an app with its whole component tree, the
+    system UI with a fixed subset. This does not close that gap; it measures
+    it, so a window whose structure cannot be read is named rather than
+    silently matched against nothing.
+
+    Visible is a top-level window with a non-empty visible region, the same
+    test the owner selection uses. Ownership must already be set.
+    """
+    out = []
+    for s in tree["surfaces"]:
+        if s["nested"] or s["visible"] != 1 or s["alpha"] <= 0 \
+                or region_area(s["vis"]) <= 0:
+            continue
+        ids = [nid for nid, n in tree["nodes"].items()
+               if n.get("surf") == s["id"] and n["kind"] == "CANVAS_NODE"]
+        tagged = sum(1 for nid in ids if nid in tags)
+        # The process whose nodes fill the window. The window surface itself
+        # is hosted by the system UI for every app, so its own pid would name
+        # the system UI for every window there is.
+        pids = {}
+        for nid in ids:
+            p = tree["nodes"][nid].get("pid")
+            pids[p] = pids.get(p, 0) + 1
+        owner_pid = max(pids, key=pids.get) if pids else s["pid"]
+        out.append({"window": s["name"], "pid": owner_pid, "nodes": len(ids),
+                    "tagged": tagged,
+                    "coverage": round(tagged / len(ids), 3) if ids else None})
+    return out
+
+
 DISPLAY_DEFAULT = {"w": 1316.0, "h": 2832.0, "density": 3.5, "rotation": 0,
                    "refresh": 0, "refresh_max": 0, "power": -1,
                    "internal": True, "cutout": None, "avail": None}
