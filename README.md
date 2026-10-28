@@ -77,7 +77,7 @@ screenshots of a real phone in real use.
 
 ```powershell
 # on the capture host, phone attached, hdc on PATH
-.\tools\rs_capture.ps1 -Seconds 600 -Dir C:\ark_ui\captures
+.\tools\rs_capture.ps1 -Seconds 600 -Dir $HOME\ark_work\captures
 ```
 
 ```sh

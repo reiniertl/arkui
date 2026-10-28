@@ -26,7 +26,7 @@
 #  The join is exact because both come from the same service microseconds
 #  apart.
 #
-#      .\rs_capture.ps1 -Seconds 600 -Dir C:\ark_ui\captures
+#      .\rs_capture.ps1 -Seconds 600 -Dir $HOME\ark_work\captures
 # ---------------------------------------------------------------------------
 
 [CmdletBinding()]

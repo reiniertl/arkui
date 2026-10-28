@@ -444,6 +444,42 @@ WHAT IS DONE
      node_modules in the capture machine's tree was left in place: it also
      carries pptxgenjs for npm run deck, so it is not only the engine's.
 
+  2026-10-28  /cb-free   the repository on the VM, shared to the laptop
+     Reverses the 2026-10-27 arrangement at the human's instruction. The
+     repository now lives only on the VM, at ~/ark_ui, and the capture
+     machine reaches it as a read-only Samba share. The record above about
+     the reminder costing 24.5 s is closed by this: on local disk the three
+     per-prompt hooks take 0.5, 0.5 and 3.6 s, and spec:check 1.6 s.
+     The clone came from GitHub for full history, 185 commits, with the
+     three unpushed commits carried from the laptop as a git bundle. The
+     laptop's repository turned out to be SHALLOW, so a bundle of all of it
+     could not be complete; it also holds a stash, refs/stash 4398085,
+     which was not carried. HEAD and tree are identical to the laptop's.
+     The harness is know_kernel's, byte for byte; the spec database was
+     rebuilt from the mutation log, 56 nodes and 167 edges.
+     The share is read-only and forces no identity, and that is a finding
+     rather than a preference. This VM's accounts carry an @ in their name
+     (sssd, fully qualified names), and smbd's lookup_name reads
+     name@tphwai.local as a user in a domain called tphwai.local: getpwnam
+     finds the account and the SID lookup then fails, so force user and
+     force group both answer NO_SUCH_USER and NO_SUCH_GROUP. No smb.conf
+     spelling avoids it; only a change to how the VM resolves accounts
+     would, and that was not made. The laptop only reads, so it does not
+     need to write as anyone.
+     Running from the share was measured before it was trusted: 157 s for
+     a check that takes 0.7 s from local disk. Tailscale cannot connect the
+     two machines directly and relays through DERP in Dallas, 160-210 ms a
+     round trip, and Python's import search pays one for every path it
+     tries. So tools\py.ps1 now mirrors tools/ from the share into the
+     working folder at the start of every run and runs from there, 2.6 s
+     when nothing changed; the copy is overwritten every run and never
+     edited. A tool run end to end is 13-15 s. The venv was rebuilt from the
+     pinned requirements in the working folder.
+     The capture machine's working folder is ~\ark_work: captures, venv,
+     the tools copy, every output including scene_feature_reference.html,
+     and ark.ps1, a launcher that names the VM and so stays out of the
+     repository.
+
 
 
 ===============================================================================

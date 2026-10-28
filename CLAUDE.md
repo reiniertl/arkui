@@ -27,10 +27,17 @@ measured and each is clustered on its own; nothing confirms a class list.
 | `tools/cluster/vectors_build.py` | clustering, page payload |
 | `tools/cluster/vectors_page.py` | the page |
 | `tools/rs_capture.ps1` | capture on the device |
-| `combobul/` | the spec engine (see below) |
+| `combobul/spec/` | this project's spec; the engine is installed per machine, at `~/combobul` (see below) |
 
-Captures live on the capture machine at `C:\ark_ui\captures`, never in
-this repository: they are screenshots of a real phone in real use.
+Captures live on the capture machine in its working folder,
+`~\ark_work\captures`, never in this repository: they are screenshots of a
+real phone in real use.
+
+The repository lives on the VM, and only there. The capture machine reaches
+it as a read-only Samba share, `\\<vm>\ark_ui`, and runs the tools through
+`tools\py.ps1`, which keeps the venv and a copy of `tools\` refreshed from
+the share in `~\ark_work`. That copy is overwritten on every run and never
+edited: code is written and committed on the VM.
 
 ## Skills drive workflows — use them
 

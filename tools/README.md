@@ -17,7 +17,7 @@ Two steps. The device side pulls files; everything after that is Python.
 ## Capture
 
 ```powershell
-.\rs_capture.ps1 -Seconds 600 -Dir C:\ark_ui\captures
+.\rs_capture.ps1 -Seconds 600 -Dir $HOME\ark_work\captures
 ```
 
 One render-tree read per sample, about 0.3s each. Nothing is computed from it
