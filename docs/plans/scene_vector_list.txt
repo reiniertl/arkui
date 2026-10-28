@@ -415,6 +415,35 @@ WHAT IS DONE
      fix was a throwaway in a scratchpad, deliberately — making it a
      permanent check is a decision, not a side effect of a bug fix.
 
+  2026-10-28  /cb-free   one engine, on the VM, copied from know_kernel
+     ~/know_kernel is the source of the combobul build and is never
+     modified. The engine had instead been installed inside this tree on
+     the capture machine - combobul/cli and its siblings, gitignored - so
+     every machine holding the repository carried its own engine, and the
+     one running was the capture machine's, read across sshfs on every
+     call. Only combobul/spec/ is this project's: 26 tracked files, the
+     mutation log, a snapshot and the associations. It stays.
+     Done: the full build copied from ~/know_kernel/combobul to
+     ~/combobul on the VM with know_kernel's node_modules, every directory
+     byte-identical to its source and know_kernel's tree unchanged.
+     package.json's ril, silk and spec:check now run
+     ${COMBOBUL_HOME:-$HOME/combobul}, so no machine path enters the
+     public repository and the target defaults to the working directory.
+     The hooks are untouched and stay byte-identical to know_kernel's.
+     The engine copy in the capture machine's tree was moved out to
+     C:\ark_ui_engine_retired rather than deleted - deletion was refused
+     as irreversible - and can be removed by hand.
+     Measured: spec:check 57.4 s on the old engine, 13.3 s on the VM one,
+     same 0 violations over 56 nodes. The per-prompt reminder hook is
+     still 24.5 s, of which silk run state --compact is 20.5 s: it reads
+     the 26 run records and the spec across the mount. That is mount I/O,
+     not the build, and is left open - sshfs caching, or keeping the
+     gitignored .combobul/ state off the mount, are the two candidates and
+     the second touches the rule that nothing of this repository lives on
+     the VM.
+     node_modules in the capture machine's tree was left in place: it also
+     carries pptxgenjs for npm run deck, so it is not only the engine's.
+
 
 
 ===============================================================================

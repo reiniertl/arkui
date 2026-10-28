@@ -8,9 +8,9 @@
   },
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
-    "ril": "node combobul/cli/ril.mjs",
-    "silk": "node combobul/cli/silk.mjs",
-    "spec:check": "node combobul/cli/ril.mjs validate-delta --json",
+    "ril": "node ${COMBOBUL_HOME:-$HOME/combobul}/cli/ril.mjs",
+    "silk": "node ${COMBOBUL_HOME:-$HOME/combobul}/cli/silk.mjs",
+    "spec:check": "node ${COMBOBUL_HOME:-$HOME/combobul}/cli/ril.mjs validate-delta --json",
     "deck": "node tools/deck/build.cjs"
   },
   "repository": {
