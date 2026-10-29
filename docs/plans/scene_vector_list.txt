@@ -46,8 +46,9 @@ RULES FOR EVERY ITEM
   the venv and every output stay. Captures never enter the repository.
 
 The baseline each item reads in full: README.md, tools/README.md, CLAUDE.md,
-tools/rs_capture.ps1, tools/cluster/rs_extract.py, rs_pattern.py,
-vectors_build.py, vectors_page.py, and the checks under tools/checks/.
+tools/rs_capture.ps1, tools/cluster/rs_extract.py, rs_scene.py,
+rs_pattern.py, vectors_build.py, vectors_page.py, and the checks under
+tools/checks/.
 
 
 ===============================================================================
@@ -70,10 +71,6 @@ DEFERRED
     scenes, 598 of them the two gesture layers). Whether to look for
     another source, and where, is for the human.
 
-    Its occlusion is ALG-VISIBILITY's; the kind of each claim still comes
-    from the tag and the content slot (vis_kind). While it is deferred, the
-    clustering runs on the pattern vector alone.
-
 ===============================================================================
 PROMPTS
 ===============================================================================
@@ -85,17 +82,15 @@ PROMPTS
     the display's kept tree. Everything that computes how a node is rendered
     goes - draw slots, shouldPaint_, IsSubTreeSkipped, the content kind of
     pixels, composition, substrate, cost - and rotation goes.
-    STARTING STATE. The previous item, the scene in one pass, was finalized
-    unfinished and nothing of it is committed. The working tree holds the
-    pass (tools/cluster/rs_scene.py), the slimmed rs_pattern.py, the parser
-    split into index_dump and parse_node, the rebuilt vectors_build.py and
-    vectors_page.py, the updated checks, picture_timing.py and scene_pass.py,
-    with rs_visibility.py and geometry_visibility.py deleted. The DAG holds,
-    not coalesced, that item's envelope - its 11 removals and the pattern
-    nodes - with the read_windows column, the earlier clipping, rotation,
-    visible-area and pruning batches, and eight ril associate bindings.
-    This item keeps that work, cuts it to the two things above, and
-    commits it.
+    STARTING STATE. Uncommitted in the working tree: the pass
+    (tools/cluster/rs_scene.py), rs_pattern.py, the parser's index_dump
+    and parse_node, vectors_build.py, vectors_page.py, the checks with
+    picture_timing.py and scene_pass.py, and the deletion of
+    rs_visibility.py and geometry_visibility.py. Uncoalesced in the DAG:
+    the pattern nodes, the removals already applied, the read_windows
+    column, the clipping, visible-area and pruning nodes, and eight ril
+    associate bindings. All of it is kept, cut to the two things above,
+    and committed by this item.
     SELECTION. The scene is the display's kept tree, built in one descent
     from LOGICAL_DISPLAY_NODE. A node is in the scene iff it has a visible
     part on the display, or a descendant in the scene: its rectangle -
@@ -195,8 +190,7 @@ PROMPTS
   - What: SUB-FEATURE-RESEARCH is made sound: every algorithm
     bound to the code that implements it, every invariant bound to what
     holds it and to a check that tests it, no edge claiming what the code
-    does not do, and no two nodes contradicting each other. From the audit
-    of 2026-10-29, what item 1 does not already clear:
+    does not do, and no two nodes contradicting each other. To clear:
       - only ALG-VISIBILITY, ALG-PATTERN-MATCH, ALG-PARSE-RSTREE,
         ALG-MOTIF-SCHEMATIC, ALG-VECTOR-CLUSTER and ALG-VIEWER-RENDER carry
         an artifact association;
