@@ -7,17 +7,18 @@
 Holds five invariants of IF-VIEWER and IF-PAGE-PAYLOAD:
 
   INV-VIEWER-RENDERS                the page's own script runs to the end
-                                    and every tab, every declared cell and
-                                    every cluster has a rendered group
+                                    and every tab, every dictionary
+                                    pattern and every cluster has a
+                                    rendered group
   INV-GROUP-ORDER                   inside a group: picture, description,
                                     then the screenshots
-  INV-EVERY-SCENE-IN-EVERY-TAB      each measured scene appears exactly
-                                    once in each tab
-  INV-CLUSTERING-MATCHES-NO-PATTERN the clustering's columns are the two
-                                    vectors' and nothing else
-  INV-DESCRIPTION-FROM-MEASUREMENT  describe_cell reads only measured
-                                    columns and words only from the
-                                    measurement's own alphabet
+  INV-EVERY-SCENE-IN-EVERY-TAB      each measured scene appears at least
+                                    once in the pattern tab and exactly
+                                    once in the clustering tab
+  INV-CLUSTERING-MATCHES-NO-PATTERN the clustering's columns are the
+                                    pattern vector's and nothing else
+  INV-NO-FEATURE-WEIGHTS            the clustering transforms, weights,
+                                    standardises and fills nothing
 
 The page is EXECUTED, not read. On 2026-10-28 a page that threw on its first
 statement passed every check there was, because every check read the
@@ -26,12 +27,14 @@ page's script under node against a stub of the few DOM calls it makes and
 inspects what each tab wrote. Needs node and nothing beyond the standard
 library, so it runs on either machine.
 
-Exit 0 when all five hold, 1 when any does not.
+Exit 0 when all hold, 1 when any does not.
 """
 import argparse, ast, collections, csv, json, os, re, subprocess, sys, tempfile
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 BUILD = os.path.join(os.path.dirname(HERE), "cluster", "vectors_build.py")
+sys.path.insert(0, os.path.join(os.path.dirname(HERE), "cluster"))
+import vectors_build as VB              # noqa: E402
 
 # The stub answers exactly what the page asks of a browser and records what
 # it writes. A missing call shows up as a thrown error, which is the point.
@@ -65,11 +68,11 @@ let threw = null;
 try { vm.createContext(ctx); new vm.Script(js, {filename: 'page.js'}).runInContext(ctx); }
 catch (e) { threw = e.constructor.name + ': ' + e.message; }
 const out = {threw, menu: el('menu').innerHTML, tabs: {}};
-for (const t of ['pattern', 'surface', 'clustering']) out.tabs[t] = el('t-' + t).innerHTML;
+for (const t of ['pattern', 'clustering']) out.tabs[t] = el('t-' + t).innerHTML;
 fs.writeFileSync(process.argv[3], JSON.stringify(out));
 """
 
-TABS = ("pattern", "surface", "clustering")
+TABS = ("pattern", "clustering")
 
 
 def run_page(page):
@@ -97,40 +100,31 @@ def groups_of(html):
 
 
 def vector_columns(src):
-    """The VECTORS table's columns, read from source, in order."""
-    body = src[src.index("VECTORS = {"):src.index("\n}\n", src.index("VECTORS = {"))]
-    return ["rs_" + n for n in re.findall(r'\(\s*"(\w+)",\s*"\w+",\s*[\d.]+,', body)]
+    """The clustering's columns as vectors_build.py declares them."""
+    return [n for n, _ in VB.PATTERN_COLS]
 
 
-def check_description(src, problems):
-    """INV-DESCRIPTION-FROM-MEASUREMENT, statically, over describe_cell."""
+def check_no_weights(src, problems):
+    """INV-NO-FEATURE-WEIGHTS, statically, over build_clustering."""
     tree = ast.parse(src)
     fn = next((n for n in tree.body if isinstance(n, ast.FunctionDef)
-               and n.name == "describe_cell"), None)
+               and n.name == "build_clustering"), None)
     if fn is None:
-        problems.append("describe_cell not found in vectors_build.py")
+        problems.append("build_clustering not found in vectors_build.py")
         return
-    allowed = re.compile(r"^(pat1_\w+|pat_n_groups|overlay_frac|vis_\w*)$")
-    banned = {"owner", "shot", "session", "stem", "top_name", "img", "imgsrc"}
-    for node in ast.walk(fn):
-        if isinstance(node, ast.Constant) and isinstance(node.value, str):
-            v = node.value
-            if v in banned:
-                problems.append("describe_cell reads %r, which is not a measurement" % v)
-            elif re.match(r"^[a-z]+\d?_[a-z_0-9]+$", v) and not allowed.match(v):
-                problems.append("describe_cell reads column %r, outside the vectors" % v)
-        if isinstance(node, ast.Dict) and node.keys:
-            problems.append("describe_cell holds its own word table at line %d"
-                            % node.lineno)
-    # The only word tables it may use are the kind alphabet and the six
-    # coordinates, and they must be exactly those.
-    names = {n.id for n in ast.walk(fn) if isinstance(n, ast.Name)}
-    tables = {t.targets[0].id for t in tree.body if isinstance(t, ast.Assign)
-              and isinstance(t.targets[0], ast.Name) and t.targets[0].id.isupper()
-              and isinstance(t.value, (ast.Dict, ast.DictComp))}
-    for t in sorted((names & tables) - {"KIND_WORDS", "SURF_WORDS", "VECTORS"}):
-        problems.append("describe_cell uses the table %s, which is not the "
-                        "measurement's alphabet" % t)
+    body = [x for x in fn.body
+            if not (isinstance(x, ast.Expr) and isinstance(x.value, ast.Constant))]
+    seg = "\n".join(l.split("#")[0] for x in body
+                     for l in ast.get_source_segment(src, x).splitlines())
+    for pat, why in ((r"StandardScaler|MinMaxScaler|RobustScaler", "a scaler"),
+                     (r"/\s*sd\b|-\s*X\.mean", "standardisation"),
+                     (r"\bweight|\* *np\.array\(\[w", "a weight"),
+                     # writing into the matrix from other rows; a mean of
+                     # silhouettes taken to report cohesion fills nothing
+                     (r"\]\s*=\s*np\.nan\w+|fillna|SimpleImputer|impute\(", "filling"),
+                     (r"\btransform\((?!Z)", "a per-column transform")):
+        if re.search(pat, seg):
+            problems.append("build_clustering applies %s" % why)
 
 
 def main():
@@ -169,11 +163,11 @@ def main():
         if not tabs.get(t):
             probs.append("tab %s rendered nothing" % t)
     rendered = {t: groups_of(tabs.get(t, "")) for t in TABS}
-    for t, key in (("pattern", "_pattern_cells"), ("surface", "_surface_cells")):
+    for t, key in (("pattern", "_patterns"),):
         have = {k[1] for k, _ in rendered[t] if k[0] == "cell"}
         for c in D.get(key, []):
             if c["cell"] not in have:
-                probs.append("%s: declared cell %s has no group" % (t, c["cell"]))
+                probs.append("%s: declared group %s has no rendered group" % (t, c["cell"]))
     have = {k[1] for k, _ in rendered["clustering"] if k[0] == "cluster"}
     for g in D.get("clustering", {}).get("groups", []):
         if str(g["id"]) not in have:
@@ -183,7 +177,7 @@ def main():
                                             for t in TABS))
 
     probs = []
-    for t in ("pattern", "surface"):
+    for t in ("pattern",):
         for (kind, key), seg in rendered[t]:
             f, d = seg.find("class='fig'"), seg.find("class='desc'")
             p = seg.find("class='pic")
@@ -201,13 +195,14 @@ def main():
         stray = [s for s in got if s not in want]
         if missing:
             probs.append("%s: %d scene(s) missing, e.g. %s" % (t, len(missing), missing[0]))
-        if twice:
+        if twice and t != "pattern":    # a scene appears under every pattern found
             probs.append("%s: %d scene(s) shown more than once, e.g. %s"
                          % (t, len(twice), twice[0]))
         if stray:
             probs.append("%s: %d scene(s) never measured, e.g. %s" % (t, len(stray), stray[0]))
     report("INV-EVERY-SCENE-IN-EVERY-TAB", probs,
-           "%d scenes, each exactly once in each of the three tabs" % len(want))
+           "%d scenes, at least once in the pattern tab and exactly once in "
+           "the clustering tab" % len(want))
 
     probs = []
     C = D.get("clustering")
@@ -231,10 +226,11 @@ def main():
            "the clustering reads the %d vector columns and names clusters by id"
            % len(vector_columns(src)))
 
+
     probs = []
-    check_description(src, probs)
-    report("INV-DESCRIPTION-FROM-MEASUREMENT", probs,
-           "describe_cell reads only measured columns and the kind alphabet")
+    check_no_weights(src, probs)
+    report("INV-NO-FEATURE-WEIGHTS", probs,
+           "build_clustering uses the pattern vector as measured")
 
     return 1 if failed else 0
 

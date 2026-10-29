@@ -20,6 +20,22 @@ Exit 0 when all four hold, 1 when any does not.
 """
 import argparse, os, re, subprocess, sys
 
+import ast
+
+
+def dictionary_names():
+    """The dictionary's pattern names, read from rs_scene.py's DICTIONARY
+    literal rather than imported, so this runs where numpy does not."""
+    src = open(os.path.join(os.path.dirname(os.path.dirname(
+        os.path.abspath(__file__))), "cluster", "rs_scene.py"), encoding="utf-8").read()
+    for n in ast.parse(src).body:
+        if isinstance(n, ast.Assign) and any(getattr(t, "id", "") == "DICTIONARY" for t in n.targets):
+            return tuple(dict.fromkeys(e[0] for e in ast.literal_eval(n.value)))
+    return ()
+
+
+PATTERNS = dictionary_names()
+
 # Nothing from a capture may be tracked. These are the names a capture
 # produces, not a guess at what an image might be called.
 CAPTURE_PATTERNS = [
@@ -37,9 +53,7 @@ MEASURING = re.compile(
     r"function\s+(Get-Features|Get-Shape\w*|Get-SceneClass|Measure-\w*Shape"
     r"|Get-Modifiers|Convert-RowToFeatures|Invoke-(Fit|Classify)|Get-RuleMatrix)",
     re.I)
-VECTOR_COLUMNS = ["pat1_cover", "pat1_h", "pat1_aspect", "pat1_cols", "pat1_n",
-                  "overlay_frac", "pat_n_groups", "vis_xcomp", "vis_image",
-                  "vis_text", "vis_glyph", "vis_content", "vis_substrate"]
+VECTOR_COLUMNS = ["%s%s" % (p, x) for p in PATTERNS for x in ("_d", "_share", "_n")]
 
 
 def tracked(root):

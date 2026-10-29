@@ -55,8 +55,7 @@ tools/checks/.
 ORDER
 ===============================================================================
 
-  1. /cb-green — selection and pattern distance only
-  2. /cb-green — a sound specification for the feature module
+  1. /cb-green — a sound specification for the feature module
 
 
 ===============================================================================
@@ -74,117 +73,6 @@ DEFERRED
 ===============================================================================
 PROMPTS
 ===============================================================================
-
-/cb-green — selection and pattern distance only
-  - What: the pipeline from a dump to its row does two things and nothing
-    else. SELECTION: for each node, is it on the display, and is any of it
-    visible. MATCHING: for each dictionary pattern, its Jaccard distance on
-    the display's kept tree. Everything that computes how a node is rendered
-    goes - draw slots, shouldPaint_, IsSubTreeSkipped, the content kind of
-    pixels, composition, substrate, cost - and rotation goes.
-    STARTING STATE. Uncommitted in the working tree: the pass
-    (tools/cluster/rs_scene.py), rs_pattern.py, the parser's index_dump
-    and parse_node, vectors_build.py, vectors_page.py, the checks with
-    picture_timing.py and scene_pass.py, and the deletion of
-    rs_visibility.py and geometry_visibility.py. Uncoalesced in the DAG:
-    the pattern nodes, the removals already applied, the read_windows
-    column, the clipping, visible-area and pruning nodes, and eight ril
-    associate bindings. All of it is kept, cut to the two things above,
-    and committed by this item.
-    SELECTION. The scene is the display's kept tree, built in one descent
-    from LOGICAL_DISPLAY_NODE. A node is in the scene iff it has a visible
-    part on the display, or a descendant in the scene: its rectangle -
-    Bounds placed by Translate and Scale about the Pivot, composed down the
-    parent chain - inside the display, every clipping ancestor and its
-    window's VisibleRegion, at effective alpha above 0, and not wholly under
-    a node with effective alpha 1 and an FF background painted above it
-    outside its branch. A kept node's children are its kept children.
-    MATCHING. The vocabulary, the designed dictionary, element sets on the
-    kept tree, d = 1 - Jaccard, the outermost match, composition, untagged
-    windows not matched - as in IF-PATTERN-VOCABULARY,
-    IF-PATTERN-DICTIONARY and ALG-PATTERN-MATCH.
-    PUT TO THE HUMAN: whether the pattern vector keeps share and count per
-    pattern beside d, or is d alone.
-  - Read: tools/cluster/rs_extract.py, rs_scene.py, rs_pattern.py,
-    vectors_build.py, vectors_page.py; tools/checks/*.py; the nodes below.
-  - Spec work:
-      add invariant INV-SELECTION-AND-DISTANCE-ONLY (SUB-FEATURE-RESEARCH,
-        static-analysis): from dump to row the pipeline computes per node
-        only whether it is in the scene and per pattern only its match
-        values; no function, field or column computes how a node is
-        rendered. Checked statically: the row's columns are exactly
-        IF-PATTERNS-ROW's, and the pass names no draw-state field.
-      add invariant INV-PARSE-ONLY-SELECTION-FIELDS (SUB-FEATURE-RESEARCH,
-        static-analysis): the parser reads per node only id, kind, parent,
-        children, Bounds, Translate, Scale, Pivot, Alpha, the background
-        colour's alpha, ClipToBounds, ReverseChildren and PositionZ; per
-        window Visible, its alpha and its VisibleRegion; the component tag
-        from the client dump. Nothing from the uni-render pass is read.
-      remove, each confirmed by the human node by node before the envelope:
-        ALG-VISIBLE-SURFACE, IF-SURFACE-SPACE, ALG-PSI-SURFACE,
-        INV-PSI-TOTAL, INV-PSI-DISJOINT, INV-PSI-MINIMAL, INV-PSI-ORTHOGONAL,
-        INV-SURFACE-SUMS-TO-ONE, INV-SUBSTRATE-IS-COMPLEMENT,
-        INV-BACKGROUND-NOT-CONTENT, INV-UNNAMED-CONTENT-REPORTED,
-        ERR-SURFACE-SUM-OFF, ERR-UNNAMED-CONTENT, ALG-DESCRIBE-CELL,
-        INV-DESCRIPTION-FROM-MEASUREMENT, INV-OCCLUDER-PAINTS; and every
-        edge of each.
-      modify INV-GEOMETRY-FROM-TREE: Bounds, Translate and Scale about the
-        Pivot; no rotation; every shape a rectangle.
-      modify ALG-VISIBILITY: the selection above; it calls ALG-PATTERN-MATCH
-        and nothing else.
-      modify IF-PATTERNS-ROW: session, stem, shot, the pattern columns,
-        untagged_windows and read_windows; nothing else.
-      modify IF-PATTERN-VECTOR and ALG-PATTERN-MATCH: as the human decides
-        on share and count.
-      modify IF-VIEWER, IF-PAGE-PAYLOAD, ALG-VIEWER-RENDER and
-        INV-EVERY-SCENE-IN-EVERY-TAB: two tabs, pattern and clustering.
-      modify INV-UNPLACED-SCENES-NAMED and INV-UNIT-COLUMNS-BOUNDED: the
-        pattern columns only.
-      modify INV-OPACITY, INV-VISIBLE-ONLY, INV-VISIBLE-AREA-ONLY,
-        INV-SCENE-PRUNED: rectangles; their check recomputes with rectangle
-        arithmetic.
-      every new invariant: contains, checked-at AUT-PIPELINE-RUN, an error
-        code it emits.
-  - Code that goes:
-      rs_extract.py: the uni-pass reading (DrawableVec, shouldPaint_,
-        slots, paints, skipped, hwc), rotation, set_ownership,
-        window_tag_coverage, and every regex and constant nothing reads.
-      rs_scene.py: the surface claim and its grids, VIS_KINDS, SURF_TAGS,
-        the slot test, the drawn flags, the quadrilateral code, every vis_*
-        column.
-      vectors_build.py: the surface table, PSI_s, describe_cell, the
-        surface cells and their unplaced block.
-      vectors_page.py: the surface tab.
-      tools/checks/: psi_rules.py; the surface parts of vector_rules.py,
-        unplaced_rules.py and viewer_renders.py; the draw-state and
-        substrate parts of parsing_rules.py; the polygon and scramble parts
-        of scene_pass.py.
-  - Code path: tools/cluster/rs_extract.py, rs_scene.py, rs_pattern.py,
-    vectors_build.py, vectors_page.py; tools/checks/.
-  - Check: scene_pass.py recomputes, per node, on the display and any of
-    it visible, with rectangle arithmetic and the real paint order, and
-    holds the pass's kept tree against it; the pattern oracle recomputes d
-    on the pass's kept tree; the counters: one visit per node, nothing
-    parsed below a dropped branch. It finishes over all 300 dumps in
-    minutes, and the time is reported.
-  - Test, on the real capture: the seven confirmed video rectangles kept
-    whole; 20261022_123014/0102, 0049, 0179, 0027, 20261022_110104/0002 and
-    20261027_102041/0010: video_medium and gallery_flow at d = 0;
-    20261022_123014/0192: video_medium and gallery_grid at d = 0, its
-    GridItems at y 2070 kept and those at 3117 and 4163 removed; the count
-    of scenes per pattern; milliseconds per dump for the pass alone; every
-    check under tools/checks/ named with its result; npm run spec:check, no
-    violations.
-  - BOUNDARY: as in RULES FOR EVERY ITEM.
-
-  - IMPORTANT: Every figure is measured in this session against a real capture and written into the report.
-  - INVIOLABLE: SPECIFICATION SURFACE IS AUTHORITATIVE. Every node above exists before the code it governs.
-  - INVIOLABLE: DO NOT EMIT P3_SKIPPED.
-  - FORBIDDEN: MULTI-AGENT execution is not allowed. DO NOT SPAWN MULTIPLE AGENTS.
-  - WHEN TO COMMIT: Before "silk run finalize", after `npm run ril -- journal coalesce`.
-  - AFTER COMMIT: end FINAL_STATUS with an explicit NOT PUSHED line naming /cb-ops.
-  - DECISION PROTOCOL: If a decision must be made, ask for direct feedback. DO NOT DECIDE ALONE.
-  - AT THE END: update this list as HOW THE LIST WORKS states.
 
 /cb-green — a sound specification for the feature module
   - What: SUB-FEATURE-RESEARCH is made sound: every algorithm

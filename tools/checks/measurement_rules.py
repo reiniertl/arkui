@@ -1,13 +1,11 @@
 #!/usr/bin/env python3
-"""Determinism, and the rule that keeps the slots from swapping.
+"""Determinism of the measurement.
 
-    ./measurement_rules.py <capture-root> --patterns patterns.csv
+    ./measurement_rules.py <capture-root>
 
   INV-DETERMINISTIC-MEASUREMENT  the same session measured twice, in
                                  separate processes with different hash
                                  seeds, gives identical bytes
-  INV-TIEBREAK-NOT-ON-AREA       slots order by coverage to one decimal,
-                                 ties broken on vertical position
 
 Determinism is checked across PYTHONHASHSEED rather than by running twice
 in one interpreter, because the realistic way for it to break is a set or
@@ -16,14 +14,12 @@ share a hash seed and would never show it. It is the property every other
 change to the measurement is checked against: it is what let rs_extract.py
 go from 1,028 lines to 404 with the cut proved rather than argued.
 
-Exit 0 when both hold, 1 when either does not.
+Exit 0 when it holds, 1 when it does not.
 """
-import argparse, csv, hashlib, os, subprocess, sys, tempfile
+import argparse, hashlib, os, subprocess, sys, tempfile
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 CLUSTER = os.path.join(os.path.dirname(HERE), "cluster")
-
-ROUND = 1          # coverage is compared to this many decimals
 
 
 def digest(path):
@@ -60,48 +56,14 @@ def check_determinism(root, seeds=("1", "7", "4242")):
     return same
 
 
-def check_tiebreak(rows):
-    """Coverage to one decimal decides; a tie there is decided by position."""
-    two = [r for r in rows if (r.get("has_slot2") or "") == "1"]
-    tied, order_bad, tie_bad = 0, [], []
-    for r in two:
-        try:
-            d1 = round(float(r["pat1_cover"]), ROUND)
-            d2 = round(float(r["pat2_cover"]), ROUND)
-            t1, t2 = float(r["pat1_top"]), float(r["pat2_top"])
-        except (KeyError, ValueError):
-            continue
-        if d1 < d2:
-            order_bad.append((r.get("session"), r.get("stem"), d1, d2))
-        elif d1 == d2:
-            tied += 1
-            if t1 > t2:
-                tie_bad.append((r.get("session"), r.get("stem"), t1, t2))
-    print("  INV-TIEBREAK-NOT-ON-AREA")
-    print("    %d scene(s) carry two groups; %d tie on coverage to %d decimal"
-          % (len(two), tied, ROUND))
-    print("    slot 1 covers at least as much: %d violation(s)" % len(order_bad))
-    print("    where tied, slot 1 sits no lower: %d violation(s)" % len(tie_bad))
-    for s, st, a, b in (order_bad + tie_bad)[:5]:
-        print("    %s/%s: %s vs %s" % (s, st, a, b))
-    return not order_bad and not tie_bad
-
-
 def main():
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("root", help="a capture root holding sessions")
-    ap.add_argument("--patterns", default="",
-                    help="a patterns.csv for the tiebreak check")
     a = ap.parse_args()
 
     print("the measurement rules, over %s" % a.root)
     ok = [check_determinism(a.root)]
-    if a.patterns:
-        rows = list(csv.DictReader(open(a.patterns, encoding="utf-8-sig")))
-        ok.append(check_tiebreak(rows))
-    else:
-        print("  INV-TIEBREAK-NOT-ON-AREA: not checked (pass --patterns)")
 
     if all(ok):
         print("  all checked rules hold")

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""The four parsing rules, and the substrate rule, checked on real dumps.
+"""The parsing rules, checked on real dumps and on the code that reads them.
 
     ./parsing_rules.py <capture-root>
 
@@ -10,27 +10,28 @@ than against the source: a regex over code can be satisfied by code that
 does the wrong thing, and every one of these failures was visible in the
 output long before it was visible in the source.
 
-  INV-FIRST-PASS-COUNTS       the two passes of RSTree are split, and the
-                              node set comes from the first alone
-  INV-OCCLUSION-PAINT-ORDER   depth is paint order, not dump position
-  INV-OCCLUDER-PAINTS         no draw state decides visibility: nodes
-                              with shouldPaint_ 0 and skipped nodes are
-                              visible exactly as their alpha says
-  INV-OWN-RECT-BOUNDS         size is judged on the unclipped rect
-  INV-SUBSTRATE-IS-COMPLEMENT substrate is what nothing claimed, and never
-                              a competitor in the painter's pass
+  INV-FIRST-PASS-COUNTS       the index holds exactly the ids before the
+                              first repeated one, and every property comes
+                              from the first pass alone
+  INV-PARSE-ONLY-SELECTION-FIELDS
+                              the parser returns and searches only the
+                              fields selection and matching need
+  INV-SELECTION-AND-DISTANCE-ONLY
+                              the row's columns are exactly IF-PATTERNS-ROW's,
+                              and the pass names nothing about rendering
 
-Exit 0 when all five hold, 1 when any does not. Each prints what it
+Paint order is checked by scene_pass.py against its oracle.
+
+Exit 0 when all hold, 1 when any does not. Each prints what it
 measured, so a pass is evidence rather than an assertion.
 """
-import argparse, glob, importlib.util, os, re, sys
+import argparse, ast, glob, os, re, sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 CLUSTER = os.path.join(os.path.dirname(HERE), "cluster")
 sys.path.insert(0, CLUSTER)
 import rs_extract as R            # noqa: E402
-import rs_pattern as P            # noqa: E402
-import rs_visibility as V         # noqa: E402
+import rs_scene as S              # noqa: E402
 
 
 def sessions(root):
@@ -75,6 +76,10 @@ def check_first_pass(dumps):
             first_abs[nid] = R._bounds(l)
         if repeat_at is not None:
             split_seen += 1
+        ix = R.index_dump(lines)
+        if list(ix["first"]) != list(first_abs):
+            bad.append((os.path.basename(tf), "the index holds %d id(s), the first "
+                        "pass %d" % (len(ix["first"]), len(first_abs))))
         for nid, n in tree["nodes"].items():
             if nid not in first_abs:
                 bad.append((os.path.basename(tf),
@@ -93,125 +98,79 @@ def check_first_pass(dumps):
     return not bad
 
 
-def check_paint_order(dumps):
-    """Order honours ReverseChildren and PositionZ, and covers every node."""
-    bad, with_rev, with_z, differs = [], 0, 0, 0
-    for tf, lines, tree in dumps:
-        order = R.paint_order(tree)
-        rev = sum(1 for n in tree["nodes"].values() if n.get("reverse"))
-        z = sum(1 for n in tree["nodes"].values() if n.get("posz"))
-        with_rev += 1 if rev else 0
-        with_z += 1 if z else 0
-        missing = [n for n in tree["nodes"] if n not in order]
-        if missing:
-            bad.append((os.path.basename(tf), "%d node(s) have no order" % len(missing)))
-            continue
-        # O(n): does the paint order rank anything differently from the file?
-        dump_rank = {nid: i for i, nid in enumerate(tree["order"])}
-        moved = sum(1 for nid in tree["order"] if order[nid] != dump_rank[nid])
-        if (rev or z) and moved == 0:
-            bad.append((os.path.basename(tf),
-                        "carries %d reversed and %d PositionZ but ranks every "
-                        "node exactly as the file does" % (rev, z)))
-        if moved:
-            differs += 1
-    print("  INV-OCCLUSION-PAINT-ORDER")
-    print("    %d dump(s) carry a reversed parent, %d carry a PositionZ; "
-          "%d order differently from the file" % (with_rev, with_z, differs))
-    for f, why in bad[:5]:
-        print("    %s: %s" % (f, why))
-    return not bad
+NODE_FIELDS = {"id", "kind", "pid", "tag", "abs", "bounds", "tx", "ty", "sx", "sy",
+               "pivot", "alpha", "bga", "clip", "kids", "reverse", "posz"}
+WINDOW_FIELDS = {"id", "name", "pid", "alpha", "visible", "vis"}
+# What rendering looks like in the dump, and in code that reads it.
+RENDER_WORDS = re.compile(r"shouldPaint|DrawableVec|slotset|\bslots?\b|IsSubTreeSkipped|"
+                          r"\bskipped\b|\bpaints\b|\bhwc\b|vis_\w+|substrate|"
+                          r"\bclaim\w*|drawn|Rotation|\bquad\b")
 
 
-def check_occluder_paints(dumps):
-    """No draw state decides visibility; the walk reads alpha alone.
+def code_of(path):
+    """A module's code with docstrings and comments taken out."""
+    src = open(path, encoding="utf-8").read()
+    tree = ast.parse(src)
+    docs = {id(n.body[0].value) for n in ast.walk(tree)
+            if isinstance(n, (ast.Module, ast.FunctionDef, ast.ClassDef))
+            and n.body and isinstance(n.body[0], ast.Expr)
+            and isinstance(n.body[0].value, ast.Constant)}
+    lines = src.splitlines()
+    for n in ast.walk(tree):
+        if isinstance(n, ast.Constant) and id(n) in docs:
+            for k in range(n.lineno - 1, n.end_lineno):
+                lines[k] = ""
+    return "\n".join(l.split("#")[0] for l in lines)
 
-    The walk's source names none of shouldPaint_, the drawable slots or
-    IsSubTreeSkipped; that is the invariant. What the dumps add is evidence
-    of its effect. Skipped nodes are found visible in quantity, which reading
-    IsSubTreeSkipped as invisibility would make zero. And shouldPaint_ 0 is
-    reported against the alpha rule: on the capture of 2026-10-28 all 1302
-    such nodes have effective alpha 0, so the renderer and the rule agree
-    there, and a shouldPaint_ 0 node found visible would be the walk keeping
-    what the renderer drops, by alpha, as it should.
-    """
+
+def check_parse_fields(passes):
+    """INV-PARSE-ONLY-SELECTION-FIELDS: what the parser returns, and what
+    its code searches for."""
     bad = []
-    src = open(V.__file__, encoding="utf-8").read()
-    code = "\n".join(l.split("#")[0] for l in src.split('"""')[-1].splitlines())
-    for word in ("should", "slot", "skipped", "paints"):
-        if word in code:
-            bad.append(("rs_visibility.py", "the walk's code reads %r" % word))
-    nopaint = nopaint_vis = nopaint_a0 = skipped = skipped_vis = 0
-    for tf, lines, tree in dumps:
-        R.set_ownership(tree)
-        order = R.paint_order(tree)
-        for s in tree["surfaces"]:
-            if s["nested"] or s["visible"] != 1 or not s["vis"]:
-                continue
-            for nid, v in V.walk(tree["nodes"], s, R.DISPLAY_DEFAULT["w"],
-                                       R.DISPLAY_DEFAULT["h"], order).items():
-                n = tree["nodes"][nid]
-                if not n.get("should", True):
-                    nopaint += 1
-                    nopaint_vis += 1 if v["visible"] else 0
-                    nopaint_a0 += 1 if v["state"] == V.INVISIBLE else 0
-                if n.get("skipped"):
-                    skipped += 1
-                    skipped_vis += 1 if v["visible"] else 0
-    if skipped and not skipped_vis:
-        bad.append(("all dumps", "no skipped node is visible, which is what "
-                    "reading IsSubTreeSkipped as invisibility looks like"))
-    print("  INV-OCCLUDER-PAINTS")
-    print("    the walk names no draw state; of %d skipped node(s) %d are visible"
-          % (skipped, skipped_vis))
-    print("    of %d shouldPaint_ 0 node(s): %d have effective alpha 0, %d are "
-          "visible by alpha" % (nopaint, nopaint_a0, nopaint_vis))
-    for f, why in bad[:5]:
-        print("    %s: %s" % (f, why))
+    tf, lines, client, disp = passes[0]
+    ix = R.index_dump(lines)
+    nid = ix["order"][0]
+    n = R.parse_node(lines, ix, nid)
+    if set(n) != NODE_FIELDS:
+        bad.append("parse_node returns %s" % sorted(set(n) ^ NODE_FIELDS))
+    sid = next(i for i, k in ix["kind"].items() if k == "SURFACE_NODE")
+    w = R.parse_surface(lines, ix, R.parse_node(lines, ix, sid))
+    if set(w) != WINDOW_FIELDS:
+        bad.append("parse_surface returns %s" % sorted(set(w) ^ WINDOW_FIELDS))
+    for m in RENDER_WORDS.finditer(code_of(R.__file__)):
+        bad.append("rs_extract.py reads %r" % m.group(0))
+    print("  INV-PARSE-ONLY-SELECTION-FIELDS")
+    print("    parse_node returns %d field(s), parse_surface %d; render fields "
+          "searched for: %d" % (len(n), len(w), sum(1 for b in bad if "reads" in b)))
+    for b in bad[:6]:
+        print("    " + b)
+    if bad:
+        print("    ERR-PARSE-FIELD-OUTSIDE")
     return not bad
 
 
-def check_own_rect(dumps):
-    """A node that clips to the window but is huge in itself is rejected."""
-    own_area = 1316.0 * 2832.0
-    huge = {"abs": (-2731, -3172, 8359, 8360)}      # the blur source, measured
-    fits = {"abs": (0, 0, 1316, 1000)}
-    clipped_huge = P.clipped(huge["abs"], 1316.0, 2832.0)
-    rejected = P._area(huge["abs"]) > P.OVERSIZE * own_area
-    kept = P._area(fits["abs"]) <= P.OVERSIZE * own_area
-    clip_would_pass = (clipped_huge is not None
-                       and clipped_huge[2] * clipped_huge[3] <= P.OVERSIZE * own_area)
-    print("  INV-OWN-RECT-BOUNDS")
-    print("    8359x8360 at (-2731,-3172): own area %.1f windows -> %s"
-          % (P._area(huge["abs"]) / own_area, "rejected" if rejected else "KEPT"))
-    print("    the same node clipped: %.2f windows -> a clipped test would %s"
-          % ((clipped_huge[2] * clipped_huge[3] / own_area) if clipped_huge else 0.0,
-             "let it through" if clip_would_pass else "also reject"))
-    print("    a node that genuinely fits: %s" % ("kept" if kept else "REJECTED"))
-    return rejected and kept and clip_would_pass
-
-
-def check_substrate_rows(rows):
-    kinds = ["vis_" + k for k in P.VIS_KINDS]
-    bad, worst = [], 0.0
-    for r in rows:
-        try:
-            s = sum(float(r[k]) for k in kinds)
-            sub = float(r["vis_substrate"])
-        except (KeyError, ValueError):
-            continue
-        d = abs(sub - (1.0 - s))
-        worst = max(worst, d)
-        if d > 0.011:                       # the columns are rounded to 3dp
-            bad.append((r.get("session"), r.get("stem"), round(d, 4)))
-    print("  INV-SUBSTRATE-IS-COMPLEMENT")
-    print("    %d scene(s); substrate vs 1 - (%s): worst departure %.4f"
-          % (len(rows), " + ".join(P.VIS_KINDS), worst))
-    print("    substrate is not among the mark kinds: %s"
-          % ("yes" if "substrate" not in P.VIS_KINDS else "NO"))
-    for s, st, d in bad[:5]:
-        print("    %s/%s departs by %s" % (s, st, d))
-    return not bad and "substrate" not in P.VIS_KINDS
+def check_selection_only(passes):
+    """INV-SELECTION-AND-DISTANCE-ONLY: the row is selection and distance,
+    and the pass names nothing about how a node is rendered."""
+    bad = []
+    want = {"untagged_windows", "read_windows"} | {
+        p + x for p in S.PATTERNS for x in ("_d", "_share", "_n")}
+    tf, lines, client, disp = passes[0]
+    row = S.Scene(lines, client, disp).run()
+    if set(row) != want:
+        bad.append("the row's columns differ from IF-PATTERNS-ROW: %s"
+                   % sorted(set(row) ^ want))
+    for path in (S.__file__, os.path.join(CLUSTER, "rs_pattern.py")):
+        for m in RENDER_WORDS.finditer(code_of(path)):
+            bad.append("%s names %r" % (os.path.basename(path), m.group(0)))
+    print("  INV-SELECTION-AND-DISTANCE-ONLY")
+    print("    the row holds %d measured column(s); render names in the pass: %d"
+          % (len(row), sum(1 for b in bad if "names" in b)))
+    for b in bad[:6]:
+        print("    " + b)
+    if bad:
+        print("    ERR-RENDER-DETAIL-COMPUTED")
+    return not bad
 
 
 def main():
@@ -219,15 +178,15 @@ def main():
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("root", help="a capture root holding sessions")
     ap.add_argument("--limit", type=int, default=12,
-                    help="dumps to parse (default 12; parsing is ~0.2s each)")
-    ap.add_argument("--patterns", default="",
-                    help="a patterns.csv for the substrate check")
+                    help="dumps to read (default 12)")
     a = ap.parse_args()
 
-    dumps = []
+    dumps, passes = [], []
     for sdir, stem, tf, cf, disp in sessions(a.root):
         lines = open(tf, encoding="utf-8", errors="replace").read().splitlines()
+        client = open(cf, encoding="utf-8", errors="replace").read().splitlines()
         dumps.append((tf, lines, R.parse_tree(lines)))
+        passes.append((tf, lines, client, disp))
         if len(dumps) >= a.limit:
             break
     if not dumps:
@@ -235,16 +194,8 @@ def main():
 
     print("the parsing rules, over %d dump(s) from %s" % (len(dumps), a.root))
     ok = [check_first_pass(dumps),
-          check_paint_order(dumps),
-          check_occluder_paints(dumps),
-          check_own_rect(dumps)]
-
-    if a.patterns:
-        import csv
-        rows = list(csv.DictReader(open(a.patterns, encoding="utf-8-sig")))
-        ok.append(check_substrate_rows(rows))
-    else:
-        print("  INV-SUBSTRATE-IS-COMPLEMENT: not checked (pass --patterns)")
+          check_parse_fields(passes),
+          check_selection_only(passes)]
 
     if all(ok):
         print("  all checked rules hold")

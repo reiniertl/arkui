@@ -3,25 +3,19 @@
 
     ./unplaced_rules.py --patterns patterns.csv --payload two_payload.json
 
-Two populations per space, and they are different claims:
+Two populations, and they are different claims:
 
-  undescribed  the measurement looked and found nothing to describe
-  unplaced     PHI described it and PSI put it in a none-of-the-above cell
+  unplaced     no dictionary pattern was found where a window could be read
+  undescribed  none was found, and no window on the display was tagged
+               enough for its structure to be read
 
 They are checked apart because merging them loses the distinction that
-matters: the first says the measurement failed on this scene, the second
-says the partition has a place for scenes like it and this is one.
-
-The two spaces are NOT symmetric and this does not pretend they are.
-PSI_p has a declared `none` cell, so a scene with no repeating group is
-both undescribed and unplaced - the same scenes. PSI_s has no none-cell
-at all, since the six coordinates always exist and sum to one, so nothing
-there is unplaced; what stands in for undescribed is the scene whose
-content is mostly nodes with no client-dump entry.
+matters: the first says the display holds no structure the dictionary
+names, the second that its structure could not be read at all.
 
 NAMED, not merely counted. A count cannot be traced back to a scene, and
 this page published a cluster count and a silhouette for a long time with
-no indication that 132 of 299 surface scenes sat outside every cluster.
+no indication of how many scenes sat outside every cluster.
 So the check requires the identities, verifies they are real scenes from
 patterns.csv, and verifies the counts are the ones a fresh computation
 gives rather than whatever the payload happens to say.
@@ -34,7 +28,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.append(os.path.join(os.path.dirname(HERE), "cluster"))
 import vectors_build as VB            # noqa: E402
 
-SPACES = ("pattern", "surface")
+SPACES = ("pattern",)
 
 
 def fresh(rows):
@@ -45,15 +39,9 @@ def fresh(rows):
     return {
         "pattern": {
             "undescribed": {VB.row_identity(r) for r in rows
-                            if (r.get("pat1_arr") or "").strip() == ""},
+                            if not VB.found(r) and not f(r, "read_windows")},
             "unplaced": {VB.row_identity(r) for r in rows
-                         if VB.psi_pattern(r) == VB.CELL_NONE},
-        },
-        "surface": {
-            "undescribed": {VB.row_identity(r) for r in rows
-                            if f(r, "vis_content")
-                            and f(r, "vis_unnamed") / f(r, "vis_content") > 0.5},
-            "unplaced": set(),
+                         if not VB.found(r) and f(r, "read_windows")},
         },
     }
 

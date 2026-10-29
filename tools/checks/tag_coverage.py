@@ -4,7 +4,9 @@
     ./tag_coverage.py <capture-root> [--session NAME]
 
 For every recorded scene and every window visible in it, the share of the
-window's canvas nodes that carry a component tag from the client dump.
+window's kept canvas nodes - those in the scene, on the display - that
+carry a component tag from the client dump. Measured by the pass itself, at
+the window node, so the coverage is of what is shown.
 Reported per window, summarised by window name with the trailing number
 dropped, so the launcher across its scenes reads as one line.
 
@@ -23,17 +25,21 @@ from collections import defaultdict
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(
     os.path.abspath(__file__))), "cluster"))
 import rs_extract as R                   # noqa: E402
+import rs_scene as S                     # noqa: E402
 
 
 def scenes(root, only=None):
     for sdir in sorted(glob.glob(os.path.join(root, "*"))):
         if not os.path.isdir(sdir) or (only and os.path.basename(sdir) != only):
             continue
+        disp = R.read_display(os.path.join(sdir, "display.txt"))
+        if not os.path.exists(os.path.join(sdir, "display.txt")):
+            disp = R.read_display(os.path.join(root, "display.txt"))
         for tf in sorted(glob.glob(os.path.join(sdir, "*.rstree.txt"))):
             stem = os.path.basename(tf).split(".")[0]
             cf = os.path.join(sdir, stem + ".client.txt")
             if os.path.exists(cf):
-                yield os.path.basename(sdir), stem, tf, cf
+                yield os.path.basename(sdir), stem, tf, cf, disp
 
 
 def main():
@@ -47,12 +53,17 @@ def main():
     low = []
     unmeasured = []
     n_scenes = 0
-    for ses, stem, tf, cf in scenes(a.root, a.session or None):
+    for ses, stem, tf, cf, disp in scenes(a.root, a.session or None):
         n_scenes += 1
-        tree = R.parse_tree(open(tf, encoding="utf-8", errors="replace").read().splitlines())
-        tags = R.parse_client(open(cf, encoding="utf-8", errors="replace").read().splitlines())
-        R.set_ownership(tree)
-        for w in R.window_tag_coverage(tree, tags):
+        sc = S.Scene(open(tf, encoding="utf-8", errors="replace").read().splitlines(),
+                     open(cf, encoding="utf-8", errors="replace").read().splitlines(), disp)
+        try:
+            sc.run()
+        except S.NoDisplay:
+            continue
+        for w in sc.windows:
+            if "coverage" not in w:
+                continue                  # not visible: decided from its line
             if w["coverage"] is None:
                 unmeasured.append("%s/%s %s" % (ses, stem, w["window"]))
                 continue

@@ -17,15 +17,37 @@ several scene names standing together in one file as a list would leave
 them.
 
 COLUMNS. No column may hold a string that names a scene. Every column
-rs_pattern.py writes is a number or an empty field, except the ones
-IF-PATTERNS-ROW declares as strings: the four that identify the scene, and
-the measured shape descriptors - pat holds content-kind letters off node
-tags, arr holds a geometric arrangement. Those are measurements and stay.
+rs_pattern.py writes is a number, except the three IF-PATTERNS-ROW declares
+as strings, which identify the scene.
+
+PATTERNS. A dictionary pattern's name names a structure of components - a
+grid of items, a row of icons - and is permitted (INV-NO-SCENE-CLASS). Three
+of them share a word with the deleted taxonomies, gallery_grid, icon_grid
+and list; in the dictionary they name the structure, and nothing maps a
+measurement onto them but the match of that structure. They are taken from
+rs_scene.DICTIONARY, not listed here, so a name added to the dictionary is
+exempt only by being in it.
 
 Exit 0 when the invariant holds, 1 when it does not. The output names the
 file and the line, because a check that only says "failed" gets disabled.
 """
 import argparse, csv, os, re, subprocess, sys
+
+import ast
+
+
+def dictionary_names():
+    """The dictionary's pattern names, read from rs_scene.py's DICTIONARY
+    literal rather than imported, so this runs where numpy does not."""
+    src = open(os.path.join(os.path.dirname(os.path.dirname(
+        os.path.abspath(__file__))), "cluster", "rs_scene.py"), encoding="utf-8").read()
+    for n in ast.parse(src).body:
+        if isinstance(n, ast.Assign) and any(getattr(t, "id", "") == "DICTIONARY" for t in n.targets):
+            return tuple(dict.fromkeys(e[0] for e in ast.literal_eval(n.value)))
+    return ()
+
+
+PATTERNS = dictionary_names()
 
 # The vocabularies of the three deleted taxonomies. A name here appearing in
 # tracked source is not proof of a class table on its own - prose mentions
@@ -56,13 +78,8 @@ ENUM_IDENT = re.compile(r"\bark_scene_class_t\b|\bARK_SCENE_[A-Z_]+\b")
 
 SOURCE_EXT = {".py", ".ps1", ".sh", ".c", ".h", ".cpp", ".hpp", ".js", ".ts"}
 
-# IF-PATTERNS-ROW declares these as strings. Everything else is a number or
-# empty. pat/arr are measured shape descriptors, not names.
-STRING_COLUMNS = {
-    "session", "stem", "owner", "shot",
-    "pat1_pat", "pat1_arr", "pat2_pat", "pat2_arr",
-    "pat", "pat_inner", "pat_arr",
-}
+# IF-PATTERNS-ROW declares these as strings. Everything else is a number.
+STRING_COLUMNS = {"session", "stem", "shot"}
 
 
 def tracked_sources(root):
@@ -96,7 +113,7 @@ def check_source(root, verbose=False):
         # Several names standing together, as a list or table would leave
         # them. Prose mentions one or two; a table carries many.
         quoted = re.findall(r"""['"]([a-z][a-z _]{2,24})['"]""", "\n".join(lines))
-        hits = sorted({q for q in quoted if q in SCENE_NAMES})
+        hits = sorted({q for q in quoted if q in SCENE_NAMES} - set(PATTERNS))
         if len(hits) >= 3:
             bad.append((rel, 0, "%d scene names quoted together (%s)"
                         % (len(hits), ", ".join(hits[:5]))))

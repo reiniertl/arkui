@@ -15,22 +15,24 @@ combobul and is not yet bound to spec nodes; binding it is the work ahead.
 
 There are no scene classes in this repository and that is deliberate. Three
 asserted taxonomies - a C enum of 20, a PowerShell classifier of 23, and a
-naming function of 28 shapes - have been deleted. Two feature vectors are
-measured; each scene is placed in one declared cell of each vector's space,
-and one clustering runs over both vectors together and matches no pattern.
-Nothing confirms a class list.
+naming function of 28 shapes - have been deleted. One pass over each dump
+selects the scene, the display's kept tree, and measures the pattern vector
+on it against a designed dictionary of structures; nothing about how a node
+is rendered is computed. One clustering runs over the pattern vector and
+matches no pattern. Nothing confirms a class list.
 
 ## Where things are
 
 | Path | What |
 |---|---|
-| `tools/cluster/rs_extract.py` | RenderService dump -> tree, surfaces, ownership, geometry |
-| `tools/cluster/rs_visibility.py` | the visibility walk: alpha states, occlusion, visible nodes |
-| `tools/cluster/rs_pattern.py` | the pattern and surface vectors |
+| `tools/cluster/rs_extract.py` | the dump indexed, a node parsed on demand, its geometry |
+| `tools/cluster/rs_scene.py` | the scene in one pass: visibility, the pattern match, the surface claim |
+| `tools/cluster/rs_pattern.py` | runs the pass over a capture -> patterns.csv |
 | `tools/cluster/vectors_build.py` | cells, descriptions, the joint clustering, the payload |
 | `tools/cluster/vectors_page.py` | the viewer, `scene_feature_reference.html` |
 | `tools/checks/viewer_renders.py` | executes the viewer and checks what it rendered |
-| `tools/checks/geometry_visibility.py` | geometry and visibility, against the confirmed scenes |
+| `tools/checks/scene_pass.py` | the pass against a display oracle and a pattern oracle |
+| `tools/checks/picture_timing.py` | a picture is from the moment of its dump; no file times |
 | `tools/rs_capture.ps1` | capture on the device |
 | `combobul/spec/` | this project's spec; the engine is installed per machine, at `~/combobul` (see below) |
 

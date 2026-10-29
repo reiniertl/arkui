@@ -60,7 +60,7 @@ def payload_scenes(path):
                 else:
                     anonymous += 1
     # The cell groups show scenes too, by id (IF-PAGE-PAYLOAD).
-    for key in ("_pattern_cells", "_surface_cells"):
+    for key in ("_patterns",):
         for c in d.get(key) or []:
             for sid in c.get("members", []):
                 if sid:

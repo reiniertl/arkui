@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<artifact-associations xmlns="https://combobul.dev/schema/1.0">
+
+  <associate source="tools/cluster/rs_scene.py" kind="method" name="visit" scope="Scene">
+    <link to="ALG-VISIBILITY" relation="implements"/>
+  </associate>
+
+  <associate source="tools/cluster/rs_scene.py" kind="method" name="_up" scope="Scene">
+    <link to="ALG-PATTERN-MATCH" relation="implements"/>
+  </associate>
+
+
+  <associate source="tools/cluster/rs_extract.py" kind="function" name="index_dump" scope="">
+    <link to="ALG-PARSE-RSTREE" relation="implements"/>
+  </associate>
+
+  <associate source="tools/cluster/rs_extract.py" kind="function" name="parse_node" scope="">
+    <link to="ALG-PARSE-RSTREE" relation="implements"/>
+  </associate>
+
+  <associate source="tools/cluster/vectors_build.py" kind="function" name="schematic" scope="">
+    <link to="ALG-MOTIF-SCHEMATIC" relation="implements"/>
+  </associate>
+
+
+  <associate source="tools/cluster/vectors_build.py" kind="function" name="build_clustering" scope="">
+    <link to="ALG-VECTOR-CLUSTER" relation="implements"/>
+  </associate>
+
+  <associate source="tools/cluster/vectors_page.py" kind="function" name="main" scope="">
+    <link to="ALG-VIEWER-RENDER" relation="implements"/>
+  </associate>
+</artifact-associations>

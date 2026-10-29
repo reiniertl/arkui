@@ -5,7 +5,7 @@ display can be measured cheaply, from RenderService dumps alone, and reported
 as it is.
 
 That is the whole of it. The repository extracts scenes from ArkUI data and
-measures two vectors over them. What any consumer does with those signals —
+measures one vector over them. What any consumer does with those signals —
 aggregation, power attribution, scheduling — is decided elsewhere, by
 something that is not here and whose questions are not asked here.
 
@@ -19,29 +19,32 @@ That component does not exist yet, and this repository is not it.
 ## What is here
 
 A capture that pulls RenderService dumps off a device, and a Python pipeline
-that measures two things from each dump, places every scene in one declared
-cell of each, and clusters the scenes once over both together.
+that builds each dump's scene in one pass, measures the pattern vector on it, and
+clusters the scenes once over the pattern vector.
 
 ```
 rs_capture.ps1          device  ->  *.rstree.txt, *.client.txt, display.txt
-  rs_extract.py                     parse the dumps into a tree, with each node's rectangle
-  rs_visibility.py                  what of each window is on the display, by alpha
-  rs_pattern.py                     measure the two vectors   -> patterns.csv
-  vectors_build.py                  cells, descriptions, one clustering -> two_payload.json
+  rs_extract.py                     index the dump, parse a node when it is reached
+  rs_scene.py                       the scene in one pass, and the pattern vector on it
+  rs_pattern.py                     run the pass on every dump  -> patterns.csv
+  vectors_build.py                  pattern groups, one clustering -> two_payload.json
   vectors_page.py                   the viewer, three tabs -> scene_feature_reference.html
 ```
 
-**The pattern vector** — what repeats in the layout, and how much of the window
-it holds. Branches are grouped by a description of their subtree, and the group
-covering the most area wins. Seven columns: coverage, item height, item aspect,
-column count, group size, overlay area, number of groups.
+**The scene** — the display's kept tree. One descent from the dump's
+`LOGICAL_DISPLAY_NODE` keeps exactly the nodes with visible cells on the
+display, by alpha alone, and the containers that hold them, in their
+containment. Invisible windows, alpha-0 branches, and branches clipped or
+occluded away are dropped without being read.
 
-**The surface vector** — what the display is finally made of, after occlusion.
-Every node that draws, and every externally composed surface, walked topmost
-first, each claiming only the pixels nothing above it claimed. Five columns
-summing to one: external surface, image, text, untyped content, substrate.
+**The pattern vector** — a designed dictionary of structures (a video of three
+sizes, a web view, a flow or grid gallery, a list, a tab bar, a text input, a
+row and a grid of icons), matched in the same pass: per pattern its distance
+(1 − Jaccard at its closest root), the share of the display its matches show,
+and their count written n/(n+1).
 
-Both are measurements. Neither is a class.
+Nothing else is computed: how a node is rendered is not this project's
+question. The vector is a measurement, not a class.
 
 ## No scene classes
 
@@ -66,8 +69,8 @@ the tiles by a person looking at them.
 |---|---|
 | `tools/rs_capture.ps1` | the device side. Pulls dumps, computes nothing |
 | `tools/cluster/rs_extract.py` | parse a RenderService dump into a tree, with each node's rectangle |
-| `tools/cluster/rs_visibility.py` | what of each window is on the display, by alpha alone |
-| `tools/cluster/rs_pattern.py` | measure the two vectors |
+| `tools/cluster/rs_scene.py` | the scene in one pass, and the pattern vector on it |
+| `tools/cluster/rs_pattern.py` | run the pass on every dump of a capture |
 | `tools/cluster/vectors_build.py` | cluster each vector, build the page payload |
 | `tools/cluster/vectors_page.py` | render the payload |
 | `tools/deck/` | the slides describing data, origin and results |

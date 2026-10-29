@@ -3,20 +3,19 @@
     ./vectors_build.py patterns.csv --captures captures --out two_payload.json
     ./vectors_page.py  two_payload.json --out scene_feature_reference.html
 
-One self-contained file, three tabs, in this order:
+One self-contained file, two tabs, in this order:
 
-  PATTERN     one group per declared PSI_p cell: the motif drawn from the
-              cell's medians, its description, its count, every scene in it.
-  SURFACE     one group per declared PSI_s cell: the median composition
-              drawn as proportions, its description, its count, its scenes.
-  CLUSTERING  one clustering over both vectors, matched to no pattern: the
+  PATTERN     one group per dictionary pattern: its schematic drawn from
+              its definition, the definition, its count, every scene it was
+              found in; then the scenes with no pattern, and the untagged.
+  CLUSTERING  one clustering over the pattern vector, matched to no pattern: the
               general stats, a rotatable 3D map of three PCA components,
               then every cluster with its count and scenes, unclustered last.
 
 Inside a group the order is fixed - picture, description, screenshots
-(INV-GROUP-ORDER) - and an empty declared cell is drawn empty in its place.
-Nothing on the page names a scene, an app or a use: a cell is named by its
-coordinates and a cluster by its id.
+(INV-GROUP-ORDER) - and a pattern or cell nobody reached is drawn empty in
+its place. Nothing on the page names a scene, an app or a use: a pattern
+names a structure, a cell is named by its coordinates and a cluster by its id.
 
 vectors.html is retired. This file replaces it, and the 2026-10-26 build of
 the same name whose generator was deleted in 5fce8c6.
@@ -29,13 +28,10 @@ HTML = r"""<!doctype html>
 <title>Scene Feature Reference</title>
 <style>
   :root { --bg:#fff; --fg:#16181d; --dim:#6b7280; --line:#e3e6eb; --card:#f7f8fa;
-          --accent:#2563eb; --ink:#2563eb; --warn:#b45309; --code:#eef1f5;
-          --s-xcomp:#7c3aed; --s-image:#0891b2; --s-text:#16a34a; --s-glyph:#ca8a04;
-          --s-content:#dc2626; --s-substrate:#cbd5e1; }
+          --accent:#2563eb; --ink:#2563eb; --warn:#b45309; --code:#eef1f5; }
   @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
     --bg:#0f1115; --fg:#e6e8ec; --dim:#9aa1ad; --line:#272b33; --card:#171a20;
-    --accent:#60a5fa; --ink:#60a5fa; --warn:#fbbf24; --code:#11141a;
-    --s-substrate:#3b4252; } }
+    --accent:#60a5fa; --ink:#60a5fa; --warn:#fbbf24; --code:#11141a; } }
   * { box-sizing:border-box; }
   body { margin:0; background:var(--bg); color:var(--fg);
     font:15px/1.6 -apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif; }
@@ -91,7 +87,6 @@ HTML = r"""<!doctype html>
     align-items:center; justify-content:center; font-size:10px; color:var(--dim); }
   .pic .cap { font-size:9px; color:var(--dim); margin-top:3px; line-height:1.4;
     font-family:ui-monospace,"SF Mono",Menlo,Consolas,monospace; word-break:break-all; }
-  .pic.und .cap b { color:var(--warn); }
   .legend { display:flex; flex-wrap:wrap; gap:12px; font-size:12px; color:var(--dim); }
   .legend i { width:10px; height:10px; border-radius:2px; display:inline-block;
     margin-right:4px; vertical-align:-1px; }
@@ -116,7 +111,6 @@ HTML = r"""<!doctype html>
   <nav><h1>Scene feature reference</h1><div id="menu"></div></nav>
   <main>
     <section class="tab" id="t-pattern"></section>
-    <section class="tab" id="t-surface"></section>
     <section class="tab" id="t-clustering"></section>
   </main>
 </div>
@@ -127,21 +121,20 @@ var DATA = __DATA__;
     .replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/'/g,"&#39;");}
   var S = DATA._scenes || {}, audit = DATA._audit || {}, UP = DATA._unplaced || {};
   var TOTAL = audit.rows || Object.keys(S).length;
-  var SIX = ["xcomp", "image", "text", "glyph", "content", "substrate"];
   function pct(n) { return TOTAL ? Math.round(100 * n / TOTAL) : 0; }
 
   // A tile: the scene's picture, or the statement that it has none. A
   // backstop frame is of this scene but was not taken for it, and the tile
   // says so - the difference between evidence and decoration.
-  function tile(sid, extra, und) {
+  function tile(sid, extra) {
     var s = S[sid] || {};
     var pic = s.img ? "<img loading='lazy' src='" + s.img + "'>"
         + (s.imgsrc === "backstop" ? "<div class='borrowed'>backstop</div>" : "")
       : "<div class='nopic'>no picture</div>";
     return "<div class='pic" + (s.imgsrc === "backstop" ? " brw" : "")
-      + (und ? " und" : "") + "' data-scene='" + esc(sid) + "'>" + pic
+      + "' data-scene='" + esc(sid) + "'>" + pic
       + "<div class='cap'>" + esc(sid) + (extra ? "<br>" + extra : "")
-      + (und ? "<br><b>mostly unnamed content</b>" : "") + "</div></div>";
+      + "</div></div>";
   }
   function count(n) {
     return "<div class='count'>" + n + " of " + TOTAL + " scenes · " + pct(n)
@@ -157,7 +150,7 @@ var DATA = __DATA__;
       + "<div class='pics'>" + tiles + "</div></div>";
   }
   function noneFig(n) {
-    return "<div class='none'>" + (n ? "no drawing:<br>nothing repeats"
+    return "<div class='none'>" + (n ? "no drawing:<br>no pattern"
       : "no scene<br>reached this cell") + "</div>";
   }
   function unplacedBlock(space) {
@@ -186,65 +179,26 @@ var DATA = __DATA__;
 
   // ---- PATTERN -----------------------------------------------------------
   (function () {
-    var cells = DATA._pattern_cells || [];
-    var h = head("Pattern", cells, "Each scene placed by PSI_p in one declared cell: "
-      + "the arrangement of its largest repeating group, and whether that group covers "
-      + "more than half the window. The first picture of a group is the motif drawn from "
-      + "the cell's own medians, not from an idea of what it should look like.");
-    cells.forEach(function (c) {
-      var tiles = (c.members || []).map(function (sid) {
+    var groups = DATA._patterns || [];
+    var dict = groups.filter(function (g) { return g.svg; });
+    var hit = dict.filter(function (g) { return g.n; }).length;
+    var lost = (audit.missing || []).length;
+    var h = "<h2>Pattern</h2><div class='meta'><b>" + TOTAL + "</b> scenes · <b>"
+      + dict.length + "</b> dictionary patterns, " + hit + " found"
+      + (lost ? " · <span class='flag'>" + lost + " scenes with no picture</span>" : "")
+      + "</div><p class='note'>One group per pattern of the designed dictionary. A "
+      + "scene appears under every pattern found on its display. The first picture "
+      + "of a group is the pattern drawn from its definition alone.</p>";
+    groups.forEach(function (g) {
+      var tiles = (g.members || []).map(function (sid) {
         var s = S[sid] || {};
-        return tile(sid, (s.sig ? "{" + esc(s.sig) + "} · " : "") + esc(s.scell || ""));
+        return tile(sid, esc((s.found || []).join(" · ") || "no pattern"));
       }).join("");
-      h += group(c.cell, "data-cell", esc(c.cell) + " <span>" + c.n + " scenes</span>",
-                 c.svg ? c.svg : noneFig(c.n), c.desc, c.n, tiles);
+      h += group(g.cell, "data-cell", esc(g.cell) + " <span>" + g.n + " scenes</span>",
+                 g.svg ? g.svg : noneFig(g.n), g.desc, g.n, tiles);
     });
     h += unplacedBlock("pattern");
     document.getElementById("t-pattern").innerHTML = h;
-  })();
-
-  // ---- SURFACE -----------------------------------------------------------
-  // A composition is a partition of the display, so it is drawn as one: a
-  // display-shaped box cut into bands in proportion to the six coordinates.
-  function compFig(comp) {
-    var W = 132, H = Math.round(132 * 2832 / 1316), y = 0, p = [];
-    p.push("<svg viewBox='0 0 " + W + " " + H + "' role='img'>");
-    SIX.forEach(function (k) {
-      var v = comp[k] || 0, h = v * H;
-      if (h <= 0) { return; }
-      p.push("<rect x='0' y='" + y.toFixed(1) + "' width='" + W + "' height='"
-        + h.toFixed(1) + "' fill='var(--s-" + k + ")'><title>" + k + " "
-        + v.toFixed(2) + "</title></rect>");
-      if (h >= 13) {
-        p.push("<text x='6' y='" + (y + h / 2 + 4).toFixed(1) + "' font-size='10' "
-          + "fill='#fff' style='paint-order:stroke;stroke:#0007;stroke-width:2px'>"
-          + k + " " + v.toFixed(2) + "</text>");
-      }
-      y += h;
-    });
-    return p.join("") + "</svg>";
-  }
-  (function () {
-    var cells = DATA._surface_cells || [];
-    var und = {};
-    ((UP.surface || {}).undescribed || []).forEach(function (sid) { und[sid] = 1; });
-    var h = head("Surface", cells, "Each scene placed by PSI_s in one declared cell: "
-      + "the largest and second-largest of what the display is finally made of after "
-      + "occlusion. The first picture of a group is the cell's median composition, drawn "
-      + "as proportions of the display.");
-    h += "<div class='legend'>" + SIX.map(function (k) {
-      return "<span><i style='background:var(--s-" + k + ")'></i>" + k + "</span>";
-    }).join("") + "</div>";
-    cells.forEach(function (c) {
-      var tiles = (c.members || []).map(function (sid) {
-        var s = S[sid] || {};
-        return tile(sid, esc(s.cell || ""), !!und[sid]);
-      }).join("");
-      h += group(c.cell, "data-cell", esc(c.cell) + " <span>" + c.n + " scenes</span>",
-                 c.n ? compFig(c.comp || {}) : noneFig(0), c.desc, c.n, tiles);
-    });
-    h += unplacedBlock("surface");
-    document.getElementById("t-surface").innerHTML = h;
   })();
 
   // ---- CLUSTERING --------------------------------------------------------
@@ -278,11 +232,10 @@ var DATA = __DATA__;
           return "<span><i style='background:" + palette(g.id) + ";border-radius:50%'></i>"
             + (g.id === -1 ? "unclustered" : "cluster " + g.id) + " · " + g.n + "</span>";
         }).join("") + "</div></div>";
-    h += "<div class='k'>The columns</div><table><tr><th>column</th><th>vector</th>"
-      + "<th>transform</th><th>weight</th><th>what it measures</th></tr>"
+    h += "<div class='k'>The columns, used as measured</div><table><tr><th>column</th>"
+      + "<th>what it measures</th></tr>"
       + (C.cols || []).map(function (c) {
-          return "<tr><td><code>" + esc(c.name) + "</code></td><td>" + esc(c.vector)
-            + "</td><td><code>" + esc(c.t) + "</code></td><td>" + c.w + "</td>"
+          return "<tr><td><code>" + esc(c.name) + "</code></td>"
             + "<td class='note'>" + esc(c.what) + "</td></tr>"; }).join("") + "</table>";
     h += "<div class='k'>Every scene in every cluster</div><p class='note'>Ordered from "
       + "each cluster's centre outwards, so the last tiles are where it frays. "
@@ -300,7 +253,7 @@ var DATA = __DATA__;
         + "</div></div><div class='pics'>"
         + g.reps.map(function (r) {
             var s = S[r.scene] || {};
-            return tile(r.scene, esc(s.cell || "") + " · " + esc(s.scell || "")
+            return tile(r.scene, esc((s.found || []).join(" · ") || "no pattern")
               + "<br>sil " + (r.sil == null ? "—" : r.sil));
           }).join("") + "</div></div>";
     });
@@ -430,9 +383,8 @@ var DATA = __DATA__;
 
   // ---- the tabs ----------------------------------------------------------
   var TABS = [
-    ["pattern", "Pattern", (DATA._pattern_cells || []).length + " cells"],
-    ["surface", "Surface", (DATA._surface_cells || []).length + " cells"],
-    ["clustering", "Clustering", (C.k || 0) + " clusters over both vectors"]];
+    ["pattern", "Pattern", (DATA._patterns || []).filter(function (g) { return g.svg; }).length + " patterns"],
+    ["clustering", "Clustering", (C.k || 0) + " clusters over the pattern vector"]];
   document.getElementById("menu").innerHTML = TABS.map(function (t) {
     return "<a data-k='" + t[0] + "'>" + t[1] + "<small>" + t[2] + "</small></a>";
   }).join("");
