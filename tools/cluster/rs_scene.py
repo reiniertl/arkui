@@ -298,10 +298,10 @@ class Scene:
                     descend = bool(open_.any())     # wholly covered: dropped
         kids = []
         if descend:
+            # sortedChildren is the paint order, last on top; ReverseChildren
+            # is the prepare stage's traversal and is not read
+            # (INV-OCCLUSION-PAINT-ORDER)
             ks = [k for k in n["kids"] if k in self.ix["first"]]
-            if n["reverse"]:
-                ks = list(reversed(ks))
-            ks.sort(key=lambda k: self.node(k)["posz"])        # paint order
             for k in reversed(ks):                              # topmost first
                 s = self.visit(k, M, ea, cclip, region, under_surface, n["tag"])
                 if s is not None:

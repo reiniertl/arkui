@@ -6,14 +6,12 @@
     parse_node(lines, ix, n) one node's selection fields
     parse_surface(...)       one window's name, Visible, alpha, VisibleRegion
     parse_tree(lines)        the whole tree parsed and placed, for the checks
-    paint_order(tree)        real paint order: ReverseChildren and PositionZ,
-                             for the checks
     parse_client(lines)      the client dump -> node id -> component tag
     read_display(path)       the display's size and density
 
 INV-PARSE-ONLY-SELECTION-FIELDS: per node only id, kind, parent, children,
 Bounds, Translate, Scale, Pivot, Alpha, the background colour's alpha,
-ClipToBounds, ReverseChildren and PositionZ are read; per window its name,
+and ClipToBounds are read; per window its name,
 Visible, alpha and VisibleRegion. Nothing from the uni-render pass is read:
 how a node is rendered is not this project's question.
 """
@@ -33,7 +31,6 @@ RX_SY = re.compile(r'\bScaleY\[(-?[\d.]+)\]')
 RX_PIVOT = re.compile(r'\bPivot\[(-?[\d.]+),\s*(-?[\d.]+)\]')
 RX_PALPHA = re.compile(r'\bAlpha\[(-?[\d.]+)\]')
 RX_BG = re.compile(r'\bBackgroundColor\[#([0-9A-Fa-f]{2})[0-9A-Fa-f]{6}\]')
-RX_POSZ = re.compile(r'PositionZ\[(-?[\d.]+)\]')
 
 UNTAGGED_BELOW = 0.5      # ERR-MOTIF-ROOT-UNTAGGED: under half of a window's
                           # kept canvas nodes carry a component tag
@@ -143,7 +140,6 @@ def parse_node(lines, ix, nid):
     k = RX_KIDS.search(l, j if j != -1 else 0)
     pv = RX_PIVOT.search(pr)
     bg = RX_BG.search(pr)
-    pz = RX_POSZ.search(pr)
     return {
         "id": nid, "kind": ix["kind"][nid], "pid": nid >> 32, "tag": "",
         "abs": None,                    # placed by whoever composes it
@@ -156,11 +152,9 @@ def parse_node(lines, ix, nid):
         # no background colour and so never occludes
         "bga": int(bg.group(1), 16) if bg else None,
         "clip": "ClipToBounds[True]" in pr,
+        # sortedChildren: the paint order, stable-sorted by PositionZ in
+        # RenderService itself (INV-OCCLUSION-PAINT-ORDER)
         "kids": [int(x) for x in k.group(1).split()] if k else [],
-        # Paint order is NOT dump order: a parent may reverse its
-        # sortedChildren, and PositionZ re-sorts siblings on top of that.
-        "reverse": "ReverseChildren: 1" in l,
-        "posz": float(pz.group(1)) if pz else 0.0,
     }
 
 
@@ -254,47 +248,6 @@ def compose_geometry(nodes, order, transforms=True):
         else:
             out[nid] = r
     return out
-
-
-def paint_order(tree):
-    """Index every node by when it is actually painted.
-
-    Children are drawn in sortedChildren order, reversed where the parent
-    says ReverseChildren, and re-sorted by PositionZ where that is set -
-    a higher PositionZ paints later, so it lands on top. A node is painted
-    before its children.
-
-    The whole point is the comparison "is B painted over A", which the rest
-    of the code was answering with position in the dump file. That is only
-    correct when no parent reverses and no sibling carries a PositionZ, and
-    both occur.
-    """
-    nodes = tree["nodes"]
-    kids_of = {nid: list(n["kids"]) for nid, n in nodes.items()}
-    child = set()
-    for ks in kids_of.values():
-        child.update(ks)
-    roots = [nid for nid in tree["order"] if nid not in child]
-    idx, seen, i = {}, set(), 0
-    stack = list(reversed(roots))
-    while stack:
-        nid = stack.pop()
-        if nid in seen or nid not in nodes:
-            continue
-        seen.add(nid)
-        idx[nid] = i; i += 1
-        n = nodes[nid]
-        ks = [k for k in kids_of.get(nid, ()) if k in nodes]
-        if n.get("reverse"):
-            ks = list(reversed(ks))
-        # stable: PositionZ decides, order within a z keeps the list order
-        ks.sort(key=lambda k: nodes[k].get("posz", 0.0))
-        stack.extend(reversed(ks))
-    # anything unreachable keeps a late index rather than none
-    for nid in tree["order"]:
-        if nid not in idx:
-            idx[nid] = i; i += 1
-    return idx
 
 
 def parse_client(lines):

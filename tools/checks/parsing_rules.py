@@ -98,7 +98,7 @@ def check_first_pass(dumps):
 
 
 NODE_FIELDS = {"id", "kind", "pid", "tag", "abs", "bounds", "tx", "ty", "sx", "sy",
-               "pivot", "alpha", "bga", "clip", "kids", "reverse", "posz"}
+               "pivot", "alpha", "bga", "clip", "kids"}
 WINDOW_FIELDS = {"id", "name", "pid", "alpha", "visible", "vis"}
 # What rendering looks like in the dump, and in code that reads it.
 RENDER_WORDS = re.compile(r"shouldPaint|DrawableVec|slotset|\bslots?\b|IsSubTreeSkipped|"
@@ -138,6 +138,13 @@ def check_parse_fields(passes):
         bad.append("parse_surface returns %s" % sorted(set(w) ^ WINDOW_FIELDS))
     for m in RENDER_WORDS.finditer(code_of(R.__file__)):
         bad.append("rs_extract.py reads %r" % m.group(0))
+    # ReverseChildren is the prepare stage's traversal, not paint order, and
+    # PositionZ is already applied in sortedChildren (INV-OCCLUSION-PAINT-ORDER)
+    cluster = os.path.dirname(R.__file__)
+    for f in sorted(os.listdir(cluster)):
+        if f.endswith(".py"):
+            for m in re.finditer(r"ReverseChildren|PositionZ", code_of(os.path.join(cluster, f))):
+                bad.append("%s reads %r" % (f, m.group(0)))
     print("  INV-PARSE-ONLY-SELECTION-FIELDS, INV-STRUCTURE-NOT-DRAW-STATE")
     print("    parse_node returns %d field(s), parse_surface %d; render fields "
           "searched for: %d" % (len(n), len(w), sum(1 for b in bad if "reads" in b)))

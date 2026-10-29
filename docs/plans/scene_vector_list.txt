@@ -55,26 +55,31 @@ tools/checks/.
 ORDER
 ===============================================================================
 
-  1. /cb-fix — paint order is sortedChildren as dumped
-       Before it: the photographed-sample item (run 00f0e67269aa4fbe) is
-       implemented and every check holds, awaiting its commit and finalize.
+  Before item 1: the paint-order fix (/cb-green run 1a0b12ee00f14c6e) is
+  implemented and its 12 checks hold; it is committed and finalized first.
+  1. /cb-fix — a visible node is never discarded; tag coverage is confidence
+  2. /cb-green — no wrappers and no alias for the old pattern names
 
 
 ===============================================================================
 DEFERRED
 ===============================================================================
 
+  - an open point, not yet an item: the clustering tab writes "median"
+    before each cluster's list of the motifs found in at least half of its
+    scenes; nothing there is a median, and an empty list prints the word
+    alone. Whether to relabel it is for the human.
   - an open point, not yet an item: scenes are not deduplicated. Every
     photographed sample accepted by ALG-PICTURE-PAIR is a scene, as the
-    human decided on 2026-10-29: on the capture of 2026-10-28 the 350
-    scenes give 70 distinct motif vectors, the largest shared by 73 and 67
-    scenes. An offline deduplication - what makes two photographed samples
+    human decided on 2026-10-29: on the capture of 2026-10-28 the 342
+    scenes are mostly repeats - one motif vector is shared by 73 of them. An offline deduplication - what makes two photographed samples
     the same scene, and its invariant - is for the human to specify.
-  - an open point, not yet an item: 193 of the 543 pictures on disk are
+  - an open point, not yet an item: 201 of the 543 pictures on disk are
     refused because the display changed across the shot (ALG-PICTURE-PAIR:
     the next sample's kept tree differs, or a visible box moves more than
-    one cell). In 176 the kept nodes differ - a median 0.13 of them, under
-    0.02 in 29 - and in 17 the nodes are the same and a box moved. The
+    one cell). Measured before the paint-order fix, on 193 of them: in 176
+    the kept nodes differ - a median 0.13 of them, under 0.02 in 29 - and
+    in 17 the nodes are the same and a box moved. The
     shot lands about 370 ms after the render tree is read. Whether the
     capture should read the tree again after the shot, or otherwise bracket
     it, is for the human; the pairing rule is not changed to fit the data.
@@ -100,8 +105,10 @@ DEFERRED
     source on this device build. The client dump gives a fixed subset of
     them and the window manager, ability manager and RenderService dumps
     give none, so the launcher, the gesture layers and the wallpaper are
-    read as untagged windows (ERR-MOTIF-ROOT-UNTAGGED: 756 windows in the
-    350 photographed scenes of 2026-10-28). Whether to look for
+    read as untagged windows (ERR-MOTIF-ROOT-UNTAGGED: 733 windows in the
+    342 photographed scenes of 2026-10-28). The launcher is one of them:
+    on 20261027_102041/s000342 SCBDesktop keeps 129 nodes and none is
+    tagged, so the home page reads as no motif. Whether to look for
     another source, and where, is for the human.
 
 ===============================================================================
@@ -109,104 +116,160 @@ PROMPTS
 ===============================================================================
 
 
-/cb-fix — paint order is sortedChildren as dumped
-  - Bug: the pass and its oracle reverse a node's children where the dump
-    says ReverseChildren: 1, then re-sort by PositionZ. Among siblings with
-    equal PositionZ the reversal survives the sort and inverts their order,
-    so a node painted on top is treated as painted below and is culled as
-    occluded.
-    Reproduced on 20261022_110104/s000308: TikTok's window container
-    WindowScene_aweme329 (system UI, pid 3689) has sortedChildren
-    [aweme0 (TikTok, pid 41975), SCBKeyboardPanel (pid 3689, holding
-    softKeyboard1, pid 33837)], both at PositionZ 0, ReverseChildren: 1.
-    The screenshot shows the keyboard on top; the pass puts it under
-    aweme0's opaque content and keeps nothing of it.
-    Window stacking at the display is not affected: there every window's
-    parent has a distinct PositionZ (wallpaper 1, desktop 2, app 100, nav
-    bar 2200, status bar 2202, gesture layer 4102) and the re-sort restores
-    the order.
-  - Root cause, from the RenderService source (openharmony
-    graphic_graphic_2d, master):
-      rs_render_node.cpp GenerateFullChildrenList: the children list is
-        stable-sorted ascending by PositionZ; GetSortedChildren returns it
-        as is, and the dump prints it as sortedChildren. It is the paint
-        order: first painted first, last on top.
-      rs_uni_render_visitor.cpp QuickPrepareChildren: where
-        NeedPrepareChildrenInReverseOrder(node) - a node above the window
-        surfaces, or a leash window with a main window under it - the
-        PREPARE stage walks that list from rbegin to rend, top first, and
-        sets curFrameReverseChildren, which DumpTree prints as
-        ReverseChildren. It describes the prepare traversal, not the paint.
-    So ReverseChildren is never read for paint order, and no re-sort is
-    needed: sortedChildren is already sorted.
-  - Measured in a dry run on the 350 photographed scenes of 2026-10-28
-    (nothing changed in the repository): with the order fixed, scenes with
-    no motif 69 -> 57; the motif set changes in 13 scenes; grid and
-    icon_grid are found in 13 scenes each (the keyboard's key grid among
-    them); softKeyboard1 of s000308 is kept; the pass's median time is
-    unchanged at 101 ms. Dropping occlusion instead gave the same 57 and
-    the keyboard, cost 105 ms, and counted structures under opaque
-    content in 30 more scenes; occlusion stays.
-  - Read: tools/cluster/rs_extract.py (parse_node, paint_order),
-    rs_scene.py (Scene.visit), tools/checks/scene_pass.py (the display
-    oracle, the confirmed dumps), parsing_rules.py (check_parse_fields);
-    the RenderService source above; the nodes below.
-  - Spec work:
-      modify INV-OCCLUSION-PAINT-ORDER: description - the paint order is
-        sortedChildren as dumped, stable-ascending by PositionZ
-        (GenerateFullChildrenList), painted first to last; ReverseChildren
-        is the prepare traversal (QuickPrepareChildren,
-        NeedPrepareChildrenInReverseOrder) and is never read. Predicate -
-        the descent enters a node's children in the reverse of
-        sortedChildren, topmost first, so every occluder painted above a
-        node and outside its branch is written before the node is tested;
-        neither ReverseChildren nor dump position decides depth; and on
-        every dump sortedChildren is non-decreasing in PositionZ, the
-        premise the order rests on. NL - checked by scene_pass.py, whose
-        oracle builds the order from sortedChildren with code of its own
-        (not rs_extract.paint_order), and which counts every dump whose
-        sortedChildren is not non-decreasing in PositionZ.
-      add error code ERR-PAINT-ORDER-PREMISE (SUB-FEATURE-RESEARCH): a
-        dump whose sortedChildren is not non-decreasing in PositionZ,
-        named with the node; emitted by INV-OCCLUSION-PAINT-ORDER.
-      modify ALG-VISIBILITY: "children topmost first (ReverseChildren,
-        PositionZ)" becomes "children topmost first: the reverse of
-        sortedChildren".
-      modify INV-PARSE-ONLY-SELECTION-FIELDS: ReverseChildren leaves the
-        parsed fields; posz stays only for the premise check, or leaves
-        too if the check reads it itself - as the code is written.
-  - Code path: rs_scene.py Scene.visit (no reverse, no re-sort);
-    rs_extract.py parse_node (no "reverse"), paint_order (sortedChildren
-    order, or removed if nothing but the oracle used it); scene_pass.py
-    (an oracle order of its own from sortedChildren; the premise count;
-    the confirmed keyboard); parsing_rules.py (the field set).
-  - Verification, on the real capture:
-      1. scene_pass.py: the kept tree equals the oracle's node for node on
-         every photographed scene, the oracle now ordering children from
-         sortedChildren independently of rs_extract.
-      2. the premise: sortedChildren non-decreasing in PositionZ on every
-         node of every dump read, counted; any exception raises
-         ERR-PAINT-ORDER-PREMISE and is reported, not absorbed.
-      3. confirmed dumps, checked against their screenshots: in
-         20261022_110104/s000308 and s000328 softKeyboard1 is kept with
-         visible cells; in 20261027_102041/s000342 the five windows keep
-         their order (gesture back, status bar, nav bar, desktop,
-         wallpaper, topmost first); the seven confirmed videos and the
-         0192 GridItems hold as before.
-      4. parsing_rules.py: no code under tools/cluster reads
-         ReverseChildren; the parsed field set is the specified one.
-      5. re-measure everything: rs_pattern (pictures, scenes, lost by
-         reason - the pairing compares kept trees, so its counts may
-         move), vectors_build, vectors_page; motifs per scene and scenes
-         per motif before and after; the scenes whose motif set changes,
-         named; clusters 0 and 1 compared again.
-      6. every check under tools/checks/ named with its result;
-         npm run spec:check, no violations.
+
+/cb-fix — a visible node is never discarded; tag coverage is confidence
+  - Bug: the pass throws away visible content in two places, against the
+    rule that every node on the display, tagged or not, enters the motif
+    comparison.
+      1. INV-CLIENT-TAG-COVERAGE: a window whose kept canvas nodes are
+         under half tagged loses every motif match it made
+         (rs_scene.Scene._up, R.UNTAGGED_BELOW). Dry run on the 342
+         photographed scenes of 2026-10-28, nothing changed: an app
+         window (not a gesture layer) was discarded in 39 scenes; without
+         the discard the motif set changes in 6, all gaining list (e.g.
+         20261022_110104/s000516, 20261022_123014/s001660, s002645), and
+         the scenes with no motif go from 54 to 48.
+      2. ALG-PICTURE-PAIR refuses a picture whose session has no client
+         dump at or before it ("no earlier client dump"): a picture is
+         turned away for lacking tags. 0 pictures on this capture.
+    The tag is the node's component identity, from a client dump read
+    apart from the render tree; on this data it is often stale (cluster 8:
+    73 TikTok video pages whose player was created after the dump, a
+    median 132 samples earlier). Its coverage measures how far the motif
+    comparison can be trusted. It is reported, never used to remove
+    anything.
+  - Spec work (every node below re-read with ril node-info, and
+    impact-analysis run on INV-CLIENT-TAG-COVERAGE,
+    ERR-MOTIF-ROOT-UNTAGGED and INV-UNPLACED-SCENES-NAMED before the
+    envelope; the impact reaches ALG-VISIBILITY, ALG-MOTIF-MATCH,
+    ALG-PICTURE-PAIR, ALG-VECTOR-CLUSTER, ALG-VIEWER-RENDER,
+    IF-CAPTURE-SESSION, IF-MOTIF-VECTOR, IF-MOTIF-VOCABULARY,
+    IF-PATTERNS-ROW, IF-PAGE-PAYLOAD, IF-VIEWER):
+      modify INV-CLIENT-TAG-COVERAGE - description and predicate: every
+        scene's tag coverage is measured and reported, coverage = the
+        display's visible cells on kept canvas nodes that carry a
+        component tag / the display's visible cells on kept canvas nodes,
+        each cell once, in [0, 1]; it removes no node and no match.
+        Edges kept: checked-at AUT-PIPELINE-RUN, emits
+        ERR-MOTIF-ROOT-UNTAGGED, satisfied by ALG-VISIBILITY, assumed by
+        IF-CAPTURE-SESSION. Holder: rs_scene.Scene (the pass); check:
+        tag_coverage.py.
+      modify ERR-MOTIF-ROOT-UNTAGGED - severity WARN; description: a
+        scene whose tag coverage is under one half, named with its
+        coverage; a report, its matches kept.
+      modify ALG-VISIBILITY - the window sentence ("a window under half
+        tagged discards its matches") becomes: the scene's tag coverage
+        is counted over the visible cells, each once. Artifact: Scene.visit
+        (associated).
+      modify ALG-MOTIF-MATCH - state that no match is discarded for its
+        window's tags. Artifact: Scene._up (associated).
+      modify ALG-PICTURE-PAIR - the "no earlier client dump" condition
+        goes: a sample with no client dump at or before it is a scene with
+        no tags (coverage 0). Artifact: rs_sample.pair (associated).
+      modify ALG-TAG-BORROW - a sample with no client dump before it has
+        an empty tag map, not a refusal; the sentence pointing to the
+        under-half handling goes. Artifact: rs_sample.tag_source
+        (associated).
+      modify ERR-PICTURE-LOST and INV-NO-SILENT-SCENE-LOSS - "no earlier
+        client dump" leaves the reasons.
+      modify IF-PATTERNS-ROW - COVERAGE becomes one column, tag_coverage,
+        as INV-CLIENT-TAG-COVERAGE defines it; untagged_windows and
+        read_windows go; the lost.csv reasons lose "no earlier client
+        dump". tag_coverage is not part of IF-MOTIF-VECTOR and never
+        enters the clustering (INV-CLUSTERING-MATCHES-NO-PATTERN
+        unchanged: exactly the 63 columns).
+      modify INV-UNPLACED-SCENES-NAMED - one population: the scenes with
+        no motif found, each named and shown with its tag coverage; the
+        "undescribed" population (no window readable) goes, since no
+        window is unreadable any more. Check: unplaced_rules.py; error
+        ERR-SCENE-UNPLACED unchanged.
+      modify IF-PAGE-PAYLOAD and IF-VIEWER - _scenes carries each scene's
+        tag_coverage; every tile shows it; the motif tab's 'untagged'
+        group goes; _unplaced holds one population. Checks:
+        viewer_renders.py, unplaced_rules.py, no_silent_scene_loss.py.
+      modify IF-MOTIF-VOCABULARY only if its text says an untagged node's
+        matches are dropped; an untagged node stays pass-through (the
+        human chose on 2026-10-29 not to make untagged nodes elements).
+      no node is added or removed. ril associate is unchanged (no new
+        algorithm); the association XML is checked to still name
+        Scene.visit, Scene._up, rs_sample.pair, rs_sample.tag_source.
+  - Code path: rs_extract.py (UNTAGGED_BELOW goes), rs_scene.py (_up: no
+    discard, no self.untagged; the coverage over visible cells; row:
+    tag_coverage), rs_sample.py (no NO_CLIENT gate; tags from an empty
+    map), rs_pattern.py (the report: coverage under one half as
+    ERR-MOTIF-ROOT-UNTAGGED, WARN), vectors_build.py (no untagged group,
+    one unplaced population, tag_coverage per scene), vectors_page.py
+    (coverage on every tile, no untagged group); checks: scene_pass.py
+    (the motif oracle stops excluding windows under half; an oracle
+    coverage computed on its own and compared), tag_coverage.py (reports
+    the scene coverage, no discard), parsing_rules.py (the row's columns),
+    picture_timing.py (no NO_CLIENT branch), no_silent_scene_loss.py (the
+    reasons), unplaced_rules.py, viewer_renders.py (no untagged group, a
+    coverage per tile).
+  - Verification of the specification: npm run spec:check and
+    npm run spec:semantic-validate, no violations; node-info on every
+    modified node shows its edges as listed above, every invariant with a
+    checked-at, an emits and a check named in its predicateNL, every
+    algorithm with its artifact.
+  - Verification of the code, on the real capture:
+      1. scene_pass.py: the motif oracle, now discarding nothing, equals
+         the pass on every scene; its own tag coverage equals the row's
+         within one cell per edge; every invariant line holds.
+      2. a static check (parsing_rules.py): no code under tools/cluster
+         compares a coverage with a threshold to drop a match or a scene.
+      3. the dry run's figures reproduced: the 6 scenes gain list, no
+         motif 54 -> 48; any other change named.
+      4. tag_coverage per scene: its distribution reported; cluster 8's 73
+         scenes listed with theirs.
+      5. pictures: named, scenes, lost by reason - "no earlier client
+         dump" no longer appears.
+      6. rs_pattern, vectors_build, vectors_page rerun; every check under
+         tools/checks/ named with its result.
   - BOUNDARY: as in RULES FOR EVERY ITEM.
 
   - IMPORTANT: Every figure is measured in this session against a real capture and written into the report.
   - INVIOLABLE: SPECIFICATION SURFACE IS AUTHORITATIVE. Every node above exists before the code it governs.
   - INVIOLABLE: NO SCENE CLASSES. A motif names a structure of components.
+  - INVIOLABLE: DO NOT EMIT P3_SKIPPED.
+  - FORBIDDEN: MULTI-AGENT execution is not allowed. DO NOT SPAWN MULTIPLE AGENTS.
+  - WHEN TO COMMIT: Before "silk run finalize", after `npm run ril -- journal coalesce`.
+  - AFTER COMMIT: end FINAL_STATUS with an explicit NOT PUSHED line naming /cb-ops.
+  - DECISION PROTOCOL: If a decision must be made, ask for direct feedback. DO NOT DECIDE ALONE.
+  - AT THE END: update this list as HOW THE LIST WORKS states.
+
+
+/cb-green — no wrappers and no alias for the old pattern names
+  - What: code that only keeps an old name alive goes. This is a
+    refactor and runs only with the human's explicit yes (CLAUDE.md rule
+    4), asked at the start of the run.
+      rs_scene.py: `PATTERNS = MOTIFS` is deleted; every reader uses
+        MOTIFS - scene_pass.py, parsing_rules.py, vector_rules.py,
+        vectors_build.py.
+      vectors_build.py: PATTERN_COLS becomes MOTIF_COLS, and every reader
+        with it - vector_rules.py, viewer_renders.py.
+      scene_pass.py and tag_coverage.py: scenes(root, only), which only
+        returns rs_sample.scenes(root, only), is deleted; the callers call
+        rs_sample.scenes. parsing_rules.py: sessions(root), which only
+        reshapes rs_sample.scenes, is deleted the same way.
+      Kept, as decided on 2026-10-28: the payload key _patterns, the file
+        names rs_pattern.py and patterns.csv, the id IF-PATTERNS-ROW.
+  - Spec work: none of these names is in a spec node; the item reads
+    IF-MOTIF-VECTOR, IF-MOTIF-DICTIONARY and IF-PATTERNS-ROW to confirm
+    it, and dictionary_rules.py's FROZEN list loses PATTERNS. If a node is
+    found naming one of them, it is modified in the envelope; otherwise
+    the envelope modifies INV-DICTIONARY-DESIGNED's predicateNL to name
+    the static rule below, so the run carries a real mutation.
+  - Verification:
+      1. a static rule in dictionary_rules.py (INV-DICTIONARY-DESIGNED,
+         ERR-MOTIF-ORACLE-MISMATCH): no name PATTERNS or PATTERN_COLS is
+         defined or read under tools/; no function under tools/checks
+         whose body only returns a call to another module's function.
+      2. every check under tools/checks/ rerun and named with its result;
+         rs_pattern's output byte-identical to before (measurement_rules
+         digest compared); npm run spec:check, no violations.
+  - BOUNDARY: as in RULES FOR EVERY ITEM.
+
+  - IMPORTANT: Every figure is measured in this session against a real capture and written into the report.
   - INVIOLABLE: DO NOT EMIT P3_SKIPPED.
   - FORBIDDEN: MULTI-AGENT execution is not allowed. DO NOT SPAWN MULTIPLE AGENTS.
   - WHEN TO COMMIT: Before "silk run finalize", after `npm run ril -- journal coalesce`.

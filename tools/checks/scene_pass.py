@@ -6,7 +6,7 @@
 The pass (rs_scene.Scene) builds the scene and its vectors in one descent on
 a 4 px raster. This recomputes the same things independently and compares:
 
-  DISPLAY ORACLE   a full parse, the real paint order (rs_extract.paint_order)
+  DISPLAY ORACLE   a full parse, the paint order from sortedChildren (its own)
                    and exact arithmetic on a compressed grid of every
                    rectangle edge,
                    no raster: every node's
@@ -48,7 +48,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 CLUSTER = os.path.join(os.path.dirname(HERE), "cluster")
 sys.path.insert(0, CLUSTER)
 import rs_extract as R            # noqa: E402
-import rs_sample as P              # noqa: E402
+import rs_sample as PAIR           # noqa: E402
 import rs_scene as S              # noqa: E402
 
 # Confirmed against the screenshot taken with each dump: the video player's
@@ -67,8 +67,62 @@ GRID_ROW = ("20261022_123014/0192", 2070)
 # and the gallery in 0192: the row at y 2070 is on the display, the rows
 # at 3117 and 4163 are below it
 GRID = ("20261022_123014/0192", {2070: True, 3117: False, 4163: False})
+# Photographed samples, confirmed against their own picture. The keyboard is
+# on top in both pictures: a panel painted after TikTok's content in its
+# window container, at the same PositionZ (INV-OCCLUSION-PAINT-ORDER).
+KEYBOARD = ("20261022_110104/s000308", "20261022_110104/s000328")
+# The launcher: its five windows, topmost first.
+WINDOWS = ("20261027_102041/s000342", ("SCBGestureBack", "SCBStatusBar",
+                                      "SCBGestureNavBar", "SCBDesktop", "SCBWallpaper"))
 TOL = 1.0         # px, for rectangles
 STEP = S.STEP
+
+
+def paint_index(tree):
+    """Each node's place in the paint order: a node is painted before its
+    children, and children in sortedChildren order, the last on top
+    (INV-OCCLUSION-PAINT-ORDER). ReverseChildren is the prepare stage's
+    traversal and is not read."""
+    nodes = tree["nodes"]
+    child = {k for n in nodes.values() for k in n["kids"]}
+    idx, i = {}, 0
+    stack = [r for r in reversed(tree["order"]) if r not in child]
+    while stack:
+        nid = stack.pop()
+        if nid in idx or nid not in nodes:
+            continue
+        idx[nid] = i
+        i += 1
+        stack.extend(reversed([k for k in nodes[nid]["kids"] if k in nodes]))
+    for nid in tree["order"]:
+        idx.setdefault(nid, i)
+    return idx
+
+
+RX_POSZ = re.compile(r"PositionZ\[(-?[\d.]+)\]")
+
+
+def premise(lines):
+    """INV-OCCLUSION-PAINT-ORDER's premise: every node's sortedChildren is
+    non-decreasing in PositionZ. Read here, from each node's own line,
+    since the parser no longer reads PositionZ. Returns the nodes where it
+    fails and the number of nodes with two or more children."""
+    ix = R.index_dump(lines)
+    z = {}
+    for nid, at in ix["first"].items():
+        m = RX_POSZ.search(lines[at])
+        z[nid] = float(m.group(1)) if m else 0.0
+    bad, n = [], 0
+    for nid, at in ix["first"].items():
+        k = R.RX_KIDS.search(lines[at])
+        ks = [int(x) for x in k.group(1).split()] if k else []
+        ks = [x for x in ks if x in z]
+        if len(ks) < 2:
+            continue
+        n += 1
+        if any(z[a] > z[b] for a, b in zip(ks, ks[1:])):
+            bad.append(nid)
+    return bad, n
 
 
 def oracle_scene(tree, tags, dw, dh, density):
@@ -81,7 +135,8 @@ def oracle_scene(tree, tags, dw, dh, density):
     areas. Occlusion is the definition, not a sweep: each cell holds the
     highest paint index of any occluder covering it, and a node is hidden
     in a cell exactly when that index lies above its whole branch. Paint
-    order is rs_extract.paint_order's, built independently of the pass.
+    order is paint_index's, built here from sortedChildren and shared with
+    neither the pass nor rs_extract.
 
     Returns ({nid: {"kept", "kids", "area", "per", "cells"}}, ldn, area_of)
     where area_of(ids) is the exact area of the union of those nodes'
@@ -94,7 +149,7 @@ def oracle_scene(tree, tags, dw, dh, density):
         for k in nodes[nid]["kids"]:
             parent.setdefault(k, nid)
     ldn = [i for i, n in nodes.items() if n["kind"] == "LOGICAL_DISPLAY_NODE"][0]
-    order = R.paint_order(tree)
+    order = paint_index(tree)
     surf = {s["id"]: s for s in tree["surfaces"]}
     info = {}
 
@@ -477,7 +532,7 @@ def same(a, b):
 def scenes(root, only=None):
     """The scenes rs_pattern.py measures: the photographed samples
     rs_sample.pair accepts (ALG-PICTURE-PAIR)."""
-    return P.scenes(root, only)
+    return PAIR.scenes(root, only)
 
 
 def main():
@@ -492,10 +547,10 @@ def main():
         for r in csv.DictReader(open(a.patterns, encoding="utf-8-sig")):
             csvrows["%s/%s" % (r["session"], r["sample"])] = r
 
-    keys = ("root", "single", "pruned", "geo", "scene", "area", "pattern", "fixed")
+    keys = ("root", "single", "pruned", "geo", "scene", "area", "pattern", "fixed", "premise")
     bad = {k: [] for k in keys}
     n = dict.fromkeys(("scenes", "nodes", "parsed", "kept", "slivers",
-                       "moved", "matches", "nodisplay", "compared"), 0)
+                       "moved", "matches", "nodisplay", "compared", "parents"), 0)
     ms_pass, found_video, grid_seen = [], {}, {}
     pcols = [p + x for p in S.PATTERNS for x in ("_d", "_share", "_n")]
     for c in reads_cached_rects():
@@ -507,6 +562,9 @@ def main():
         dw, dh, dens = float(disp["w"]), float(disp["h"]), disp.get("density", 3.5) or 3.5
         lines = open(tf, encoding="utf-8", errors="replace").read().splitlines()
         client = open(cf, encoding="utf-8", errors="replace").read().splitlines()
+        nb, np_ = premise(lines)
+        n["parents"] += np_
+        bad["premise"] += ["%s node %d" % (sid, x) for x in nb]
         t = time.perf_counter()
         sc = S.Scene(lines, client, disp)
         try:
@@ -651,6 +709,57 @@ def main():
                         if abs(nd["abs"][1] - y) <= TOL:
                             grid_seen.setdefault(y, []).append(x in sc.kept)
 
+    # The confirmed photographed samples, run on their own render tree with
+    # the tags their scene borrows.
+    def photographed(sid):
+        ses, smp = sid.split("/")
+        for _, sdir, disp, rows in PAIR.sessions(a.root, ses):
+            at = {r["raw"].strip(): i for i, r in enumerate(rows)}
+            tf = os.path.join(sdir, "raw", smp + ".rstree.txt")
+            if smp not in at or not os.path.exists(tf):
+                return None, None
+            lines = open(tf, encoding="utf-8", errors="replace").read().splitlines()
+            cf = PAIR.tag_source(sdir, rows, at[smp])
+            client = open(cf, encoding="utf-8", errors="replace").read().splitlines() if cf else []
+            sc = S.Scene(lines, client, disp)
+            sc.run()
+            return sc, lines
+        return None, None
+    import numpy as np
+    kb_cells = {}
+    for sid in KEYBOARD:
+        if a.session and not sid.startswith(a.session + "/"):
+            continue
+        sc, lines = photographed(sid)
+        if sc is None:
+            bad["scene"].append("%s: the confirmed sample is not in the capture" % sid)
+            continue
+        kb = [x for x, k in sc.ix["kind"].items()
+              if k == "SURFACE_NODE" and "Name [softKeyboard" in lines[sc.ix["first"][x]]]
+        branch = lambda x: [x] + [d for c in sc.N[x]["kids"] if c in sc.kept for d in branch(c)]
+        ids = {d for x in kb if x in sc.kept for d in branch(x)}
+        seen = np.zeros((sc.H, sc.W), dtype=bool)          # each cell once
+        for d in ids:
+            k = sc.kept[d]
+            if k["free"] is not None:
+                y0, y1, x0, x1 = k["box"]
+                seen[y0:y1, x0:x1] |= k["free"]
+        kb_cells[sid] = (len(ids), int(seen.sum()))
+        if not kb_cells[sid][1]:
+            bad["scene"].append("%s: the keyboard is on top in its picture and the pass "
+                                "keeps none of it" % sid)
+    win_order = None
+    if not a.session or WINDOWS[0].startswith(a.session + "/"):
+        sc, _ = photographed(WINDOWS[0])
+        if sc is None:
+            bad["scene"].append("%s: the confirmed sample is not in the capture" % WINDOWS[0])
+        else:
+            win_order = [w["name"].rstrip("0123456789") for w in sc.windows
+                         if w["id"] in sc.kept]
+            if tuple(win_order) != WINDOWS[1]:
+                bad["scene"].append("%s: windows kept topmost first %s, expected %s"
+                                    % (WINDOWS[0], win_order, list(WINDOWS[1])))
+
     for sid, want in VIDEO.items():
         if a.session and not sid.startswith(a.session + "/"):
             continue
@@ -696,10 +805,16 @@ def main():
            % (len(found_video), n["moved"]), "ERR-GEOMETRY-MISMATCH")
     report("INV-SCENE-PRUNED, INV-OPACITY, INV-CLIP-TO-BOUNDS, INV-VISIBLE-ONLY, "
            "INV-OCCLUSION-PAINT-ORDER", bad["scene"],
-           "the kept tree equals the oracle's node for node; videos %s; %d node(s) on "
-           "the display by a sliver under one cell per edge"
-           % (", ".join("%.3f" % v for v in found_video.values()) or "-", n["slivers"]),
+           "the kept tree equals the oracle's node for node, the oracle ordering from "
+           "sortedChildren; videos %s; keyboard kept %s; launcher windows %s; %d "
+           "node(s) on the display by a sliver under one cell per edge"
+           % (", ".join("%.3f" % v for v in found_video.values()) or "-",
+              ", ".join("%s %d nodes %d cells" % ((k.split("/")[1],) + v) for k, v in kb_cells.items()) or "-",
+              " > ".join(win_order) if win_order else "-", n["slivers"]),
            "ERR-NOT-ON-DISPLAY")
+    report("INV-OCCLUSION-PAINT-ORDER, its premise", bad["premise"],
+           "sortedChildren non-decreasing in PositionZ at all %d node(s) with two or more "
+           "children" % n["parents"], "ERR-PAINT-ORDER-PREMISE")
     report("INV-VISIBLE-AREA-ONLY", bad["area"],
            "every pattern share within one cell per edge of its matches' exact visible area",
            "ERR-AREA-NOT-VISIBLE")
