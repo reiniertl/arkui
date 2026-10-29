@@ -25,7 +25,7 @@ RULES FOR EVERY ITEM
 - Specification first. Every node an item adds, modifies or removes is
   authored through ril before the code it governs. A removal of an
   invariant is confirmed by the human, node by node, before the envelope.
-- No scene classes. A pattern names a structure of components; nothing in
+- No scene classes. A motif names a structure of components; nothing in
   the repository maps a measurement onto the name of a scene, an app or a
   use.
 - Only what is visible on the display enters a feature.
@@ -56,22 +56,40 @@ ORDER
 ===============================================================================
 
   1. /cb-green — motifs from the ArkUI component contracts
+       IN PROGRESS: run 62925204ddb84fcb, stage 3, code and checks done,
+       not committed. Open for the human before it closes: tabs matches no
+       scene - no Tabs on the capture shows both its bar and its content
+       (209 content only, 106 bar only, d = 0.333 in both) - variants or as
+       specified; carousel misses the 46 scenes with one page on the
+       display (d = 0.667) - a variant or as specified.
+  2. /cb-green — the scene is the photographed sample
 
 
 ===============================================================================
 DEFERRED
 ===============================================================================
 
-  - an open point, not yet an item: INV-EVERY-DISTINCT-SCENE-PHOTOGRAPHED
-    does not hold on the capture of 2026-10-28 - capture_coverage.py finds
-    73 of 299 scenes with no picture at all, so their tiles are blank. The
-    capture loop photographs a scene only when it settles; whether to
-    change that, and how, is for the human.
+  - an open point, not yet an item: the capture's deduplication is not
+    sound and is not specified. rs_capture.ps1 calls a sample a new scene
+    when its signature - every node's innerAbsDrawRect on a 16 px grid,
+    over the whole dump, off-display and occluded nodes and invisible
+    windows included, plus the window names - shares under 650 permille
+    with every scene seen, first match winning. That is not the
+    extraction's scene, the display's kept tree, and it reads the cached
+    draw rects the extraction refuses. Measured on the capture of
+    2026-10-28: 299 stored scenes give 139 distinct motif vectors, one
+    vector shared by 46. ALG-QUICK-SIG and ALG-CAPTURE-LOOP carry no
+    predicate. The client dump is fetched only for a sample judged new, so
+    no later rule can re-tag the other samples. Before the next capture:
+    whether the loop saves the client dump with every picture (about
+    190 ms more a sample; a screenshot costs about 370 ms - 653 ms median
+    for a sample with one, 285 without), and whether deduplication moves
+    offline onto the kept tree, are for the human.
   - an open point, not yet an item: the system UI's components have no
     source on this device build. The client dump gives a fixed subset of
     them and the window manager, ability manager and RenderService dumps
     give none, so the launcher, the gesture layers and the wallpaper are
-    read as untagged windows (ERR-PATTERN-ROOT-UNTAGGED: 650 windows in 299
+    read as untagged windows (ERR-MOTIF-ROOT-UNTAGGED: 650 windows in 299
     scenes, 598 of them the two gesture layers). Whether to look for
     another source, and where, is for the human.
 
@@ -184,6 +202,117 @@ PROMPTS
     20261022_123014/0192 video_medium and grid; the clustering's column
     count is 63; every check under tools/checks/ named with its result;
     npm run spec:check, no violations.
+  - BOUNDARY: as in RULES FOR EVERY ITEM.
+
+  - IMPORTANT: Every figure is measured in this session against a real capture and written into the report.
+  - INVIOLABLE: SPECIFICATION SURFACE IS AUTHORITATIVE. Every node above exists before the code it governs.
+  - INVIOLABLE: NO SCENE CLASSES. A motif names a structure of components.
+  - INVIOLABLE: DO NOT EMIT P3_SKIPPED.
+  - FORBIDDEN: MULTI-AGENT execution is not allowed. DO NOT SPAWN MULTIPLE AGENTS.
+  - WHEN TO COMMIT: Before "silk run finalize", after `npm run ril -- journal coalesce`.
+  - AFTER COMMIT: end FINAL_STATUS with an explicit NOT PUSHED line naming /cb-ops.
+  - DECISION PROTOCOL: If a decision must be made, ask for direct feedback. DO NOT DECIDE ALONE.
+  - AT THE END: update this list as HOW THE LIST WORKS states.
+
+
+/cb-green — the scene is the photographed sample
+  - What: the unit the pipeline processes changes from the stored scene
+    (<stem>.rstree.txt, chosen live by the capture's signature) to the
+    photographed sample: a picture and the render tree read in the same
+    sample. Only samples that have both are processed, and the viewer
+    shows every one with its own picture. The capture is not changed.
+    WHY. Measured on the capture of 2026-10-28 (7 sessions on the capture
+    machine): 7,292 samples, every render tree kept in raw/; 572 pictures
+    named in samples.csv, 543 on disk - 29 of session 20261027_072726 never
+    arrived. Today a scene's dump and client dump come from the sample that
+    first recorded it and its picture from a later one, so 73 scenes have
+    no picture and 16 are refused by INV-PICTURE-SAME-MOMENT - the cases
+    where a screenshot was paired to the wrong dump.
+    PAIRING. A picture is named on one row of samples.csv; that row's raw
+    column names the render tree read in the same sample, before the shot.
+    The shot lands about 370 ms after the dump began, so the pair is
+    accepted only if the display did not change across it: the next
+    sample's display equals this one's. 482 of 543 pass when "equal" is
+    the capture's signature, 449 when both the sample before and the one
+    after agree - the signature is the unsound one, so the item compares
+    the extraction's own scene.
+    TAGS. Only 39 of the 543 samples have their own client dump. Render
+    nodes keep their ids while they live, so a sample's tags are read from
+    the nearest client dump of the same session, by node id. Measured over
+    all canvas nodes: borrowed tags cover a median 0.53 (p10 0.20) of a
+    picture's dump, a scene's own client dump 0.56 (p10 0.35). A window
+    under half tagged is already reported and its matches discarded
+    (INV-CLIENT-TAG-COVERAGE, ERR-MOTIF-ROOT-UNTAGGED); that rule holds
+    unchanged.
+    IDENTITY. A scene is <session>/<raw sample>; its picture is the file
+    the row names, <stem>.jpeg or p<nnnnnn>.jpeg alike - both are the
+    sample's own picture, so the settled / backstop distinction and the
+    borrowed tile disappear from the viewer.
+    PUT TO THE HUMAN, before the envelope:
+      1. what "the display did not change" means for the next sample: the
+         same kept tree node for node, the same kept tree within one cell
+         per edge, or the same motif row;
+      2. where the tags come from: the nearest client dump before the
+         sample only, or the nearest on either side;
+      3. whether identical photographed samples are deduplicated offline
+         in this item (and on what), or every accepted pair is a scene and
+         deduplication is a later item;
+      4. whether the 29 pictures missing on disk are reported as lost or
+         left out as never captured.
+  - Read: tools/rs_capture.ps1 (what samples.csv records, and when the
+    shot is taken), tools/cluster/rs_pattern.py, rs_extract.py
+    (parse_client), vectors_build.py (sample_rows, same_moment, the
+    picture lookup), vectors_page.py; tools/checks/picture_timing.py,
+    capture_coverage.py, no_silent_scene_loss.py, scene_pass.py,
+    parsing_rules.py, measurement_rules.py, tag_coverage.py,
+    unplaced_rules.py, viewer_renders.py; the nodes below.
+  - Spec work:
+      modify IF-CAPTURE-SESSION: the unit read downstream is the
+        photographed sample - a row of samples.csv with a shot, its
+        picture and raw/<raw>.rstree.txt - with tags from the session's
+        client dumps by node id; the stem files are a client-dump store,
+        no longer the scene.
+      add algorithm ALG-PICTURE-PAIR (SUB-FEATURE-RESEARCH): pairs each
+        picture with the render tree of its own sample and accepts the
+        pair only if the display is unchanged in the next sample, as the
+        human decides; output-of the scene list rs_pattern.py measures.
+      add algorithm ALG-TAG-BORROW: a sample's component tags from the
+        session's nearest client dump, by node id, as the human decides.
+      modify INV-PICTURE-SAME-MOMENT: a scene's picture and dump come from
+        the same sample, and the display is unchanged in the next one; the
+        "no other signature in between" rule goes. ERR-PICTURE-NOT-SAME-
+        MOMENT names each refused pair with its reason.
+      remove INV-EVERY-DISTINCT-SCENE-PHOTOGRAPHED and ERR-SCENE-WITHOUT-
+        REP, each confirmed by the human node by node: a scene without its
+        picture can no longer exist. capture_coverage.py goes with them.
+      modify INV-NO-SILENT-SCENE-LOSS: every picture named in samples.csv
+        becomes a row or is reported with its reason - missing on disk,
+        pair refused, no client dump in the session; nothing is dropped
+        uncounted.
+      modify IF-PATTERNS-ROW: identity session, raw sample, picture.
+      modify IF-PAGE-PAYLOAD and IF-VIEWER: every tile the scene's own
+        picture; no backstop or borrowed marking; _audit counts pictures
+        named, on disk, paired, refused by reason.
+      if the human chooses offline deduplication: an algorithm and an
+        invariant for it, with the predicate it holds.
+      ril associate every new algorithm.
+  - Code path: tools/cluster/rs_pattern.py (the scenes are the paired
+    samples), a pairing and a tag lookup beside it, rs_scene.py unchanged;
+    vectors_build.py (the picture is the row's own; same_moment and the
+    backstop lookup go), vectors_page.py (no backstop marking);
+    tools/checks/: picture_timing.py for the new INV-PICTURE-SAME-MOMENT,
+    no_silent_scene_loss.py, and every check that globs *.rstree.txt -
+    scene_pass.py, parsing_rules.py, measurement_rules.py, tag_coverage.py
+    - reads the scenes rs_pattern.py reads; capture_coverage.py removed.
+  - Test, on the real capture: pictures named, on disk, paired, refused,
+    each by reason and session; the tag coverage of borrowed tags per
+    window against a scene's own client dump where both exist; the 16
+    pairings refused today are absent or refused with their reason; the
+    motifs per scene and scenes per motif against item 1's; the samples
+    around 20261022_123014/0102 and 0192 carry video_medium with
+    waterflow and grid; the viewer's tiles each show the scene's own
+    picture, none blank; every check under tools/checks/ named with its
+    result; npm run spec:check, no violations.
   - BOUNDARY: as in RULES FOR EVERY ITEM.
 
   - IMPORTANT: Every figure is measured in this session against a real capture and written into the report.
