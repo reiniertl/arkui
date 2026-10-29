@@ -6,14 +6,15 @@ picture, with the render tree read in that same sample (raw/<raw>.rstree.txt,
 read before the shot). It is a scene only when
 
   - the picture is on disk,
-  - the session has a client dump at or before the sample, whose tags it
-    takes by node id (ALG-TAG-BORROW),
   - the display did not change across the shot: the pass on this sample's
     render tree and on the next sample's keeps the same nodes, every kept
     node's visible cell box within one cell per edge.
 
 Every other picture is lost, with its reason, and is never dropped
-uncounted (INV-NO-SILENT-SCENE-LOSS). Identical scenes are not merged.
+uncounted (INV-NO-SILENT-SCENE-LOSS). Its tags come from the session's
+last client dump at or before it, by node id (ALG-TAG-BORROW), an empty map
+when there is none; they never decide whether it is a scene. Identical
+scenes are not merged.
 
 The capture's own notion of a scene - its signature and its stem files - is
 not read for identity; a stem file is only where a client dump is stored.
@@ -25,9 +26,8 @@ import rs_scene as S
 
 TOL = 1     # cells per edge a kept node's visible box may move across the shot
 
-MISSING, NO_CLIENT, NO_NEXT, NO_DISPLAY, CHANGED = (
-    "missing on disk", "no earlier client dump", "no next sample",
-    "no display node", "display changed")
+MISSING, NO_NEXT, NO_DISPLAY, CHANGED = (
+    "missing on disk", "no next sample", "no display node", "display changed")
 
 
 def _lines(path):
@@ -51,7 +51,8 @@ def sessions(root, only=None):
 
 
 def tag_source(sdir, rows, i):
-    """ALG-TAG-BORROW: the session's last client dump at or before sample i."""
+    """ALG-TAG-BORROW: the session's last client dump at or before sample i,
+    or None when there is none - the sample then has no tags."""
     for j in range(i, -1, -1):
         stem = (rows[j].get("stem") or "").strip()
         if stem:
@@ -96,8 +97,6 @@ def candidates(root, only=None):
             c["client"] = tag_source(sdir, rows, i)
             if not os.path.exists(c["picture"]):
                 c["reason"] = MISSING
-            elif c["client"] is None:
-                c["reason"] = NO_CLIENT
             elif not c["next"] or not os.path.exists(c["next"]) or not os.path.exists(c["tree"]):
                 c["reason"] = NO_NEXT
             yield c
@@ -111,7 +110,7 @@ def pair(root, only=None):
         if c["reason"]:
             yield c, None, None
             continue
-        client = _lines(c["client"])
+        client = _lines(c["client"]) if c["client"] else []   # no tags
         sc = S.Scene(_lines(c["tree"]), client, c["disp"])
         try:
             row = sc.run()

@@ -299,41 +299,27 @@ def main():
             "members": [row_identity(r) for r in
                         sorted(mem, key=lambda r: -_f(r, name + "_share"))],
         })
-    none = [r for r in rows if not found(r)]
-    # untagged: no window on the display could be read at all, so the absence
-    # of a pattern says nothing; otherwise none was found where it could be
-    no_pattern = [row_identity(r) for r in none if _f(r, "read_windows")]
-    untagged = [row_identity(r) for r in none if not _f(r, "read_windows")]
-    patterns.append({"cell": "none", "n": len(no_pattern), "svg": None,
-                     "desc": "No dictionary motif was found on the display.",
-                     "members": no_pattern})
-    patterns.append({"cell": "untagged", "n": len(untagged), "svg": None,
-                     "desc": ("No motif was found, and no window on the display "
-                              "had half of its kept nodes tagged, so no structure "
-                              "could be read."),
-                     "members": untagged})
-    # INV-UNPLACED-SCENES-NAMED. Two populations, kept apart because they
-    # are different claims, and NAMED because a count cannot be traced back
-    # to a scene.
-    unplaced = {
-        "pattern": {
-            "undescribed": untagged,
-            "unplaced": no_pattern,
-            "note": ("unplaced: no dictionary motif found where a window "
-                     "could be read; undescribed: none found, and no window on "
-                     "the display was tagged enough to be read"),
-        },
-    }
-    for sp, d in unplaced.items():
-        print("INV-UNPLACED-SCENES-NAMED, %s: %d undescribed, %d unplaced, "
-              "of %d" % (sp, len(d["undescribed"]), len(d["unplaced"]),
-                         len(rows)))
-    tot_un = sum(len(d["undescribed"]) + len(d["unplaced"])
-                 for d in unplaced.values())
-    if tot_un:
-        print("ERR-SCENE-UNPLACED: %d scene-and-space pairing(s) the vectors "
-              "could not place or could not describe; each is named in the "
-              "payload" % tot_un)
+    # INV-UNPLACED-SCENES-NAMED: one population, the scenes with no motif
+    # found, each NAMED - a count cannot be traced back to a scene - and shown
+    # with its tag coverage, the confidence its absence of a motif carries
+    # (INV-CLIENT-TAG-COVERAGE). No scene is set aside as unreadable.
+    none = sorted((r for r in rows if not found(r)), key=lambda r: -_f(r, "tag_coverage"))
+    no_motif = [row_identity(r) for r in none]
+    patterns.append({"cell": "none", "n": len(no_motif), "svg": None,
+                     "desc": ("No dictionary motif was found on the display. Each "
+                              "tile shows its tag coverage: how much of what is "
+                              "shown could be named."),
+                     "members": no_motif})
+    unplaced = {"pattern": {
+        "unplaced": no_motif,
+        "tag_coverage": {row_identity(r): _f(r, "tag_coverage") for r in none},
+        "note": "no dictionary motif found on the display; each with its tag coverage",
+    }}
+    print("INV-UNPLACED-SCENES-NAMED: %d of %d scenes with no motif, each named"
+          % (len(no_motif), len(rows)))
+    if no_motif:
+        print("ERR-SCENE-UNPLACED: %d scene(s) with no motif found; each is named "
+              "in the payload with its tag coverage" % len(no_motif))
 
     print("\nmotifs: %d scenes" % len(rows))
     for c in patterns:
@@ -348,7 +334,8 @@ def main():
     scenes = {}
     for r in rows:
         sid = row_identity(r)
-        scenes[sid] = {"img": img.get(sid), "found": found(r)}
+        scenes[sid] = {"img": img.get(sid), "found": found(r),
+                       "tag_coverage": _f(r, "tag_coverage")}
     out = {"_unplaced": unplaced,
            "_scenes": scenes,
            "_patterns": patterns,

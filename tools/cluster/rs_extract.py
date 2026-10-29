@@ -32,8 +32,6 @@ RX_PIVOT = re.compile(r'\bPivot\[(-?[\d.]+),\s*(-?[\d.]+)\]')
 RX_PALPHA = re.compile(r'\bAlpha\[(-?[\d.]+)\]')
 RX_BG = re.compile(r'\bBackgroundColor\[#([0-9A-Fa-f]{2})[0-9A-Fa-f]{6}\]')
 
-UNTAGGED_BELOW = 0.5      # ERR-MOTIF-ROOT-UNTAGGED: under half of a window's
-                          # kept canvas nodes carry a component tag
 
 
 def _bounds(line):

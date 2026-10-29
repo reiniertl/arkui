@@ -3,22 +3,16 @@
 
     ./unplaced_rules.py --patterns patterns.csv --payload two_payload.json
 
-Two populations, and they are different claims:
+One population: the scenes with no dictionary motif found on their display,
+each named with its tag coverage. There is no second population - no window
+is set aside as unreadable (INV-CLIENT-TAG-COVERAGE): a scene whose
+components are mostly untagged is still measured, and its low coverage is
+shown beside it.
 
-  unplaced     no dictionary pattern was found where a window could be read
-  undescribed  none was found, and no window on the display was tagged
-               enough for its structure to be read
-
-They are checked apart because merging them loses the distinction that
-matters: the first says the display holds no structure the dictionary
-names, the second that its structure could not be read at all.
-
-NAMED, not merely counted. A count cannot be traced back to a scene, and
-this page published a cluster count and a silhouette for a long time with
-no indication of how many scenes sat outside every cluster.
-So the check requires the identities, verifies they are real scenes from
-patterns.csv, and verifies the counts are the ones a fresh computation
-gives rather than whatever the payload happens to say.
+NAMED, not merely counted. A count cannot be traced back to a scene. So the
+check requires the identities, verifies they are real scenes from
+patterns.csv, that each carries the coverage its row has, and that the set is
+the one a fresh computation gives rather than whatever the payload says.
 
 Exit 0 when it holds, 1 when it does not.
 """
@@ -28,22 +22,9 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.append(os.path.join(os.path.dirname(HERE), "cluster"))
 import vectors_build as VB            # noqa: E402
 
-SPACES = ("pattern",)
-
-
 def fresh(rows):
-    """Recompute both populations, so the payload is checked and not read."""
-    def f(r, c):
-        v = (r.get(c) or "").strip()
-        return float(v) if v else 0.0
-    return {
-        "pattern": {
-            "undescribed": {VB.row_identity(r) for r in rows
-                            if not VB.found(r) and not f(r, "read_windows")},
-            "unplaced": {VB.row_identity(r) for r in rows
-                         if not VB.found(r) and f(r, "read_windows")},
-        },
-    }
+    """Recompute the population, so the payload is checked and not read."""
+    return {VB.row_identity(r): float(r["tag_coverage"]) for r in rows if not VB.found(r)}
 
 
 def main():
@@ -67,38 +48,31 @@ def main():
         return 1
 
     ok = True
-    for sp in SPACES:
-        got = up.get(sp)
-        print("  %s" % sp)
-        if got is None:
-            print("    the payload names no populations for this space")
-            ok = False
-            continue
-        if not (got.get("note") or "").strip():
-            print("    no note: the space's asymmetry is unexplained")
-            ok = False
-        for pop in ("undescribed", "unplaced"):
-            ids = got.get(pop)
-            if ids is None:
-                print("    %s is absent, which is not the same as empty" % pop)
-                ok = False
-                continue
-            ids = set(ids)
-            exp = want[sp][pop]
-            stray = ids - measured
-            print("    %-12s %3d of %d (%2.0f%%)"
-                  % (pop, len(ids), len(rows),
-                     100.0 * len(ids) / max(1, len(rows))))
-            if ids != exp:
-                print("      payload says %d, a fresh computation says %d"
-                      % (len(ids), len(exp)))
-                for sid in sorted(ids ^ exp)[:5]:
-                    print("        differs: %s" % sid)
-                ok = False
-            if stray:
-                print("      %d named scene(s) are not in patterns.csv: %s"
-                      % (len(stray), ", ".join(sorted(stray)[:3])))
-                ok = False
+    got = up.get("pattern") or {}
+    ids, cov = got.get("unplaced"), got.get("tag_coverage") or {}
+    if ids is None:
+        print("    the payload names no unplaced scenes, which is not the same as none")
+        ok = False
+        ids = []
+    if "undescribed" in got:
+        print("    a second population is still named: undescribed")
+        ok = False
+    ids = set(ids)
+    print("  unplaced %d of %d (%.0f%%)" % (len(ids), len(rows), 100.0 * len(ids) / max(1, len(rows))))
+    if ids != set(want):
+        print("    payload says %d, a fresh computation says %d" % (len(ids), len(want)))
+        for sid in sorted(ids ^ set(want))[:5]:
+            print("      differs: %s" % sid)
+        ok = False
+    stray = ids - measured
+    if stray:
+        print("    %d named scene(s) are not in patterns.csv: %s" % (len(stray), ", ".join(sorted(stray)[:3])))
+        ok = False
+    off = [s_ for s_ in ids & set(want) if abs(float(cov.get(s_, -1)) - want[s_]) > 1e-9]
+    if off:
+        print("    %d named scene(s) carry no coverage or another than their row's: %s"
+              % (len(off), ", ".join(sorted(off)[:3])))
+        ok = False
     if ok:
         print("  every scene that could not be placed is named")
         print("  holds")

@@ -21,7 +21,10 @@ def listed(ids, limit=5):
     return head + (" and %d more" % (len(ids) - limit) if len(ids) > limit else "")
 
 
-def report(lost, untagged):
+REPORT_BELOW = 0.5   # ERR-MOTIF-ROOT-UNTAGGED is reported under this coverage
+
+
+def report(lost, low):
     """Say what the run did not measure. Each of these is a picture named in
     samples.csv that became no scene, or a window that could not be read."""
     by = {}
@@ -37,10 +40,10 @@ def report(lost, untagged):
     if nodisp:
         print("ERR-NO-DISPLAY-NODE: %d sample(s) have no single LOGICAL_DISPLAY_NODE "
               "to start from: %s" % (len(nodisp), listed(nodisp)))
-    if untagged:
-        print("ERR-MOTIF-ROOT-UNTAGGED: %d window(s) in %d scene(s) have under "
-              "half of their kept canvas nodes tagged; their motifs are not "
-              "matched" % (sum(len(w) for _, w in untagged), len(untagged)))
+    if low:
+        print("ERR-MOTIF-ROOT-UNTAGGED: %d scene(s) have under half of their visible "
+              "area tagged; their matches are kept, the coverage is reported: %s"
+              % (len(low), listed(["%s %.2f" % x for x in low])))
 
 
 def lost_path(out):
@@ -53,17 +56,17 @@ def main():
     ap.add_argument("root", help="directory holding capture sessions")
     ap.add_argument("--out", default="patterns.csv")
     a = ap.parse_args()
-    rows, lost, untagged = [], [], []
+    rows, lost, low = [], [], []
     for c, sc, row in P.pair(a.root):
         if sc is None:
             lost.append(c)
             continue
-        if sc.untagged:
-            untagged.append(("%s/%s" % (c["session"], c["sample"]), sc.untagged))
         r = {"session": c["session"], "sample": c["sample"], "shot": c["shot"]}
         r.update(row)
         rows.append(r)
-    report(lost, untagged)
+        if row["tag_coverage"] < REPORT_BELOW:
+            low.append(("%s/%s" % (c["session"], c["sample"]), row["tag_coverage"]))
+    report(lost, low)
     with open(lost_path(a.out), "w", newline="", encoding="utf-8") as fh:
         w = csv.DictWriter(fh, fieldnames=["session", "sample", "shot", "reason"])
         w.writeheader()

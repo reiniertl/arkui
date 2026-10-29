@@ -258,7 +258,32 @@ def oracle_scene(tree, tags, dw, dh, density):
                 y0, y1, x0, x1, m = c
                 g[y0:y1, x0:x1] |= m
         return float(cell[g].sum())
-    return out, ldn, area_of
+
+    def owned(ids):
+        """INV-CLIENT-TAG-COVERAGE, exactly: each point of the display
+        belongs to the deepest of these nodes whose visible region covers
+        it, at equal depth the one painted later. Returns the area owned by
+        tagged nodes and the area owned at all."""
+        depth = {}
+        for nid in tree["order"]:
+            p = parent.get(nid)
+            depth[nid] = depth.get(p, -1) + 1 if p is not None else 0
+        od = np.full(cell.shape, -1, dtype=np.int64)
+        oo = np.full(cell.shape, -1, dtype=np.int64)
+        ot = np.zeros(cell.shape, dtype=bool)
+        for i in ids:
+            c = out.get(i, {}).get("cells")
+            if not c:
+                continue
+            y0, y1, x0, x1, m = c
+            d, o = depth.get(i, 0), order.get(i, 0)
+            sd, so = od[y0:y1, x0:x1], oo[y0:y1, x0:x1]
+            take = m & ((sd < d) | ((sd == d) & (so < o)))
+            sd[take] = d
+            so[take] = o
+            ot[y0:y1, x0:x1][take] = bool(tags.get(i, ""))
+        return float(cell[ot].sum()), float(cell[od >= 0].sum())
+    return out, ldn, area_of, owned
 
 
 def _meet(a, b):
@@ -382,17 +407,9 @@ def oracle_patterns(tree, tags, sc, dw, dh, density):
         return label(nid)
 
     kept = list(O)
-    cov = {}
-    for i in kept:
-        w = O[i]["win"]
-        if w is not None and nodes[i]["kind"] == "CANVAS_NODE":
-            c = cov.setdefault(w, [0, 0])
-            c[0] += 1
-            c[1] += 1 if tags.get(i, "") else 0
-    untagged = {w for w, (n, t) in cov.items() if n and t / n < R.UNTAGGED_BELOW}
     dmin, found = {}, []
-    for i in kept:
-        if label(i) is None or O[i]["win"] in untagged:
+    for i in kept:                    # every kept node, whatever its tags
+        if label(i) is None:
             continue
         for name, d in d_at(i).items():
             dmin[name] = min(d, dmin.get(name, 1.0))
@@ -416,7 +433,7 @@ def oracle_patterns(tree, tags, sc, dw, dh, density):
                 consumed.add((present(h), h))
     fs -= consumed
     return {p: {"d": dmin.get(p, 1.0), "n": len([i for q, i in fs if q == p])}
-            for p in S.PATTERNS}, untagged
+            for p in S.PATTERNS}
 
 
 def reads_cached_rects():
@@ -519,10 +536,10 @@ def same(a, b):
 class Shuffled(S.Scene):
     """The pass with each node's kept children summarised in a random order.
     Occlusion is decided before _up runs, so only the element sets see it."""
-    def _up(self, n, nid, v, kids, window, free, ptag):
+    def _up(self, n, nid, v, kids, free, ptag):
         kids = list(kids)
         random.Random(nid).shuffle(kids)
-        return S.Scene._up(self, n, nid, v, kids, window, free, ptag)
+        return S.Scene._up(self, n, nid, v, kids, free, ptag)
 
 
 def same(a, b):
@@ -547,10 +564,11 @@ def main():
         for r in csv.DictReader(open(a.patterns, encoding="utf-8-sig")):
             csvrows["%s/%s" % (r["session"], r["sample"])] = r
 
-    keys = ("root", "single", "pruned", "geo", "scene", "area", "pattern", "fixed", "premise")
+    keys = ("root", "single", "pruned", "geo", "scene", "area", "pattern", "fixed", "premise",
+            "coverage")
     bad = {k: [] for k in keys}
     n = dict.fromkeys(("scenes", "nodes", "parsed", "kept", "slivers",
-                       "moved", "matches", "nodisplay", "compared", "parents"), 0)
+                       "moved", "matches", "nodisplay", "compared", "parents", "coverage"), 0)
     ms_pass, found_video, grid_seen = [], {}, {}
     pcols = [p + x for p in S.PATTERNS for x in ("_d", "_share", "_n")]
     for c in reads_cached_rects():
@@ -561,7 +579,7 @@ def main():
         sid = "%s/%s" % (ses, sample)
         dw, dh, dens = float(disp["w"]), float(disp["h"]), disp.get("density", 3.5) or 3.5
         lines = open(tf, encoding="utf-8", errors="replace").read().splitlines()
-        client = open(cf, encoding="utf-8", errors="replace").read().splitlines()
+        client = open(cf, encoding="utf-8", errors="replace").read().splitlines() if cf else []
         nb, np_ = premise(lines)
         n["parents"] += np_
         bad["premise"] += ["%s node %d" % (sid, x) for x in nb]
@@ -625,7 +643,7 @@ def main():
                 n["moved"] += 1
 
         # the scene, against the display oracle
-        O, _, area_of = oracle_scene(tree, tags, dw, dh, dens)
+        O, _, area_of, owned = oracle_scene(tree, tags, dw, dh, dens)
         for x, o in O.items():
             if x in sc.kept and not o["kept"]:
                 bad["scene"].append("%s node %d is kept and is not on the display" % (sid, x))
@@ -641,7 +659,7 @@ def main():
                 bad["scene"].append("%s node %d is kept outside the display tree" % (sid, x))
 
         # the pattern vector, against the pattern oracle
-        P, untagged = oracle_patterns(tree, tags, sc, dw, dh, dens)
+        P = oracle_patterns(tree, tags, sc, dw, dh, dens)
         tot = dw * dh
         PS = pass_scene(sc, tree)
 
@@ -665,6 +683,16 @@ def main():
             if got[p + "_share"] * tot > exact + tol + 0.0001 * tot:
                 bad["area"].append("%s %s: share %.4f, its matches show %.4f"
                                    % (sid, p, got[p + "_share"], exact / tot))
+
+        # INV-CLIENT-TAG-COVERAGE: the share of the visible canvas area whose
+        # deepest node is tagged, from the display oracle's exact regions
+        canvas = [i for i in O if O[i]["kept"] and nodes[i]["kind"] == "CANVAS_NODE"]
+        num, den = owned(canvas)
+        slack = 2 * STEP * sum(O[i]["per"] for i in canvas)
+        if abs(row["tag_coverage"] * den - num) > slack + 0.0001 * tot:
+            bad["coverage"].append("%s: tag coverage %.4f, the oracle's %.4f"
+                                   % (sid, row["tag_coverage"], num / den if den else 0.0))
+        n["coverage"] += 1
 
         # the properties
         sh = Shuffled(lines, client, disp).run()
@@ -823,6 +851,10 @@ def main():
            "d and count equal the pattern oracle's on every display; %d match(es); shuffling "
            "changes nothing" % n["matches"],
            "ERR-MOTIF-ORACLE-MISMATCH")
+    report("INV-CLIENT-TAG-COVERAGE", bad["coverage"],
+           "every scene's tag coverage equals the oracle's exact one within one cell per "
+           "edge (%d scenes); no window and no match is set aside for it" % n["coverage"],
+           "ERR-MOTIF-ROOT-UNTAGGED")
     report("INV-FEATURE-FIXED-MAP", bad["fixed"],
            "%d row(s) computed alone equal their row in the capture" % n["compared"]
            if a.patterns else "not checked (pass --patterns)", "ERR-MOTIF-ORACLE-MISMATCH")

@@ -7,7 +7,8 @@ One self-contained file, two tabs, in this order:
 
   MOTIF       one group per dictionary motif: its schematic drawn from
               its definition, the definition, its count, every scene it was
-              found in; then the scenes with no motif, and the untagged.
+              found in; then the scenes with no motif. Every tile shows its scene's
+              tag coverage.
   CLUSTERING  one clustering over the motif vector, matched to no motif: the
               general stats, a rotatable 3D map of three PCA components,
               then every cluster with its count and scenes, unclustered last.
@@ -119,15 +120,18 @@ var DATA = __DATA__;
   var TOTAL = audit.rows || Object.keys(S).length;
   function pct(n) { return TOTAL ? Math.round(100 * n / TOTAL) : 0; }
 
-  // A tile: the scene's own picture - a scene is a photographed sample.
-  // A picture that is not there is a broken join, and the tile says so.
+  // A tile: the scene's own picture - a scene is a photographed sample -
+  // and its tag coverage, how much of what it shows could be named
+  // (INV-CLIENT-TAG-COVERAGE). A picture that is not there is a broken
+  // join, and the tile says so.
   function tile(sid, extra) {
     var s = S[sid] || {};
     var pic = s.img ? "<img loading='lazy' src='" + s.img + "'>"
       : "<div class='nopic'>picture not found</div>";
+    var cov = s.tag_coverage == null ? "—" : Math.round(100 * s.tag_coverage) + "%";
     return "<div class='pic' data-scene='" + esc(sid) + "'>" + pic
-      + "<div class='cap'>" + esc(sid) + (extra ? "<br>" + extra : "")
-      + "</div></div>";
+      + "<div class='cap'>" + esc(sid) + "<br><span class='tc'>tagged " + cov + "</span>"
+      + (extra ? "<br>" + extra : "") + "</div></div>";
   }
   function count(n) {
     return "<div class='count'>" + n + " of " + TOTAL + " scenes · " + pct(n)
@@ -149,15 +153,13 @@ var DATA = __DATA__;
   function unplacedBlock(space) {
     var up = UP[space];
     if (!up) { return ""; }
-    function pop(label, ids, why) {
-      return "<div class='note'>" + esc(label) + ": <b>" + ids.length + "</b> of "
-        + TOTAL + " (" + pct(ids.length) + "%) · " + esc(why)
-        + (ids.length ? "<br><span style='opacity:.8'>" + ids.map(esc).join(", ")
-                        + "</span>" : "") + "</div>";
-    }
+    var ids = up.unplaced || [], cov = up.tag_coverage || {};
     return "<div class='k'>What the vector could not place</div>"
-      + pop("undescribed", up.undescribed, "the measurement looked and found nothing to describe")
-      + pop("unplaced", up.unplaced, "PHI described it and PSI put it in a none-of-the-above cell")
+      + "<div class='note'>no motif found: <b>" + ids.length + "</b> of " + TOTAL
+      + " (" + pct(ids.length) + "%), each with its tag coverage"
+      + (ids.length ? "<br><span style='opacity:.8'>" + ids.map(function (i) {
+          return esc(i) + " " + (cov[i] == null ? "—" : Math.round(100 * cov[i]) + "%");
+        }).join(", ") + "</span>" : "") + "</div>"
       + "<div class='note' style='margin-top:4px;opacity:.75'>" + esc(up.note) + "</div>";
   }
   function head(title, cells, blurb) {

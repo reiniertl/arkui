@@ -22,8 +22,7 @@ Exit 0 when the invariant holds, 1 when it does not.
 """
 import argparse, csv, glob, json, os, sys
 
-REASONS = {"missing on disk", "no earlier client dump", "no next sample",
-           "no display node", "display changed"}
+REASONS = {"missing on disk", "no next sample", "no display node", "display changed"}
 
 
 def named(root):

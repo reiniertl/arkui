@@ -175,7 +175,10 @@ class Scene:
         self.visits = {}             # INV-SINGLE-PASS
         self.kept = {}               # nid -> {"cells": n, "box": .., "free": ..}
         self.windows = []            # every top-level surface met
-        self.untagged = []           # windows under half tagged
+        # INV-CLIENT-TAG-COVERAGE: each visible cell belongs to the deepest
+        # kept canvas node showing there; its depth, and whether it is tagged
+        self.owner_depth = np.full((self.H, self.W), -1, dtype=np.int32)
+        self.owner_tagged = np.zeros((self.H, self.W), dtype=bool)
         self.state = {}
         self.order = 0
 
@@ -232,10 +235,10 @@ class Scene:
             n = self.node(a)
             M = R.affine(M, R.local_transform(n))
             ea *= n["alpha"]
-        top = self.visit(ldn[0], M, ea, (0.0, 0.0, self.dw, self.dh), None, False, "")
+        top = self.visit(ldn[0], M, ea, (0.0, 0.0, self.dw, self.dh), None, False, "", 0)
         return self.row(top)
 
-    def visit(self, nid, Mp, eap, clip, region, under_surface, ptag):
+    def visit(self, nid, Mp, eap, clip, region, under_surface, ptag, depth):
         self.visits[nid] = self.visits.get(nid, 0) + 1
         n = self.node(nid)
         ea = eap * n["alpha"]
@@ -303,45 +306,42 @@ class Scene:
             # (INV-OCCLUSION-PAINT-ORDER)
             ks = [k for k in n["kids"] if k in self.ix["first"]]
             for k in reversed(ks):                              # topmost first
-                s = self.visit(k, M, ea, cclip, region, under_surface, n["tag"])
+                s = self.visit(k, M, ea, cclip, region, under_surface, n["tag"], depth + 1)
                 if s is not None:
                     kids.append(s)
 
         # UP
         if free is None and not kids:
-            if window is not None:            # visible, and nothing of it shows
-                window.update(coverage=None, window=window["name"], nodes=0,
-                              tagged=0, pid=window["pid"])
             return None
         self.kept[nid] = {"cells": int(free.sum()) if free is not None else 0,
                           "on": int(c[4].sum()) if c else 0,
                           "box": c[:4] if free is not None else None, "free": free}
+        if n["kind"] == "CANVAS_NODE" and free is not None:
+            # children come up first and the topmost branch first, so a cell
+            # already owned at this depth or deeper stays with its owner
+            y0, y1, x0, x1, _ = c
+            od = self.owner_depth[y0:y1, x0:x1]
+            take = free & (od < depth)
+            od[take] = depth
+            self.owner_tagged[y0:y1, x0:x1][take] = bool(n["tag"])
         if st == OCCLUDING and c:
             y0, y1, x0, x1, mask = c
             self.cover[y0:y1, x0:x1] |= mask
-        return self._up(n, nid, v, kids, window, free, ptag)
+        return self._up(n, nid, v, kids, free, ptag)
 
     # -- ALG-MOTIF-MATCH: the element set and the matches on the way up ---------
     def _branch_mask(self, v):
         return self.stamp >= v
 
-    def _up(self, n, nid, v, kids, window, free, ptag):
-        heads, headpairs, matches, dmin, pids = [], set(), [], {}, {}
-        canvas = tagged = 0
+    def _up(self, n, nid, v, kids, free, ptag):
+        # no match is discarded for the tags of its window or its scene
+        heads, headpairs, matches, dmin = [], set(), [], {}
         for s in kids:
             heads.extend(s["heads"])
             headpairs |= s["pairs"]
             matches.extend(s["matches"])
             for p, d in s["dmin"].items():
                 dmin[p] = min(d, dmin.get(p, 1.0))
-            canvas += s["canvas"]
-            tagged += s["tagged"]
-            for p, k in s["pids"].items():
-                pids[p] = pids.get(p, 0) + k
-        if n["kind"] == "CANVAS_NODE":
-            canvas += 1
-            tagged += 1 if n["tag"] else 0
-            pids[n["pid"]] = pids.get(n["pid"], 0) + 1
 
         mask = None
         if n["tag"] in ("Image", "SymbolGlyph"):
@@ -384,19 +384,8 @@ class Scene:
                     if name in TOKENS:
                         presented = name
             out_heads, out_pairs = [(presented, nid)], pairs
-        if window is not None:
-            cov = tagged / canvas if canvas else None
-            # the process whose nodes fill the window, not the system UI
-            # that hosts every window surface
-            window.update(coverage=cov, window=window["name"], nodes=canvas,
-                          tagged=tagged, pid=max(pids, key=pids.get) if pids else window["pid"])
-            if cov is not None and cov < R.UNTAGGED_BELOW:
-                # ERR-MOTIF-ROOT-UNTAGGED: no structure can be read here
-                self.untagged.append((window["name"], cov))
-                matches, dmin = [], {}
         return {"heads": out_heads, "pairs": out_pairs, "matches": matches,
-                "dmin": dmin,
-                "canvas": canvas, "tagged": tagged, "pids": pids}
+                "dmin": dmin}
 
     # -- the row ---------------------------------------------------------------
     def row(self, top):
@@ -413,11 +402,9 @@ class Scene:
             out[p + "_d"] = round(dmin.get(p, 1.0), 4)
             out[p + "_share"] = round(float(u.sum()) * cell / tot, 4)
             out[p + "_n"] = round(len(ms) / (len(ms) + 1.0), 4)
-        out["untagged_windows"] = len(self.untagged)
-        # windows whose structure could be read: on the display, with kept
-        # canvas nodes, at least half of them tagged
-        out["read_windows"] = sum(1 for w in self.windows if w.get("coverage") is not None
-                                  and w["coverage"] >= R.UNTAGGED_BELOW)
+        # a confidence, not part of the motif vector (INV-CLIENT-TAG-COVERAGE)
+        visible = int((self.owner_depth >= 0).sum())
+        out["tag_coverage"] = round(int(self.owner_tagged.sum()) / visible, 4) if visible else 0.0
         self.matches = matches
         return out
 

@@ -1,38 +1,33 @@
 #!/usr/bin/env python3
-"""INV-CLIENT-TAG-COVERAGE — how much of each visible window can be named.
+"""INV-CLIENT-TAG-COVERAGE — how much of each scene can be named.
 
     ./tag_coverage.py <capture-root> [--session NAME]
 
-For every recorded scene and every window visible in it, the share of the
-window's kept canvas nodes - those in the scene, on the display - that
-carry a component tag from the client dump. Measured by the pass itself, at
-the window node, so the coverage is of what is shown.
-Reported per window, summarised by window name with the trailing number
-dropped, so the launcher across its scenes reads as one line.
+For every scene, the share of the display's visible cells on kept canvas
+nodes that carry a component tag from the client dump, each cell once:
+the scene's tag_coverage. The tag is the node's component identity; it
+comes from a client dump read apart from the render tree, so it can be
+stale (a node created after the dump has none) or missing (the system UI
+answers only in part). The coverage says how far the motif comparison can
+be trusted. It is a confidence, never a filter: no node and no match is
+removed for it.
 
-ERR-MOTIF-ROOT-UNTAGGED names every visible window under half: no
-structure can be read from it, and a pattern result that included it would
-stand on nothing. The client dump covers app processes almost completely
-and the system UI only in part, and no other dump on this device build
-covers the rest, so this check measures the gap rather than closing it.
+ERR-MOTIF-ROOT-UNTAGGED names every scene under one half, as a report.
 
-Exit 0: the coverage is reported, not judged. A window under half is a
-warning, and a window drawn from a buffer alone has nothing to tag.
+Exit 0 when every scene's coverage is a number in [0, 1], 1 otherwise.
 """
-import argparse, glob, os, re, sys
-from collections import defaultdict
+import argparse, os, statistics, sys
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(
     os.path.abspath(__file__))), "cluster"))
-import rs_extract as R                   # noqa: E402
-import rs_sample as P                    # noqa: E402
+import rs_sample as PAIR                 # noqa: E402
 import rs_scene as S                     # noqa: E402
 
+REPORT_BELOW = 0.5
 
-def scenes(root, only=None):
-    """The scenes rs_pattern.py measures: the photographed samples
-    rs_sample.pair accepts (ALG-PICTURE-PAIR)."""
-    return P.scenes(root, only)
+
+def lines(path):
+    return open(path, encoding="utf-8", errors="replace").read().splitlines() if path else []
 
 
 def main():
@@ -42,58 +37,33 @@ def main():
     ap.add_argument("--session", default="")
     a = ap.parse_args()
 
-    by_name = defaultdict(list)
-    low = []
-    unmeasured = []
-    n_scenes = 0
-    for ses, sample, tf, cf, disp in scenes(a.root, a.session or None):
-        n_scenes += 1
-        sc = S.Scene(open(tf, encoding="utf-8", errors="replace").read().splitlines(),
-                     open(cf, encoding="utf-8", errors="replace").read().splitlines(), disp)
-        try:
-            sc.run()
-        except S.NoDisplay:
+    cov, low, bad = [], [], []
+    for ses, sample, tf, cf, disp in PAIR.scenes(a.root, a.session or None):
+        sid = "%s/%s" % (ses, sample)
+        row = S.Scene(lines(tf), lines(cf), disp).run()
+        c = row.get("tag_coverage")
+        if not isinstance(c, float) or not 0.0 <= c <= 1.0:
+            bad.append("%s: tag_coverage is %r" % (sid, c))
             continue
-        for w in sc.windows:
-            if "coverage" not in w:
-                continue                  # not visible: decided from its line
-            if w["coverage"] is None:
-                unmeasured.append("%s/%s %s" % (ses, sample, w["window"]))
-                continue
-            by_name[re.sub(r"\d+$", "", w["window"])].append(w["coverage"])
-            if w["coverage"] < R.UNTAGGED_BELOW:
-                low.append((ses, sample, w))
+        cov.append(c)
+        if c < REPORT_BELOW:
+            low.append((sid, c, cf is None))
 
     print("INV-CLIENT-TAG-COVERAGE")
-    print("  scenes: %d   visible windows measured: %d"
-          % (n_scenes, sum(len(v) for v in by_name.values())))
-    print("  %-26s %8s %10s %8s %8s" % ("window", "scenes", "median", "min", "under"))
-    for name, v in sorted(by_name.items(), key=lambda kv: -len(kv[1])):
-        s = sorted(v)
-        under = sum(1 for x in s if x < R.UNTAGGED_BELOW)
-        print("  %-26s %8d %10.2f %8.2f %8d" % (name[:26], len(s), s[len(s) // 2], s[0], under))
+    if cov:
+        q = sorted(cov)
+        print("  %d scene(s); tag coverage median %.2f, p10 %.2f, p90 %.2f, min %.2f; "
+              "%d with no client dump at or before them"
+              % (len(q), statistics.median(q), q[len(q) // 10], q[int(0.9 * len(q)) - 1 if len(q) > 1 else 0],
+                 q[0], sum(1 for _, _, none in low if none)))
     if low:
-        names = defaultdict(int)
-        for _, _, w in low:
-            names[re.sub(r"\d+$", "", w["window"])] += 1
-        print("ERR-MOTIF-ROOT-UNTAGGED: %d visible window(s) in %d scene(s) have "
-              "under half of their nodes tagged - %s"
-              % (len(low), len({(s, t) for s, t, _ in low}),
-                 ", ".join("%s x%d" % kv for kv in sorted(names.items(), key=lambda kv: -kv[1]))))
-        for ses, sample, w in low[:8]:
-            print("    %s/%s  %-24s pid %-6s %4d of %4d tagged (%.2f)"
-                  % (ses, sample, w["window"][:24], w["pid"], w["tagged"], w["nodes"], w["coverage"]))
-        if len(low) > 8:
-            print("    ... and %d more" % (len(low) - 8))
-    if unmeasured:
-        # Drawn from a buffer alone - a wallpaper, a composed layer. Nothing
-        # in it is a component, so there is nothing to tag and nothing missed.
-        print("  %d visible window(s) hold no canvas node at all, so have nothing "
-              "to tag: %s" % (len(unmeasured), ", ".join(sorted(
-                  {u.split(" ", 1)[1] for u in unmeasured})[:6])))
-    print("  every visible window measured")
-    print("  holds")
-    return 0
+        print("  ERR-MOTIF-ROOT-UNTAGGED: %d scene(s) under one half; their matches "
+              "are kept: %s" % (len(low), ", ".join("%s %.2f" % (s, c) for s, c, _ in low[:6])
+                                + (" and %d more" % (len(low) - 6) if len(low) > 6 else "")))
+    for b in bad[:8]:
+        print("    " + b)
+    print("  VIOLATED" if bad else "  holds")
+    return 1 if bad else 0
 
 
 if __name__ == "__main__":

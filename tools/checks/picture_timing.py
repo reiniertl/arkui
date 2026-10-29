@@ -63,7 +63,7 @@ def client_before(sdir, rows, i):
         stem = (rows[j].get("stem") or "").strip()
         if stem and os.path.exists(os.path.join(sdir, stem + ".client.txt")):
             return lines(os.path.join(sdir, stem + ".client.txt"))
-    return None
+    return []                                  # no client dump: no tags
 
 
 def main():
@@ -100,7 +100,7 @@ def main():
                        % (sid, r["shot"], sr[i].get("shot")))
             continue
         client = client_before(sdir, sr, i)
-        if client is None or not unchanged(sdir, sr, i, client, disp):
+        if not unchanged(sdir, sr, i, client, disp):
             bad.append("%s: the display changed across the shot" % sid)
             continue
         if sid not in shown:

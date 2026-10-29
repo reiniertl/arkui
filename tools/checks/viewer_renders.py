@@ -172,9 +172,18 @@ def main():
     for g in D.get("clustering", {}).get("groups", []):
         if str(g["id"]) not in have:
             probs.append("clustering: cluster %s has no group" % g["id"])
+    # INV-CLIENT-TAG-COVERAGE on the page: no group sets scenes aside as
+    # untagged, and every tile shows its scene's tag coverage
+    if any(k == ("cell", "untagged") for k, _ in rendered["pattern"]):
+        probs.append("pattern: an 'untagged' group is still rendered")
+    tiles = sum(len(re.findall(r"<div class='pic' data-scene=", tabs.get(t, ""))) for t in TABS)
+    covered = sum(len(re.findall(r"<div class='pic' data-scene='[^']*'>.*?class='tc'>tagged (?:\d+%|—)",
+                                 tabs.get(t, ""))) for t in TABS)
+    if covered != tiles:
+        probs.append("%d of %d tile(s) show no tag coverage" % (tiles - covered, tiles))
     report("INV-VIEWER-RENDERS", probs,
-           "ran to the end; %s" % ", ".join("%s %d groups" % (t, len(rendered[t]))
-                                            for t in TABS))
+           "ran to the end; %s; %d tiles, each with its tag coverage"
+           % (", ".join("%s %d groups" % (t, len(rendered[t])) for t in TABS), tiles))
 
     probs = []
     for t in ("pattern",):

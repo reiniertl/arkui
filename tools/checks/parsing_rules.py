@@ -138,6 +138,14 @@ def check_parse_fields(passes):
         bad.append("parse_surface returns %s" % sorted(set(w) ^ WINDOW_FIELDS))
     for m in RENDER_WORDS.finditer(code_of(R.__file__)):
         bad.append("rs_extract.py reads %r" % m.group(0))
+    # INV-CLIENT-TAG-COVERAGE: the coverage is a confidence. The modules
+    # that decide what is kept, what matches and what is a scene compare no
+    # coverage and no tag count with anything.
+    for f in ("rs_scene.py", "rs_sample.py"):
+        code = code_of(os.path.join(os.path.dirname(R.__file__), f))
+        for l in code.splitlines():
+            if re.search(r"(coverage|tagged)\w*[^\n]*[<>]|[<>][^\n]*(coverage|tagged)", l):
+                bad.append("%s decides on a tag coverage: %s" % (f, l.strip()[:80]))
     # ReverseChildren is the prepare stage's traversal, not paint order, and
     # PositionZ is already applied in sortedChildren (INV-OCCLUSION-PAINT-ORDER)
     cluster = os.path.dirname(R.__file__)
@@ -148,6 +156,9 @@ def check_parse_fields(passes):
     print("  INV-PARSE-ONLY-SELECTION-FIELDS, INV-STRUCTURE-NOT-DRAW-STATE")
     print("    parse_node returns %d field(s), parse_surface %d; render fields "
           "searched for: %d" % (len(n), len(w), sum(1 for b in bad if "reads" in b)))
+    print("  INV-CLIENT-TAG-COVERAGE, statically")
+    print("    decisions on a tag coverage in rs_scene.py and rs_sample.py: %d"
+          % sum(1 for b in bad if "decides on a tag" in b))
     for b in bad[:6]:
         print("    " + b)
     if bad:
@@ -159,7 +170,7 @@ def check_selection_only(passes):
     """INV-SELECTION-AND-DISTANCE-ONLY: the row is selection and distance,
     and the pass names nothing about how a node is rendered."""
     bad = []
-    want = {"untagged_windows", "read_windows"} | {
+    want = {"tag_coverage"} | {
         p + x for p in S.PATTERNS for x in ("_d", "_share", "_n")}
     tf, lines, client, disp = passes[0]
     row = S.Scene(lines, client, disp).run()
@@ -190,7 +201,7 @@ def main():
     dumps, passes = [], []
     for sdir, sample, tf, cf, disp in sessions(a.root):
         lines = open(tf, encoding="utf-8", errors="replace").read().splitlines()
-        client = open(cf, encoding="utf-8", errors="replace").read().splitlines()
+        client = open(cf, encoding="utf-8", errors="replace").read().splitlines() if cf else []
         dumps.append((tf, lines, R.parse_tree(lines)))
         passes.append((tf, lines, client, disp))
         if len(dumps) >= a.limit:

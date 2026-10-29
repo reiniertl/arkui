@@ -55,9 +55,7 @@ tools/checks/.
 ORDER
 ===============================================================================
 
-  Before item 1: the paint-order fix (/cb-green run 1a0b12ee00f14c6e) is
-  implemented and its 12 checks hold; it is committed and finalized first.
-  1. /cb-fix — a visible node is never discarded; tag coverage is confidence
+  1. /cb-fix — an item is a kept child of its container
   2. /cb-green — no wrappers and no alias for the old pattern names
 
 
@@ -65,6 +63,10 @@ ORDER
 DEFERRED
 ===============================================================================
 
+  - an open point, not yet an item: tag coverage is one small line on
+    each tile ("tagged N%"); a scene under one half (147 of 342) is not
+    marked at a glance. Whether the viewer marks it - a badge, a dimmed
+    picture - is for the human (a change to IF-VIEWER).
   - an open point, not yet an item: the clustering tab writes "median"
     before each cluster's list of the motifs found in at least half of its
     scenes; nothing there is a median, and an empty list prints the word
@@ -93,7 +95,11 @@ DEFERRED
     draw rects the extraction refuses. Measured on the capture of
     2026-10-28: 299 stored scenes give 139 distinct motif vectors, one
     vector shared by 46. ALG-QUICK-SIG and ALG-CAPTURE-LOOP carry no
-    predicate. The client dump is fetched only for a sample judged new, so
+    predicate. The tag coverage of 2026-10-29 shows the cost: 147 of the 342
+    scenes have under half of their visible area owned by a tagged node; the
+    79 whose only motif is a list - TikTok's tab strip over an untagged
+    player created after the last client dump - read 0.09 to 0.13.
+    The client dump is fetched only for a sample judged new, so
     a photographed sample borrows its tags from the last one before it
     (ALG-TAG-BORROW); where a sample has its own, 52 of the 65 app windows
     readable with it stay readable with the previous one's. Before the next capture:
@@ -105,11 +111,9 @@ DEFERRED
     source on this device build. The client dump gives a fixed subset of
     them and the window manager, ability manager and RenderService dumps
     give none, so the launcher, the gesture layers and the wallpaper are
-    read as untagged windows (ERR-MOTIF-ROOT-UNTAGGED: 733 windows in the
-    342 photographed scenes of 2026-10-28). The launcher is one of them:
-    on 20261027_102041/s000342 SCBDesktop keeps 129 nodes and none is
-    tagged, so the home page reads as no motif. Whether to look for
-    another source, and where, is for the human.
+    mostly untagged. On 20261027_102041/s000342 SCBDesktop keeps 129 nodes
+    and none is tagged, so the home page reads as no motif. Whether to look
+    for another source, and where, is for the human.
 
 ===============================================================================
 PROMPTS
@@ -117,114 +121,65 @@ PROMPTS
 
 
 
-/cb-fix — a visible node is never discarded; tag coverage is confidence
-  - Bug: the pass throws away visible content in two places, against the
-    rule that every node on the display, tagged or not, enters the motif
-    comparison.
-      1. INV-CLIENT-TAG-COVERAGE: a window whose kept canvas nodes are
-         under half tagged loses every motif match it made
-         (rs_scene.Scene._up, R.UNTAGGED_BELOW). Dry run on the 342
-         photographed scenes of 2026-10-28, nothing changed: an app
-         window (not a gesture layer) was discarded in 39 scenes; without
-         the discard the motif set changes in 6, all gaining list (e.g.
-         20261022_110104/s000516, 20261022_123014/s001660, s002645), and
-         the scenes with no motif go from 54 to 48.
-      2. ALG-PICTURE-PAIR refuses a picture whose session has no client
-         dump at or before it ("no earlier client dump"): a picture is
-         turned away for lacking tags. 0 pictures on this capture.
-    The tag is the node's component identity, from a client dump read
-    apart from the render tree; on this data it is often stale (cluster 8:
-    73 TikTok video pages whose player was created after the dump, a
-    median 132 samples earlier). Its coverage measures how far the motif
-    comparison can be trusted. It is reported, never used to remove
-    anything.
-  - Spec work (every node below re-read with ril node-info, and
-    impact-analysis run on INV-CLIENT-TAG-COVERAGE,
-    ERR-MOTIF-ROOT-UNTAGGED and INV-UNPLACED-SCENES-NAMED before the
-    envelope; the impact reaches ALG-VISIBILITY, ALG-MOTIF-MATCH,
-    ALG-PICTURE-PAIR, ALG-VECTOR-CLUSTER, ALG-VIEWER-RENDER,
-    IF-CAPTURE-SESSION, IF-MOTIF-VECTOR, IF-MOTIF-VOCABULARY,
-    IF-PATTERNS-ROW, IF-PAGE-PAYLOAD, IF-VIEWER):
-      modify INV-CLIENT-TAG-COVERAGE - description and predicate: every
-        scene's tag coverage is measured and reported, coverage = the
-        display's visible cells on kept canvas nodes that carry a
-        component tag / the display's visible cells on kept canvas nodes,
-        each cell once, in [0, 1]; it removes no node and no match.
-        Edges kept: checked-at AUT-PIPELINE-RUN, emits
-        ERR-MOTIF-ROOT-UNTAGGED, satisfied by ALG-VISIBILITY, assumed by
-        IF-CAPTURE-SESSION. Holder: rs_scene.Scene (the pass); check:
-        tag_coverage.py.
-      modify ERR-MOTIF-ROOT-UNTAGGED - severity WARN; description: a
-        scene whose tag coverage is under one half, named with its
-        coverage; a report, its matches kept.
-      modify ALG-VISIBILITY - the window sentence ("a window under half
-        tagged discards its matches") becomes: the scene's tag coverage
-        is counted over the visible cells, each once. Artifact: Scene.visit
-        (associated).
-      modify ALG-MOTIF-MATCH - state that no match is discarded for its
-        window's tags. Artifact: Scene._up (associated).
-      modify ALG-PICTURE-PAIR - the "no earlier client dump" condition
-        goes: a sample with no client dump at or before it is a scene with
-        no tags (coverage 0). Artifact: rs_sample.pair (associated).
-      modify ALG-TAG-BORROW - a sample with no client dump before it has
-        an empty tag map, not a refusal; the sentence pointing to the
-        under-half handling goes. Artifact: rs_sample.tag_source
-        (associated).
-      modify ERR-PICTURE-LOST and INV-NO-SILENT-SCENE-LOSS - "no earlier
-        client dump" leaves the reasons.
-      modify IF-PATTERNS-ROW - COVERAGE becomes one column, tag_coverage,
-        as INV-CLIENT-TAG-COVERAGE defines it; untagged_windows and
-        read_windows go; the lost.csv reasons lose "no earlier client
-        dump". tag_coverage is not part of IF-MOTIF-VECTOR and never
-        enters the clustering (INV-CLUSTERING-MATCHES-NO-PATTERN
-        unchanged: exactly the 63 columns).
-      modify INV-UNPLACED-SCENES-NAMED - one population: the scenes with
-        no motif found, each named and shown with its tag coverage; the
-        "undescribed" population (no window readable) goes, since no
-        window is unreadable any more. Check: unplaced_rules.py; error
-        ERR-SCENE-UNPLACED unchanged.
-      modify IF-PAGE-PAYLOAD and IF-VIEWER - _scenes carries each scene's
-        tag_coverage; every tile shows it; the motif tab's 'untagged'
-        group goes; _unplaced holds one population. Checks:
-        viewer_renders.py, unplaced_rules.py, no_silent_scene_loss.py.
-      modify IF-MOTIF-VOCABULARY only if its text says an untagged node's
-        matches are dropped; an untagged node stays pass-through (the
-        human chose on 2026-10-29 not to make untagged nodes elements).
-      no node is added or removed. ril associate is unchanged (no new
-        algorithm); the association XML is checked to still name
-        Scene.visit, Scene._up, rs_sample.pair, rs_sample.tag_source.
-  - Code path: rs_extract.py (UNTAGGED_BELOW goes), rs_scene.py (_up: no
-    discard, no self.untagged; the coverage over visible cells; row:
-    tag_coverage), rs_sample.py (no NO_CLIENT gate; tags from an empty
-    map), rs_pattern.py (the report: coverage under one half as
-    ERR-MOTIF-ROOT-UNTAGGED, WARN), vectors_build.py (no untagged group,
-    one unplaced population, tag_coverage per scene), vectors_page.py
-    (coverage on every tile, no untagged group); checks: scene_pass.py
-    (the motif oracle stops excluding windows under half; an oracle
-    coverage computed on its own and compared), tag_coverage.py (reports
-    the scene coverage, no discard), parsing_rules.py (the row's columns),
-    picture_timing.py (no NO_CLIENT branch), no_silent_scene_loss.py (the
-    reasons), unplaced_rules.py, viewer_renders.py (no untagged group, a
-    coverage per tile).
-  - Verification of the specification: npm run spec:check and
-    npm run spec:semantic-validate, no violations; node-info on every
-    modified node shows its edges as listed above, every invariant with a
-    checked-at, an emits and a check named in its predicateNL, every
-    algorithm with its artifact.
+/cb-fix — an item is a kept child of its container
+  - Bug: ALG-MOTIF-MATCH and IF-MOTIF-VOCABULARY write parent/item* for "two
+    or more kept children" of a List, ListItemGroup, Grid, WaterFlow, Swiper
+    or SideBarContainer, and parent/item for the one kept child of a Scroll
+    or Refresh. rs_scene.Scene._up counts the HEADS instead - the meaningful
+    nodes lifted up through pass-through children - so the contents of one
+    page are counted as the container's items. The scene_pass oracle counts
+    heads too, so the checks agreed with the bug.
+    Reproduced on 20261022_110104/s000552: the Swiper has one kept child, a
+    full-screen page; through its pass-through wrapper 14 heads are lifted
+    (the XComponent, Rows, Images, Texts, a Scroll), so the Swiper reads
+    Swiper/item* and matches carousel at d = 0. Every full-screen video page
+    in a paged Swiper does the same: all 34 video_large scenes of the
+    capture of 2026-10-28 carry carousel.
+    Measured on every third photographed scene (nothing changed):
+      Swiper: 31 with one kept child and two or more heads (a false
+        carousel), 25 with two or more kept children and at most one head
+        (a carousel missed);
+      Scroll: 2 with one kept child and two or more heads (scroll_page
+        missed);
+      List, Grid, WaterFlow: kept children and heads agree - their children
+        are ListItem, GridItem, FlowItem.
+  - Spec work (node-info and impact-analysis on ALG-MOTIF-MATCH and
+    IF-MOTIF-VOCABULARY before the envelope):
+      modify ALG-MOTIF-MATCH and IF-MOTIF-VOCABULARY - the item form: an
+        item container's items are its direct kept children in the render
+        tree, each one item whether its own label is pass-through or not;
+        what is lifted out of an item through pass-through is never an item
+        of the container; parent/item* for two or more, parent/item for the
+        one child of a Scroll or Refresh; the deeper pairs (GridItem/icon of
+        icon_grid) still come from what is lifted.
+      add invariant INV-ITEMS-ARE-CHILDREN (SUB-FEATURE-RESEARCH): for every
+        kept List, ListItemGroup, Grid, WaterFlow, Swiper, SideBarContainer,
+        Scroll and Refresh, the item element of its set follows the number
+        of its kept children - item* for two or more, item for one;
+        checked-at AUT-PIPELINE-RUN; emits ERR-MOTIF-ORACLE-MISMATCH;
+        satisfied by ALG-MOTIF-MATCH; predicateNL naming scene_pass.py (its
+        motif oracle counts children with code of its own) and the
+        confirmed case below.
+      nothing removed; the dictionary and its motifs unchanged. Artifact:
+        Scene._up, already associated with ALG-MOTIF-MATCH.
+  - Code path: rs_scene.py Scene._up (count the kept children, not the
+    heads); tools/checks/scene_pass.py (the oracle's pairs from the kept
+    children; the confirmed case).
+  - Verification of the specification: npm run spec:check, no violations
+    (this setup has no semantic validator - ril offers validate-delta and
+    check-conflicts); node-info on every new or modified node shows its
+    checked-at, its emits, its check and its artifact.
   - Verification of the code, on the real capture:
-      1. scene_pass.py: the motif oracle, now discarding nothing, equals
-         the pass on every scene; its own tag coverage equals the row's
-         within one cell per edge; every invariant line holds.
-      2. a static check (parsing_rules.py): no code under tools/cluster
-         compares a coverage with a threshold to drop a match or a scene.
-      3. the dry run's figures reproduced: the 6 scenes gain list, no
-         motif 54 -> 48; any other change named.
-      4. tag_coverage per scene: its distribution reported; cluster 8's 73
-         scenes listed with theirs.
-      5. pictures: named, scenes, lost by reason - "no earlier client
-         dump" no longer appears.
-      6. rs_pattern, vectors_build, vectors_page rerun; every check under
-         tools/checks/ named with its result.
+      1. scene_pass.py: the oracle, counting children, equals the pass on
+         every scene; every line holds.
+      2. confirmed: in 20261022_110104/s000552 the Swiper's set holds
+         Swiper/item, and carousel is not found.
+      3. the scenes per motif before and after, and every scene whose
+         motif set changes, named; the video_large scenes that still carry
+         carousel, each looked at.
+      4. clusters before and after; s000552's cluster.
+      5. rs_pattern, vectors_build, vectors_page rerun; every check under
+         tools/checks/ named with its result, measurement_rules included.
   - BOUNDARY: as in RULES FOR EVERY ITEM.
 
   - IMPORTANT: Every figure is measured in this session against a real capture and written into the report.
