@@ -142,14 +142,14 @@ def main():
     src = open(a.build, encoding="utf-8").read()
     failed = []
 
-    def report(inv, problems, ok_line):
+    def report(inv, problems, ok_line, err="ERR-VIEWER-RENDER-FAILED"):
         print(inv)
         if problems:
             for p in problems[:12]:
                 print("    " + p)
             if len(problems) > 12:
                 print("    ... and %d more" % (len(problems) - 12))
-            print("  ERR-VIEWER-RENDER-FAILED\n  VIOLATED")
+            print("  %s\n  VIOLATED" % err)
             failed.append(inv)
         else:
             print("  " + ok_line + "\n  holds")
@@ -230,7 +230,7 @@ def main():
     probs = []
     check_no_weights(src, probs)
     report("INV-NO-FEATURE-WEIGHTS", probs,
-           "build_clustering uses the pattern vector as measured")
+           "build_clustering uses the pattern vector as measured", "ERR-FEATURE-WEIGHTED")
 
     return 1 if failed else 0
 

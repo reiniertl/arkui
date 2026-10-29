@@ -63,7 +63,7 @@ def main():
     if not up:
         print("    the payload carries no _unplaced block, so nothing the")
         print("    vectors could not place is named anywhere a reader looks")
-        print("  VIOLATED")
+        print("  ERR-SCENE-UNPLACED\n  VIOLATED")
         return 1
 
     ok = True
@@ -103,7 +103,7 @@ def main():
         print("  every scene that could not be placed is named")
         print("  holds")
         return 0
-    print("  VIOLATED")
+    print("  ERR-SCENE-UNPLACED\n  VIOLATED")
     return 1
 
 

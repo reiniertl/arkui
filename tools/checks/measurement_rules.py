@@ -43,6 +43,7 @@ def check_determinism(root, seeds=("1", "7", "4242")):
                                capture_output=True, text=True, env=env)
             if r.returncode != 0 or not os.path.exists(out):
                 print("  INV-DETERMINISTIC-MEASUREMENT")
+                print("    ERR-NONDETERMINISTIC-MEASUREMENT")
                 print("    the run failed under PYTHONHASHSEED=%s: %s"
                       % (seed, (r.stderr or "").strip()[:120]))
                 return False
@@ -53,6 +54,8 @@ def check_determinism(root, seeds=("1", "7", "4242")):
         print("    PYTHONHASHSEED=%-5s sha256 %s" % (seed, d[:24]))
     print("    identical across %d hash seed(s): %s"
           % (len(outs), "yes" if same else "NO"))
+    if not same:
+        print("    ERR-NONDETERMINISTIC-MEASUREMENT")
     return same
 
 

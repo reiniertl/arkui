@@ -67,7 +67,7 @@ def main():
         print("    " + b)
     if refused:
         print("  ERR-PICTURE-NOT-SAME-MOMENT: %d scene(s) shown with no picture" % len(refused))
-    print("  VIOLATED" if bad else "  holds")
+    print("  ERR-PICTURE-NOT-SAME-MOMENT\n  VIOLATED" if bad else "  holds")
 
     hits = []
     # walked, not listed by git: the capture machine runs a copy of tools/
@@ -83,7 +83,7 @@ def main():
     print("  %d file(s) under tools/ read; file-time reads: %d" % (len(files), len(hits)))
     for h in hits[:8]:
         print("    " + h)
-    print("  VIOLATED" if hits else "  holds")
+    print("  ERR-PICTURE-NOT-SAME-MOMENT\n  VIOLATED" if hits else "  holds")
     return 1 if bad or hits else 0
 
 

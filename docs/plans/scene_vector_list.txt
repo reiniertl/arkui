@@ -55,61 +55,26 @@ tools/checks/.
 ORDER
 ===============================================================================
 
-  1. /cb-green — a sound specification for the feature module
+  (empty)
 
 
 ===============================================================================
 DEFERRED
 ===============================================================================
 
+  - an open point, not yet an item: INV-EVERY-DISTINCT-SCENE-PHOTOGRAPHED
+    does not hold on the capture of 2026-10-28 - capture_coverage.py finds
+    73 of 299 scenes with no picture at all, so their tiles are blank. The
+    capture loop photographs a scene only when it settles; whether to
+    change that, and how, is for the human.
   - an open point, not yet an item: the system UI's components have no
     source on this device build. The client dump gives a fixed subset of
     them and the window manager, ability manager and RenderService dumps
     give none, so the launcher, the gesture layers and the wallpaper are
-    read as untagged windows (ERR-PATTERN-ROOT-UNTAGGED: 651 windows in 299
+    read as untagged windows (ERR-PATTERN-ROOT-UNTAGGED: 650 windows in 299
     scenes, 598 of them the two gesture layers). Whether to look for
     another source, and where, is for the human.
 
 ===============================================================================
 PROMPTS
 ===============================================================================
-
-/cb-green — a sound specification for the feature module
-  - What: SUB-FEATURE-RESEARCH is made sound: every algorithm
-    bound to the code that implements it, every invariant bound to what
-    holds it and to a check that tests it, no edge claiming what the code
-    does not do, and no two nodes contradicting each other. To clear:
-      - only ALG-VISIBILITY, ALG-PATTERN-MATCH, ALG-PARSE-RSTREE,
-        ALG-MOTIF-SCHEMATIC, ALG-VECTOR-CLUSTER and ALG-VIEWER-RENDER carry
-        an artifact association;
-      - INV-DETERMINISTIC-MEASUREMENT, INV-UNIT-COLUMNS-BOUNDED,
-        INV-GENERATED-HAS-TRACKED-PRODUCER, INV-NO-CAPTURES-TRACKED and
-        INV-TEXT-STORED-LF have no satisfier;
-      - ALG-QUICK-SIG satisfies nothing.
-    The audit is re-run at the start of the item and every finding is taken
-    from that run.
-  - Read: every node of SUB-FEATURE-RESEARCH through ril query-multi;
-    tools/cluster/*.py and tools/checks/*.py; ril associate.
-  - Spec work:
-      every algorithm without one: ril associate with the file and
-        function that implement it.
-      the invariants without a satisfier: the satisfies edge from the
-        algorithm that holds each, or, where one is enforced by
-        construction, verified-by structural with the construction named.
-      every invariant without an error code: one, emitted by it and raised
-        by the check that tests it.
-  - Code path: tools/checks/ - every check prints the id of each invariant
-    it tests and the error code of each violation.
-  - Test: the audit re-run at the end, every line of it empty; every check
-    under tools/checks/ run on the real capture and named with its result;
-    npm run spec:check, no violations.
-  - BOUNDARY: as in RULES FOR EVERY ITEM.
-
-  - IMPORTANT: Every figure is measured in this session against a real capture and written into the report.
-  - INVIOLABLE: SPECIFICATION SURFACE IS AUTHORITATIVE. Every node above exists before the code it governs.
-  - INVIOLABLE: DO NOT EMIT P3_SKIPPED.
-  - FORBIDDEN: MULTI-AGENT execution is not allowed. DO NOT SPAWN MULTIPLE AGENTS.
-  - WHEN TO COMMIT: Before "silk run finalize", after `npm run ril -- journal coalesce`.
-  - AFTER COMMIT: end FINAL_STATUS with an explicit NOT PUSHED line naming /cb-ops.
-  - DECISION PROTOCOL: If a decision must be made, ask for direct feedback. DO NOT DECIDE ALONE.
-  - AT THE END: update this list as HOW THE LIST WORKS states.

@@ -172,6 +172,7 @@ def main():
         print("  columns: not checked (pass --patterns to include them)")
 
     if src or col:
+        print("  ERR-SCENE-CLASS")
         print("  VIOLATED")
         return 1
     print("  holds")

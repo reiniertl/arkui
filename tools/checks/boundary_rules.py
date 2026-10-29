@@ -88,6 +88,8 @@ def check_device_computes_nothing(root):
     print("    measuring or naming constructs: %d" % len(bad))
     for b in bad[:5]:
         print("    %s" % b)
+    if bad:
+        print("    ERR-DEVICE-COMPUTES")
     return not bad
 
 
@@ -104,6 +106,8 @@ def check_no_captures_tracked(root):
           % ("all" if not missing else "missing " + ", ".join(missing)))
     for f in bad[:5]:
         print("    %s" % f)
+    if bad or missing:
+        print("    ERR-CAPTURE-TRACKED")
     return not bad and not missing
 
 
@@ -156,6 +160,8 @@ def check_generated_has_producer(root):
         print("      %-32s %s" % (prod, "tracked" if prod in files else "NOT TRACKED"))
     for b in bad[:6]:
         print("    %s" % b)
+    if bad:
+        print("    ERR-GENERATED-WITHOUT-PRODUCER")
     return not bad
 
 
@@ -208,6 +214,8 @@ def check_text_stored_lf(root):
           % ("yes" if not any("declared" in b for b in bad) else "NO"))
     for b in bad[:5]:
         print("    %s" % b)
+    if bad:
+        print("    ERR-TEXT-NOT-LF")
     return not bad
 
 

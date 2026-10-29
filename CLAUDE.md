@@ -10,8 +10,10 @@ and scheduling happen elsewhere, in something that is not this repository.
 Code whose reason for existing is one of those questions does not belong
 here, however long it has been present.
 
-The spec graph is empty as of this commit. Code under `tools/` predates
-combobul and is not yet bound to spec nodes; binding it is the work ahead.
+The spec graph is the module SUB-FEATURE-RESEARCH. Every algorithm in it is
+bound to the function that implements it (`ril associate`), and every
+invariant to what holds it, to a check under `tools/checks/` and to the
+error code that check raises.
 
 There are no scene classes in this repository and that is deliberate. Three
 asserted taxonomies - a C enum of 20, a PowerShell classifier of 23, and a

@@ -16,6 +16,9 @@ output long before it was visible in the source.
   INV-PARSE-ONLY-SELECTION-FIELDS
                               the parser returns and searches only the
                               fields selection and matching need
+  INV-STRUCTURE-NOT-DRAW-STATE
+                              no element can depend on draw state: the
+                              parser does not read it
   INV-SELECTION-AND-DISTANCE-ONLY
                               the row's columns are exactly IF-PATTERNS-ROW's,
                               and the pass names nothing about rendering
@@ -95,6 +98,8 @@ def check_first_pass(dumps):
           "against the first-pass line" % (len(dumps), split_seen, checked))
     for f, why in bad[:5]:
         print("    %s: %s" % (f, why))
+    if bad:
+        print("    ERR-FIRST-PASS-LEAK")
     return not bad
 
 
@@ -139,7 +144,7 @@ def check_parse_fields(passes):
         bad.append("parse_surface returns %s" % sorted(set(w) ^ WINDOW_FIELDS))
     for m in RENDER_WORDS.finditer(code_of(R.__file__)):
         bad.append("rs_extract.py reads %r" % m.group(0))
-    print("  INV-PARSE-ONLY-SELECTION-FIELDS")
+    print("  INV-PARSE-ONLY-SELECTION-FIELDS, INV-STRUCTURE-NOT-DRAW-STATE")
     print("    parse_node returns %d field(s), parse_surface %d; render fields "
           "searched for: %d" % (len(n), len(w), sum(1 for b in bad if "reads" in b)))
     for b in bad[:6]:

@@ -30,4 +30,12 @@
   <associate source="tools/cluster/vectors_page.py" kind="function" name="main" scope="">
     <link to="ALG-VIEWER-RENDER" relation="implements"/>
   </associate>
+
+  <associate source="tools/rs_capture.ps1" kind="function" name="Invoke-RsFastCapture" scope="">
+    <link to="ALG-CAPTURE-LOOP" relation="implements"/>
+  </associate>
+
+  <associate source="tools/rs_capture.ps1" kind="function" name="Get-RsQuickSig" scope="">
+    <link to="ALG-QUICK-SIG" relation="implements"/>
+  </associate>
 </artifact-associations>

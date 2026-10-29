@@ -113,7 +113,7 @@ def main():
         print("  %d tile(s) in the payload identify no scene" % anonymous)
         print("  a page that cannot name what it shows cannot be reconciled")
         print("  with what was measured, so no row can be accounted for.")
-        print("  VIOLATED")
+        print("  ERR-SCENE-WITHOUT-REP\n  VIOLATED")
         return 1
     print("  scenes in the payload   : %d" % len(shown))
     print("  reported missing        : %d" % len(missing))
@@ -137,7 +137,7 @@ def main():
         if per is not None and len(marked) != per:
             print("  the audit says %s from a backstop but %d tile(s) say so"
                   % (per, len(marked)))
-            print("  VIOLATED")
+            print("  ERR-SCENE-WITHOUT-REP\n  VIOLATED")
             return 1
     if audit.get("rows") is not None:
         print("  payload says it measured: %d" % audit["rows"])
@@ -153,13 +153,13 @@ def main():
               % (len(measured), len(accounted & measured), len(lost)))
         for sid in sorted(lost)[:10]:
             print("    %s" % sid)
-        print("  VIOLATED")
+        print("  ERR-SCENE-WITHOUT-REP\n  VIOLATED")
         return 1
     stray = accounted - measured
     if stray:
         print("  %d scene(s) in the payload were never measured: %s"
               % (len(stray), ", ".join(sorted(stray)[:5])))
-        print("  VIOLATED")
+        print("  ERR-SCENE-WITHOUT-REP\n  VIOLATED")
         return 1
     print("  every measured row is shown or reported")
     print("  holds")
