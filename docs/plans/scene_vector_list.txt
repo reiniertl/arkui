@@ -7,8 +7,8 @@ and nothing else. What was done, and why, is in git and in the transcripts.
 HOW THE LIST WORKS
 
 - ORDER holds one line per item, in the order they run.
-- PROMPTS holds each item's full prompt, starting "/cb-green — <title>" with
-  no prefix, ready to paste.
+- PROMPTS holds each item's full prompt, starting "/cb-green — <title>" or
+  "/cb-fix — <title>" with no prefix, ready to paste.
 - DEFERRED holds items kept for later, with their prompts. They are not run
   until the human moves them into ORDER.
 - Each item is one skill execution.
@@ -55,13 +55,29 @@ tools/checks/.
 ORDER
 ===============================================================================
 
-  1. /cb-green — the scene is the photographed sample
+  1. /cb-fix — paint order is sortedChildren as dumped
+       Before it: the photographed-sample item (run 00f0e67269aa4fbe) is
+       implemented and every check holds, awaiting its commit and finalize.
 
 
 ===============================================================================
 DEFERRED
 ===============================================================================
 
+  - an open point, not yet an item: scenes are not deduplicated. Every
+    photographed sample accepted by ALG-PICTURE-PAIR is a scene, as the
+    human decided on 2026-10-29: on the capture of 2026-10-28 the 350
+    scenes give 70 distinct motif vectors, the largest shared by 73 and 67
+    scenes. An offline deduplication - what makes two photographed samples
+    the same scene, and its invariant - is for the human to specify.
+  - an open point, not yet an item: 193 of the 543 pictures on disk are
+    refused because the display changed across the shot (ALG-PICTURE-PAIR:
+    the next sample's kept tree differs, or a visible box moves more than
+    one cell). In 176 the kept nodes differ - a median 0.13 of them, under
+    0.02 in 29 - and in 17 the nodes are the same and a box moved. The
+    shot lands about 370 ms after the render tree is read. Whether the
+    capture should read the tree again after the shot, or otherwise bracket
+    it, is for the human; the pairing rule is not changed to fit the data.
   - an open point, not yet an item: the capture's deduplication is not
     sound and is not specified. rs_capture.ps1 calls a sample a new scene
     when its signature - every node's innerAbsDrawRect on a 16 px grid,
@@ -73,7 +89,9 @@ DEFERRED
     2026-10-28: 299 stored scenes give 139 distinct motif vectors, one
     vector shared by 46. ALG-QUICK-SIG and ALG-CAPTURE-LOOP carry no
     predicate. The client dump is fetched only for a sample judged new, so
-    no later rule can re-tag the other samples. Before the next capture:
+    a photographed sample borrows its tags from the last one before it
+    (ALG-TAG-BORROW); where a sample has its own, 52 of the 65 app windows
+    readable with it stay readable with the previous one's. Before the next capture:
     whether the loop saves the client dump with every picture (about
     190 ms more a sample; a screenshot costs about 370 ms - 653 ms median
     for a sample with one, 285 without), and whether deduplication moves
@@ -82,112 +100,108 @@ DEFERRED
     source on this device build. The client dump gives a fixed subset of
     them and the window manager, ability manager and RenderService dumps
     give none, so the launcher, the gesture layers and the wallpaper are
-    read as untagged windows (ERR-MOTIF-ROOT-UNTAGGED: 650 windows in 299
-    scenes, 598 of them the two gesture layers). Whether to look for
+    read as untagged windows (ERR-MOTIF-ROOT-UNTAGGED: 756 windows in the
+    350 photographed scenes of 2026-10-28). Whether to look for
     another source, and where, is for the human.
 
 ===============================================================================
 PROMPTS
 ===============================================================================
 
-/cb-green — the scene is the photographed sample
-  - What: the unit the pipeline processes changes from the stored scene
-    (<stem>.rstree.txt, chosen live by the capture's signature) to the
-    photographed sample: a picture and the render tree read in the same
-    sample. Only samples that have both are processed, and the viewer
-    shows every one with its own picture. The capture is not changed.
-    WHY. Measured on the capture of 2026-10-28 (7 sessions on the capture
-    machine): 7,292 samples, every render tree kept in raw/; 572 pictures
-    named in samples.csv, 543 on disk - 29 of session 20261027_072726 never
-    arrived. Today a scene's dump and client dump come from the sample that
-    first recorded it and its picture from a later one, so 73 scenes have
-    no picture and 16 are refused by INV-PICTURE-SAME-MOMENT - the cases
-    where a screenshot was paired to the wrong dump.
-    PAIRING. A picture is named on one row of samples.csv; that row's raw
-    column names the render tree read in the same sample, before the shot.
-    The shot lands about 370 ms after the dump began, so the pair is
-    accepted only if the display did not change across it: the next
-    sample's display equals this one's. 482 of 543 pass when "equal" is
-    the capture's signature, 449 when both the sample before and the one
-    after agree - the signature is the unsound one, so the item compares
-    the extraction's own scene.
-    TAGS. Only 39 of the 543 samples have their own client dump. Render
-    nodes keep their ids while they live, so a sample's tags are read from
-    the nearest client dump of the same session, by node id. Measured over
-    all canvas nodes: borrowed tags cover a median 0.53 (p10 0.20) of a
-    picture's dump, a scene's own client dump 0.56 (p10 0.35). A window
-    under half tagged is already reported and its matches discarded
-    (INV-CLIENT-TAG-COVERAGE, ERR-MOTIF-ROOT-UNTAGGED); that rule holds
-    unchanged.
-    IDENTITY. A scene is <session>/<raw sample>; its picture is the file
-    the row names, <stem>.jpeg or p<nnnnnn>.jpeg alike - both are the
-    sample's own picture, so the settled / backstop distinction and the
-    borrowed tile disappear from the viewer.
-    PUT TO THE HUMAN, before the envelope:
-      1. what "the display did not change" means for the next sample: the
-         same kept tree node for node, the same kept tree within one cell
-         per edge, or the same motif row;
-      2. where the tags come from: the nearest client dump before the
-         sample only, or the nearest on either side;
-      3. whether identical photographed samples are deduplicated offline
-         in this item (and on what), or every accepted pair is a scene and
-         deduplication is a later item;
-      4. whether the 29 pictures missing on disk are reported as lost or
-         left out as never captured.
-  - Read: tools/rs_capture.ps1 (what samples.csv records, and when the
-    shot is taken), tools/cluster/rs_pattern.py, rs_extract.py
-    (parse_client), vectors_build.py (sample_rows, same_moment, the
-    picture lookup), vectors_page.py; tools/checks/picture_timing.py,
-    capture_coverage.py, no_silent_scene_loss.py, scene_pass.py,
-    parsing_rules.py, measurement_rules.py, tag_coverage.py,
-    unplaced_rules.py, viewer_renders.py; the nodes below.
+
+/cb-fix — paint order is sortedChildren as dumped
+  - Bug: the pass and its oracle reverse a node's children where the dump
+    says ReverseChildren: 1, then re-sort by PositionZ. Among siblings with
+    equal PositionZ the reversal survives the sort and inverts their order,
+    so a node painted on top is treated as painted below and is culled as
+    occluded.
+    Reproduced on 20261022_110104/s000308: TikTok's window container
+    WindowScene_aweme329 (system UI, pid 3689) has sortedChildren
+    [aweme0 (TikTok, pid 41975), SCBKeyboardPanel (pid 3689, holding
+    softKeyboard1, pid 33837)], both at PositionZ 0, ReverseChildren: 1.
+    The screenshot shows the keyboard on top; the pass puts it under
+    aweme0's opaque content and keeps nothing of it.
+    Window stacking at the display is not affected: there every window's
+    parent has a distinct PositionZ (wallpaper 1, desktop 2, app 100, nav
+    bar 2200, status bar 2202, gesture layer 4102) and the re-sort restores
+    the order.
+  - Root cause, from the RenderService source (openharmony
+    graphic_graphic_2d, master):
+      rs_render_node.cpp GenerateFullChildrenList: the children list is
+        stable-sorted ascending by PositionZ; GetSortedChildren returns it
+        as is, and the dump prints it as sortedChildren. It is the paint
+        order: first painted first, last on top.
+      rs_uni_render_visitor.cpp QuickPrepareChildren: where
+        NeedPrepareChildrenInReverseOrder(node) - a node above the window
+        surfaces, or a leash window with a main window under it - the
+        PREPARE stage walks that list from rbegin to rend, top first, and
+        sets curFrameReverseChildren, which DumpTree prints as
+        ReverseChildren. It describes the prepare traversal, not the paint.
+    So ReverseChildren is never read for paint order, and no re-sort is
+    needed: sortedChildren is already sorted.
+  - Measured in a dry run on the 350 photographed scenes of 2026-10-28
+    (nothing changed in the repository): with the order fixed, scenes with
+    no motif 69 -> 57; the motif set changes in 13 scenes; grid and
+    icon_grid are found in 13 scenes each (the keyboard's key grid among
+    them); softKeyboard1 of s000308 is kept; the pass's median time is
+    unchanged at 101 ms. Dropping occlusion instead gave the same 57 and
+    the keyboard, cost 105 ms, and counted structures under opaque
+    content in 30 more scenes; occlusion stays.
+  - Read: tools/cluster/rs_extract.py (parse_node, paint_order),
+    rs_scene.py (Scene.visit), tools/checks/scene_pass.py (the display
+    oracle, the confirmed dumps), parsing_rules.py (check_parse_fields);
+    the RenderService source above; the nodes below.
   - Spec work:
-      modify IF-CAPTURE-SESSION: the unit read downstream is the
-        photographed sample - a row of samples.csv with a shot, its
-        picture and raw/<raw>.rstree.txt - with tags from the session's
-        client dumps by node id; the stem files are a client-dump store,
-        no longer the scene.
-      add algorithm ALG-PICTURE-PAIR (SUB-FEATURE-RESEARCH): pairs each
-        picture with the render tree of its own sample and accepts the
-        pair only if the display is unchanged in the next sample, as the
-        human decides; output-of the scene list rs_pattern.py measures.
-      add algorithm ALG-TAG-BORROW: a sample's component tags from the
-        session's nearest client dump, by node id, as the human decides.
-      modify INV-PICTURE-SAME-MOMENT: a scene's picture and dump come from
-        the same sample, and the display is unchanged in the next one; the
-        "no other signature in between" rule goes. ERR-PICTURE-NOT-SAME-
-        MOMENT names each refused pair with its reason.
-      remove INV-EVERY-DISTINCT-SCENE-PHOTOGRAPHED and ERR-SCENE-WITHOUT-
-        REP, each confirmed by the human node by node: a scene without its
-        picture can no longer exist. capture_coverage.py goes with them.
-      modify INV-NO-SILENT-SCENE-LOSS: every picture named in samples.csv
-        becomes a row or is reported with its reason - missing on disk,
-        pair refused, no client dump in the session; nothing is dropped
-        uncounted.
-      modify IF-PATTERNS-ROW: identity session, raw sample, picture.
-      modify IF-PAGE-PAYLOAD and IF-VIEWER: every tile the scene's own
-        picture; no backstop or borrowed marking; _audit counts pictures
-        named, on disk, paired, refused by reason.
-      if the human chooses offline deduplication: an algorithm and an
-        invariant for it, with the predicate it holds.
-      ril associate every new algorithm.
-  - Code path: tools/cluster/rs_pattern.py (the scenes are the paired
-    samples), a pairing and a tag lookup beside it, rs_scene.py unchanged;
-    vectors_build.py (the picture is the row's own; same_moment and the
-    backstop lookup go), vectors_page.py (no backstop marking);
-    tools/checks/: picture_timing.py for the new INV-PICTURE-SAME-MOMENT,
-    no_silent_scene_loss.py, and every check that globs *.rstree.txt -
-    scene_pass.py, parsing_rules.py, measurement_rules.py, tag_coverage.py
-    - reads the scenes rs_pattern.py reads; capture_coverage.py removed.
-  - Test, on the real capture: pictures named, on disk, paired, refused,
-    each by reason and session; the tag coverage of borrowed tags per
-    window against a scene's own client dump where both exist; the 16
-    pairings refused today are absent or refused with their reason; the
-    motifs per scene and scenes per motif against item 1's; the samples
-    around 20261022_123014/0102 and 0192 carry video_medium with
-    waterflow and grid; the viewer's tiles each show the scene's own
-    picture, none blank; every check under tools/checks/ named with its
-    result; npm run spec:check, no violations.
+      modify INV-OCCLUSION-PAINT-ORDER: description - the paint order is
+        sortedChildren as dumped, stable-ascending by PositionZ
+        (GenerateFullChildrenList), painted first to last; ReverseChildren
+        is the prepare traversal (QuickPrepareChildren,
+        NeedPrepareChildrenInReverseOrder) and is never read. Predicate -
+        the descent enters a node's children in the reverse of
+        sortedChildren, topmost first, so every occluder painted above a
+        node and outside its branch is written before the node is tested;
+        neither ReverseChildren nor dump position decides depth; and on
+        every dump sortedChildren is non-decreasing in PositionZ, the
+        premise the order rests on. NL - checked by scene_pass.py, whose
+        oracle builds the order from sortedChildren with code of its own
+        (not rs_extract.paint_order), and which counts every dump whose
+        sortedChildren is not non-decreasing in PositionZ.
+      add error code ERR-PAINT-ORDER-PREMISE (SUB-FEATURE-RESEARCH): a
+        dump whose sortedChildren is not non-decreasing in PositionZ,
+        named with the node; emitted by INV-OCCLUSION-PAINT-ORDER.
+      modify ALG-VISIBILITY: "children topmost first (ReverseChildren,
+        PositionZ)" becomes "children topmost first: the reverse of
+        sortedChildren".
+      modify INV-PARSE-ONLY-SELECTION-FIELDS: ReverseChildren leaves the
+        parsed fields; posz stays only for the premise check, or leaves
+        too if the check reads it itself - as the code is written.
+  - Code path: rs_scene.py Scene.visit (no reverse, no re-sort);
+    rs_extract.py parse_node (no "reverse"), paint_order (sortedChildren
+    order, or removed if nothing but the oracle used it); scene_pass.py
+    (an oracle order of its own from sortedChildren; the premise count;
+    the confirmed keyboard); parsing_rules.py (the field set).
+  - Verification, on the real capture:
+      1. scene_pass.py: the kept tree equals the oracle's node for node on
+         every photographed scene, the oracle now ordering children from
+         sortedChildren independently of rs_extract.
+      2. the premise: sortedChildren non-decreasing in PositionZ on every
+         node of every dump read, counted; any exception raises
+         ERR-PAINT-ORDER-PREMISE and is reported, not absorbed.
+      3. confirmed dumps, checked against their screenshots: in
+         20261022_110104/s000308 and s000328 softKeyboard1 is kept with
+         visible cells; in 20261027_102041/s000342 the five windows keep
+         their order (gesture back, status bar, nav bar, desktop,
+         wallpaper, topmost first); the seven confirmed videos and the
+         0192 GridItems hold as before.
+      4. parsing_rules.py: no code under tools/cluster reads
+         ReverseChildren; the parsed field set is the specified one.
+      5. re-measure everything: rs_pattern (pictures, scenes, lost by
+         reason - the pairing compares kept trees, so its counts may
+         move), vectors_build, vectors_page; motifs per scene and scenes
+         per motif before and after; the scenes whose motif set changes,
+         named; clusters 0 and 1 compared again.
+      6. every check under tools/checks/ named with its result;
+         npm run spec:check, no violations.
   - BOUNDARY: as in RULES FOR EVERY ITEM.
 
   - IMPORTANT: Every figure is measured in this session against a real capture and written into the report.

@@ -29,7 +29,8 @@ matches no motif. Nothing confirms a class list.
 |---|---|
 | `tools/cluster/rs_extract.py` | the dump indexed, a node parsed on demand, its geometry |
 | `tools/cluster/rs_scene.py` | the scene in one pass: visibility, the motif match |
-| `tools/cluster/rs_pattern.py` | runs the pass over a capture -> patterns.csv |
+| `tools/cluster/rs_sample.py` | the scenes: each picture paired with its own sample's render tree, tags borrowed |
+| `tools/cluster/rs_pattern.py` | runs the pass over the paired samples -> patterns.csv, patterns.lost.csv |
 | `tools/cluster/vectors_build.py` | cells, descriptions, the joint clustering, the payload |
 | `tools/cluster/vectors_page.py` | the viewer, `scene_feature_reference.html` |
 | `tools/checks/viewer_renders.py` | executes the viewer and checks what it rendered |

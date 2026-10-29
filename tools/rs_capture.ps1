@@ -444,8 +444,9 @@ function Invoke-RsFastCapture {
     Write-Host ""
     Write-Host ("captured {0:N0}s: {1} samples, {2} distinct scenes, {3} failed" -f $el, $n, $idx, $failed) -ForegroundColor Green
     Write-Host ("  raw stream: {0} dumps, {1:N0} MB in {2}" -f $n, $rawMB, $rawDir) -ForegroundColor DarkGray
-    # $pending.Count is the scenes that ended the run with no picture at all,
-    # which is INV-EVERY-DISTINCT-SCENE-PHOTOGRAPHED's count. It should be 0.
+    # $pending.Count is the stored dumps that ended the run with no picture.
+    # Downstream a scene is a photographed sample (ALG-PICTURE-PAIR), so
+    # these are only dumps nobody can look at, not lost scenes.
     Write-Host ("  pictures: {0} on a stable pair, {1} backstop, {2} scenes with none" -f `
         $shots, $backstop, $pending.Count) -ForegroundColor DarkGray
     if ($n -gt 0) { Write-Host ("  {0:N2} s per sample" -f ($el / $n)) -ForegroundColor Green }

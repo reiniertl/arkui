@@ -78,10 +78,6 @@ HTML = r"""<!doctype html>
   .pics { display:flex; gap:9px; padding:10px 13px 13px; overflow-x:auto; }
   .pic { flex:0 0 112px; position:relative; }
   .pic img { width:100%; border-radius:5px; border:1px solid var(--line); display:block; }
-  .pic.brw img { border-style:dashed; }
-  .pic .borrowed { position:absolute; left:4px; top:4px; padding:1px 4px;
-    border-radius:3px; background:var(--card); border:1px solid var(--line);
-    font-size:8.5px; color:var(--dim); }
   .pic .nopic { width:100%; aspect-ratio:9/19.5; border-radius:5px;
     border:1px dashed var(--line); background:var(--card); display:flex;
     align-items:center; justify-content:center; font-size:10px; color:var(--dim); }
@@ -123,16 +119,13 @@ var DATA = __DATA__;
   var TOTAL = audit.rows || Object.keys(S).length;
   function pct(n) { return TOTAL ? Math.round(100 * n / TOTAL) : 0; }
 
-  // A tile: the scene's picture, or the statement that it has none. A
-  // backstop frame is of this scene but was not taken for it, and the tile
-  // says so - the difference between evidence and decoration.
+  // A tile: the scene's own picture - a scene is a photographed sample.
+  // A picture that is not there is a broken join, and the tile says so.
   function tile(sid, extra) {
     var s = S[sid] || {};
     var pic = s.img ? "<img loading='lazy' src='" + s.img + "'>"
-        + (s.imgsrc === "backstop" ? "<div class='borrowed'>backstop</div>" : "")
-      : "<div class='nopic'>no picture</div>";
-    return "<div class='pic" + (s.imgsrc === "backstop" ? " brw" : "")
-      + "' data-scene='" + esc(sid) + "'>" + pic
+      : "<div class='nopic'>picture not found</div>";
+    return "<div class='pic' data-scene='" + esc(sid) + "'>" + pic
       + "<div class='cap'>" + esc(sid) + (extra ? "<br>" + extra : "")
       + "</div></div>";
   }
@@ -169,11 +162,12 @@ var DATA = __DATA__;
   }
   function head(title, cells, blurb) {
     var mt = cells.filter(function (c) { return !c.n; }).length;
-    var lost = (audit.missing || []).length;
+    var lost = (audit.lost || []).length;
     return "<h2>" + title + "</h2><div class='meta'><b>" + TOTAL + "</b> scenes · <b>"
       + cells.length + "</b> declared cells, " + (cells.length - mt) + " reached"
       + (mt ? ", <span class='flag'>" + mt + " empty</span>" : "")
-      + (lost ? " · <span class='flag'>" + lost + " scenes with no picture</span>" : "")
+      + (lost ? " · <span class='flag'>" + lost + " of " + (audit.pictures || "?")
+               + " pictures became no scene</span>" : "")
       + "</div><p class='note'>" + blurb + "</p>";
   }
 
@@ -182,10 +176,11 @@ var DATA = __DATA__;
     var groups = DATA._patterns || [];
     var dict = groups.filter(function (g) { return g.svg; });
     var hit = dict.filter(function (g) { return g.n; }).length;
-    var lost = (audit.missing || []).length;
+    var lost = (audit.lost || []).length;
     var h = "<h2>Motif</h2><div class='meta'><b>" + TOTAL + "</b> scenes · <b>"
       + dict.length + "</b> dictionary motifs, " + hit + " found"
-      + (lost ? " · <span class='flag'>" + lost + " scenes with no picture</span>" : "")
+      + (lost ? " · <span class='flag'>" + lost + " of " + (audit.pictures || "?")
+               + " pictures became no scene</span>" : "")
       + "</div><p class='note'>One group per motif of the dictionary, each from an ArkUI component contract. A "
       + "scene appears under every motif found on its display. The first picture "
       + "of a group is the motif drawn from its definition alone.</p>";

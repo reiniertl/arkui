@@ -47,7 +47,7 @@ def check_bounded(rows):
         for c in cols:
             v = (r.get(c) or "").strip()
             if v and not 0.0 <= float(v) <= 1.0:
-                bad.append("%s/%s %s is %s" % (r.get("session"), r.get("stem"), c, v))
+                bad.append("%s/%s %s is %s" % (r.get("session"), r.get("sample"), c, v))
     cl = clamps()
     print("  INV-UNIT-COLUMNS-BOUNDED")
     print("    %d column(s) over %d row(s); values outside [0, 1]: %d; clamps "
@@ -66,7 +66,7 @@ def check_total(rows):
     for r in rows:
         for c in cols:
             if c not in r or (r.get(c) or "").strip() == "":
-                bad.append("%s/%s %s is undefined" % (r.get("session"), r.get("stem"), c))
+                bad.append("%s/%s %s is undefined" % (r.get("session"), r.get("sample"), c))
     src = open(os.path.join(CLUSTER, "vectors_build.py"), encoding="utf-8").read()
     # filling is writing a value into the matrix from other rows; a mean
     # taken of silhouettes to report a cluster's cohesion fills nothing

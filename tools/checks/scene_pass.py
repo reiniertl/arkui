@@ -48,6 +48,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 CLUSTER = os.path.join(os.path.dirname(HERE), "cluster")
 sys.path.insert(0, CLUSTER)
 import rs_extract as R            # noqa: E402
+import rs_sample as P              # noqa: E402
 import rs_scene as S              # noqa: E402
 
 # Confirmed against the screenshot taken with each dump: the video player's
@@ -474,17 +475,9 @@ def same(a, b):
 
 
 def scenes(root, only=None):
-    for sdir in sorted(glob.glob(os.path.join(root, "*"))):
-        if not os.path.isdir(sdir) or (only and os.path.basename(sdir) != only):
-            continue
-        disp = R.read_display(os.path.join(sdir, "display.txt"))
-        if not os.path.exists(os.path.join(sdir, "display.txt")):
-            disp = R.read_display(os.path.join(root, "display.txt"))
-        for tf in sorted(glob.glob(os.path.join(sdir, "*.rstree.txt"))):
-            stem = os.path.basename(tf).split(".")[0]
-            cf = os.path.join(sdir, stem + ".client.txt")
-            if os.path.exists(cf):
-                yield os.path.basename(sdir), stem, tf, cf, disp
+    """The scenes rs_pattern.py measures: the photographed samples
+    rs_sample.pair accepts (ALG-PICTURE-PAIR)."""
+    return P.scenes(root, only)
 
 
 def main():
@@ -497,7 +490,7 @@ def main():
     csvrows = {}
     if a.patterns:
         for r in csv.DictReader(open(a.patterns, encoding="utf-8-sig")):
-            csvrows["%s/%s" % (r["session"], r["stem"])] = r
+            csvrows["%s/%s" % (r["session"], r["sample"])] = r
 
     keys = ("root", "single", "pruned", "geo", "scene", "area", "pattern", "fixed")
     bad = {k: [] for k in keys}
@@ -509,8 +502,8 @@ def main():
         bad["geo"].append("rs_extract.py reads a cached rectangle: %r" % c)
     bad["pattern"] += dictionary_is_literal()
 
-    for ses, stem, tf, cf, disp in scenes(a.root, a.session or None):
-        sid = "%s/%s" % (ses, stem)
+    for ses, sample, tf, cf, disp in scenes(a.root, a.session or None):
+        sid = "%s/%s" % (ses, sample)
         dw, dh, dens = float(disp["w"]), float(disp["h"]), disp.get("density", 3.5) or 3.5
         lines = open(tf, encoding="utf-8", errors="replace").read().splitlines()
         client = open(cf, encoding="utf-8", errors="replace").read().splitlines()
@@ -628,13 +621,31 @@ def main():
                     bad["fixed"].append("%s %s: alone %s, in the capture %s"
                                         % (sid, c, row[c], csvrows[sid][c]))
 
-        # the confirmed scenes
+
+    # The confirmed dumps. They are the stored dumps a human checked against
+    # the screenshot taken with each, named by their stem; most are not
+    # photographed samples, so the pass is run on each directly.
+    for sid in sorted(set(VIDEO) | {GRID[0]}):
+        if a.session and not sid.startswith(a.session + "/"):
+            continue
+        ses, stem = sid.split("/")
+        sdir = os.path.join(a.root, ses)
+        tf, cf = (os.path.join(sdir, stem + x) for x in (".rstree.txt", ".client.txt"))
+        if not (os.path.exists(tf) and os.path.exists(cf)):
+            bad["geo"].append("%s: the confirmed dump is not in the capture" % sid)
+            continue
+        disp = R.read_display(os.path.join(sdir, "display.txt"))
+        lines = open(tf, encoding="utf-8", errors="replace").read().splitlines()
+        client = open(cf, encoding="utf-8", errors="replace").read().splitlines()
+        sc = S.Scene(lines, client, disp)
+        sc.run()
         for x, k in sc.kept.items():
             nd = sc.N[x]
             if sid in VIDEO and nd["tag"] in ("XComponent", "Video") and same(nd["abs"], VIDEO[sid]):
                 found_video[sid] = k["cells"] / k["on"] if k["on"] else 0.0
         if sid == GRID[0]:
-            for x, nd in nodes.items():
+            tags = R.parse_client(client)
+            for x, nd in R.parse_tree(lines)["nodes"].items():
                 if tags.get(x) == "GridItem" and nd["abs"]:
                     for y in GRID[1]:
                         if abs(nd["abs"][1] - y) <= TOL:

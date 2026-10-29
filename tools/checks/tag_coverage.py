@@ -25,21 +25,14 @@ from collections import defaultdict
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(
     os.path.abspath(__file__))), "cluster"))
 import rs_extract as R                   # noqa: E402
+import rs_sample as P                    # noqa: E402
 import rs_scene as S                     # noqa: E402
 
 
 def scenes(root, only=None):
-    for sdir in sorted(glob.glob(os.path.join(root, "*"))):
-        if not os.path.isdir(sdir) or (only and os.path.basename(sdir) != only):
-            continue
-        disp = R.read_display(os.path.join(sdir, "display.txt"))
-        if not os.path.exists(os.path.join(sdir, "display.txt")):
-            disp = R.read_display(os.path.join(root, "display.txt"))
-        for tf in sorted(glob.glob(os.path.join(sdir, "*.rstree.txt"))):
-            stem = os.path.basename(tf).split(".")[0]
-            cf = os.path.join(sdir, stem + ".client.txt")
-            if os.path.exists(cf):
-                yield os.path.basename(sdir), stem, tf, cf, disp
+    """The scenes rs_pattern.py measures: the photographed samples
+    rs_sample.pair accepts (ALG-PICTURE-PAIR)."""
+    return P.scenes(root, only)
 
 
 def main():
@@ -53,7 +46,7 @@ def main():
     low = []
     unmeasured = []
     n_scenes = 0
-    for ses, stem, tf, cf, disp in scenes(a.root, a.session or None):
+    for ses, sample, tf, cf, disp in scenes(a.root, a.session or None):
         n_scenes += 1
         sc = S.Scene(open(tf, encoding="utf-8", errors="replace").read().splitlines(),
                      open(cf, encoding="utf-8", errors="replace").read().splitlines(), disp)
@@ -65,11 +58,11 @@ def main():
             if "coverage" not in w:
                 continue                  # not visible: decided from its line
             if w["coverage"] is None:
-                unmeasured.append("%s/%s %s" % (ses, stem, w["window"]))
+                unmeasured.append("%s/%s %s" % (ses, sample, w["window"]))
                 continue
             by_name[re.sub(r"\d+$", "", w["window"])].append(w["coverage"])
             if w["coverage"] < R.UNTAGGED_BELOW:
-                low.append((ses, stem, w))
+                low.append((ses, sample, w))
 
     print("INV-CLIENT-TAG-COVERAGE")
     print("  scenes: %d   visible windows measured: %d"
@@ -87,9 +80,9 @@ def main():
               "under half of their nodes tagged - %s"
               % (len(low), len({(s, t) for s, t, _ in low}),
                  ", ".join("%s x%d" % kv for kv in sorted(names.items(), key=lambda kv: -kv[1]))))
-        for ses, stem, w in low[:8]:
+        for ses, sample, w in low[:8]:
             print("    %s/%s  %-24s pid %-6s %4d of %4d tagged (%.2f)"
-                  % (ses, stem, w["window"][:24], w["pid"], w["tagged"], w["nodes"], w["coverage"]))
+                  % (ses, sample, w["window"][:24], w["pid"], w["tagged"], w["nodes"], w["coverage"]))
         if len(low) > 8:
             print("    ... and %d more" % (len(low) - 8))
     if unmeasured:

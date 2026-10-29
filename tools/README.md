@@ -28,11 +28,15 @@ It writes, per session:
 
 | | |
 |---|---|
-| `<nnnn>.rstree.txt` | the render tree, per distinct scene |
-| `<nnnn>.client.txt` | `frameNodeTag`, so a render node can say what component it is |
-| `<nnnn>.jpeg` | a picture of that scene |
-| `raw/<nnnn>.rstree.txt` | every sample, deduplicated or not |
+| `<nnnn>.rstree.txt` | the render tree of a sample the capture judged new |
+| `<nnnn>.client.txt` | `frameNodeTag` read at that sample, so a render node can say what component it is |
+| `<nnnn>.jpeg`, `p<nnnnnn>.jpeg` | a picture, named on the row of the sample it was taken in |
+| `raw/<sample>.rstree.txt` | the render tree of every sample |
 | `samples.csv` | the index: `raw`, `stem`, `sig`, `shot` |
+
+Downstream, a scene is a photographed sample: a row with a `shot`, its picture
+and `raw/<raw>.rstree.txt`, tagged from the last client dump at or before it
+(`cluster/rs_sample.py`). The capture's own notion of a new scene is not used.
 | `display.txt` | geometry, density, rotation, cutout |
 
 The two dumps join by node id, exactly, because both come from the same service

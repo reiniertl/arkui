@@ -89,13 +89,10 @@ reported in their own row rather than forced into the nearest group.
 
 ## Inputs that are not in this repository
 
-`--captures` is the capture tree. A scene's picture is `<captures>/<shot>`,
-and where a scene has none of its own, `samples.csv` points at the backstop
-frame taken while it was on the display. Screenshots are pictures of a real
-phone in real use and never enter the repository, so the tree lives on the
-capture machine.
-
-`--reps` still exists and is a fallback nothing builds: a flat directory of
-one jpeg per scene, named after the row's `shot` with the separators replaced
-by `__`. It was made by hand once, it was incomplete, and resolving against it
-alone is what silently dropped 71 of 250 scenes. Use `--captures`.
+`--captures` is the capture tree. A scene is a photographed sample
+(`rs_sample.py`, ALG-PICTURE-PAIR): a picture named in `samples.csv` and the
+render tree read in that same sample, kept only when the display is unchanged
+in the next sample. Its picture is `<captures>/<shot>`, its own, so every
+tile has one. Every picture that became no scene is in `patterns.lost.csv`
+with its reason. Screenshots are pictures of a real phone in real use and
+never enter the repository, so the tree lives on the capture machine.

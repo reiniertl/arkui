@@ -18,13 +18,14 @@ could not be rebuilt from the repository. It is tracked now because the page
 is the mechanism's only output.
 
 Inputs
-  patterns.csv  rs_pattern.py's output, one row per scene
-  --reps DIR    one jpeg per scene, named after its `shot` column with the
-                separators replaced by `__`. Screenshots are pictures of a
-                real phone in real use and never enter the repository, so
-                this directory lives beside the captures.
+  patterns.csv       rs_pattern.py's output, one row per scene - a
+                     photographed sample - and beside it patterns.lost.csv,
+                     every picture that became no scene, with its reason
+  --captures DIR     the capture tree; a scene's picture is <captures>/<shot>,
+                     its own sample's. Pictures of a real phone in real use
+                     never enter the repository.
 """
-import argparse, base64, csv, glob, io, json, math, os, re, sys
+import argparse, base64, csv, io, json, math, os, sys
 
 import numpy as np
 from PIL import Image
@@ -72,34 +73,15 @@ def thumbnail(path, width):
 
 
 def row_identity(row):
-    """What identifies a scene: where it was measured, never its picture.
+    """What identifies a scene: the session and the sample it was read at.
 
     Named for the row rather than the scene on purpose. INV-NO-SCENE-CLASS
     bans a function that maps a measurement onto a scene name, and its check
-    matches on `scene_*`; this one maps a row's session and stem onto the
+    matches on `scene_*`; this one maps a row's session and sample onto the
     place it came from, which is not that, but the check is right to be
     suspicious of the shape and the cheaper fix is to not wear it.
     """
-    return "%s/%s" % (row.get("session", ""), row.get("stem", ""))
-
-
-def rep_path(shot, captures, reps):
-    """The capture tree first, the flat directory only as a fallback.
-
-    The flat <session>__<stem>.jpeg form is what no code here builds. It was
-    made by hand once, it was incomplete, and resolving against it alone is
-    what lost 71 of 250 scenes.
-    """
-    if shot:
-        if captures:
-            p = os.path.join(captures, *shot.split("/"))
-            if os.path.exists(p):
-                return p
-        if reps:
-            p = os.path.join(reps, shot.replace("/", "__"))
-            if os.path.exists(p):
-                return p
-    return None
+    return "%s/%s" % (row.get("session", ""), row.get("sample", ""))
 
 
 DW_REF, DH_REF = 1316.0, 2832.0      # the captured display; a frame, not a claim
@@ -166,107 +148,6 @@ def schematic(name):
         p.append('<text x="%.0f" y="%.0f" font-size="48" fill="%s">%s</text>'
                  % (rx + 24, ry + rh + 90 + 60 * i, ink, e))
     return "".join(p) + "</svg>"
-
-
-def sample_rows(captures):
-    """session -> the rows of its samples.csv, in recorded order. Samples are
-    ordered as recorded, never by a file's time (INV-NO-FILE-TIME)."""
-    out = {}
-    for sdir in sorted(glob.glob(os.path.join(captures, "*"))):
-        idx = os.path.join(sdir, "samples.csv")
-        if os.path.isdir(sdir) and os.path.exists(idx):
-            with open(idx, encoding="utf-8-sig", newline="") as fh:
-                out[os.path.basename(sdir)] = list(csv.DictReader(fh))
-    return out
-
-
-def same_moment(rows, stem, fname):
-    """INV-PICTURE-SAME-MOMENT: may this picture stand for this dump?
-
-    The dump's sample is the row that first records its stem; the picture's
-    is the row whose shot names it, or, for a backstop frame p<n>.jpeg, row
-    n. The picture is accepted only if every sample between the two carries
-    the dump's signature: no other scene was on the display in between.
-    Returns (True, "") or (False, the reason).
-    """
-    i = next((k for k, r in enumerate(rows) if (r.get("stem") or "").strip() == stem), None)
-    if i is None:
-        return False, "the dump is not in samples.csv"
-    j = next((k for k, r in enumerate(rows) if (r.get("shot") or "").strip() == fname), None)
-    m = re.match(r"p(\d{6})\.jpeg$", fname)
-    if j is None and m and 1 <= int(m.group(1)) <= len(rows):
-        j = int(m.group(1)) - 1
-    if j is None:
-        return False, "the picture is not in samples.csv"
-    sig = (rows[i].get("sig") or "").strip()
-    for k in range(min(i, j), max(i, j) + 1):
-        other = (rows[k].get("sig") or "").strip()
-        if other != sig:
-            return False, ("sample %d between the dump and the picture shows "
-                           "another scene" % (k + 1))
-    return True, ""
-
-
-def backstop_index(captures):
-    """stem -> the backstop frame that was on the display while it was.
-
-    The capture photographs a scene when its pair settles. A scene that
-    never settles gets no picture of its own, and the backstop is a frame
-    named p<nnnnnn>.jpeg, where nnnnnn is the number of the sample it was
-    taken at. Until 2026-10-27 it was taken every few seconds, which is why
-    the older captures hold so many of a scene that needed none; it is now
-    taken on arrival at a scene with no picture yet. Nothing in that filename says
-    which scene it shows; samples.csv is what says so, and until now
-    nothing read it.
-
-    The join runs through sig, not through stem. samples.csv writes stem
-    only on the sample that first records a scene and shot only on a
-    sample where a picture was taken, so the two columns are rarely on the
-    same row. sig is on every row: it is the scene that was on the display
-    when that sample was taken, which is exactly what the frame shows.
-
-    Both routes to the frame are taken - the shot column, and the sample
-    number parsed out of the filename - because they disagree on the
-    captures here: one session holds 68 files against 51 named, and five
-    whose number is past the end of the index. A file the index does not
-    mention is still attributable if its number lands on a row.
-    """
-    out = {}
-    for sdir in sorted(glob.glob(os.path.join(captures, "*"))):
-        idx = os.path.join(sdir, "samples.csv")
-        if not os.path.isdir(sdir) or not os.path.exists(idx):
-            continue
-        session = os.path.basename(sdir)
-        with open(idx, encoding="utf-8-sig", newline="") as fh:
-            rows = list(csv.DictReader(fh))
-        stem_of_sig = {}
-        for r in rows:
-            st = (r.get("stem") or "").strip()
-            sg = (r.get("sig") or "").strip()
-            if st and sg:
-                stem_of_sig.setdefault(sg, st)
-
-        def claim(sig, fname):
-            st = stem_of_sig.get(sig)
-            if not st or not fname.startswith("p"):
-                return
-            if os.path.exists(os.path.join(sdir, st + ".jpeg")):
-                return                      # it has one of its own
-            if os.path.exists(os.path.join(sdir, fname)):
-                out.setdefault("%s/%s" % (session, st),
-                               os.path.join(sdir, fname))
-
-        for r in rows:
-            claim((r.get("sig") or "").strip(), (r.get("shot") or "").strip())
-        for f in sorted(glob.glob(os.path.join(sdir, "p*.jpeg"))):
-            m = re.match(r"p(\d{6})\.jpeg$", os.path.basename(f))
-            if not m:
-                continue
-            n = int(m.group(1))
-            if 1 <= n <= len(rows):
-                claim((rows[n - 1].get("sig") or "").strip(),
-                      os.path.basename(f))
-    return out
 
 
 def build_clustering(rows, mcs):
@@ -348,10 +229,8 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("patterns", help="rs_pattern.py's csv")
-    ap.add_argument("--captures", default="",
+    ap.add_argument("--captures", required=True,
                     help="the capture tree; a scene's picture is <captures>/<shot>")
-    ap.add_argument("--reps", default="",
-                    help="a flat <session>__<stem>.jpeg directory, if one exists")
     ap.add_argument("--out", default="two_payload.json")
     ap.add_argument("--thumb", type=int, default=THUMB_W,
                     help="embed each frame at this width (default %d)" % THUMB_W)
@@ -363,68 +242,36 @@ def main():
     if not rows:
         raise SystemExit("%s holds no rows" % a.patterns)
 
-    # INV-NO-SILENT-SCENE-LOSS: every measured row reaches the payload or is
-    # reported in it. A scene with no picture is still measured and still
-    # clustered; only its tile is poorer for it.
-    # The frames taken as a backstop, so a scene that never settled can
-    # still show what was on the display while it was.
-    backstop = backstop_index(a.captures) if a.captures else {}
-    samples = sample_rows(a.captures) if a.captures else {}
-
-    img, kind, missing, unmatched, refused = {}, {}, [], [], []
-    borrowed = 0
+    # INV-NO-SILENT-SCENE-LOSS: every scene is a photographed sample and
+    # carries its own picture; every picture that became no scene is in the
+    # lost list rs_pattern.py wrote, with its reason.
+    lp = os.path.splitext(a.patterns)[0] + ".lost.csv"
+    lost = list(csv.DictReader(open(lp, encoding="utf-8-sig"))) if os.path.exists(lp) else None
+    if lost is None:
+        print("ERR-PICTURE-LOST: %s is not there, so the pictures that became no "
+              "scene cannot be accounted for" % lp)
+        lost = []
+    img, unmatched = {}, []
     for r in rows:
         sid = row_identity(r)
-        shot = (r.get("shot") or "").strip()
-        path = rep_path(shot, a.captures, a.reps)
-        if not path and sid in backstop:
-            path = backstop[sid]
-        if path:
-            # INV-PICTURE-SAME-MOMENT: only a picture taken while this scene
-            # was still on the display stands for it.
-            ok, why = same_moment(samples.get(r.get("session", ""), []),
-                                  r.get("stem", ""), os.path.basename(path))
-            if not ok:
-                refused.append((sid, why))
-                path = None
-        if path:
+        path = os.path.join(a.captures, *(r.get("shot") or "").strip().split("/"))
+        if r.get("shot") and os.path.exists(path):
             img[sid] = thumbnail(path, a.thumb)
-            own = os.path.basename(path) == os.path.basename(shot)
-            kind[sid] = "own" if own else "backstop"
-            borrowed += 0 if own else 1
         else:
-            missing.append(sid)
-            if shot:
-                # The row names a file. A shot that resolves to nothing is a
-                # broken join, not a scene that was never photographed - and
-                # a join key resolving to nothing is the shape of both
-                # failures this project has had on this seam.
-                unmatched.append("%s -> %s" % (sid, shot))
+            # a scene is a photographed sample: its picture not being there
+            # is a broken join, never a scene without a picture
+            unmatched.append("%s -> %s" % (sid, r.get("shot")))
     if unmatched:
-        print("ERR-JOIN-KEY-UNMATCHED: %d row(s) name a screenshot that is not "
+        print("ERR-JOIN-KEY-UNMATCHED: %d row(s) name a picture that is not "
               "there: %s" % (len(unmatched), ", ".join(unmatched[:5])
                              + (" and %d more" % (len(unmatched) - 5)
                                 if len(unmatched) > 5 else "")))
-    print("  pictures: %d taken for the scene, %d from a backstop frame, "
-          "%d none" % (len(img) - borrowed, borrowed, len(missing)))
-    if refused:
-        print("ERR-PICTURE-NOT-SAME-MOMENT: %d scene(s) shown with no picture, "
-              "because another scene was sampled between the dump and its "
-              "picture: %s" % (len(refused), ", ".join(s for s, _ in refused[:5])
-                               + (" and %d more" % (len(refused) - 5)
-                                  if len(refused) > 5 else "")))
-    if a.captures and not borrowed and backstop:
-        print("  (the backstop index found %d frame(s) but none belonged to a "
-              "scene that needed one)" % len(backstop))
-    if missing:
-        print("ERR-SCENE-WITHOUT-REP: %d of %d scenes have no screenshot; they "
-              "are measured and clustered, and their tiles carry no picture."
-              % (len(missing), len(rows)))
-        for sid in missing[:10]:
-            print("    %s" % sid)
-        if len(missing) > 10:
-            print("    ... and %d more, all listed in the payload's audit"
-                  % (len(missing) - 10))
+    reasons = {}
+    for x in lost:
+        reasons[x["reason"]] = reasons.get(x["reason"], 0) + 1
+    print("  pictures: %d named, %d scenes each with its own, %d lost%s"
+          % (len(rows) + len(lost), len(img), len(lost),
+             "".join(" - %d %s" % (n, w) for w, n in sorted(reasons.items()))))
 
     import statistics as _st
 
@@ -501,16 +348,18 @@ def main():
     scenes = {}
     for r in rows:
         sid = row_identity(r)
-        scenes[sid] = {"img": img.get(sid), "imgsrc": kind.get(sid),
-                       "found": found(r)}
+        scenes[sid] = {"img": img.get(sid), "found": found(r)}
     out = {"_unplaced": unplaced,
            "_scenes": scenes,
            "_patterns": patterns,
-           "_audit": {"rows": len(rows), "shown": len(img),
-                      "own": len(img) - borrowed, "backstop": borrowed,
-                      "missing": missing,
-                      "refused": [{"scene": s, "why": w} for s, w in refused],
-                      "captures": a.captures or None, "reps": a.reps or None}}
+           "_audit": {"pictures": len(rows) + len(lost),
+                      "on_disk": len(rows) + sum(1 for x in lost if x["reason"] != "missing on disk"),
+                      "rows": len(rows), "shown": len(img),
+                      "unmatched": unmatched,
+                      "lost": [{"scene": "%s/%s" % (x["session"], x["sample"]),
+                                "shot": x["shot"], "why": x["reason"]} for x in lost],
+                      "lost_by_reason": reasons,
+                      "captures": a.captures}}
     out["clustering"] = v = build_clustering(rows, a.min_cluster)
     print("\n%s: %d clusters, %d unclustered (%.0f%%), silhouette %s, "
           "PCA explained %s"

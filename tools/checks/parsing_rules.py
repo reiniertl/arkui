@@ -34,21 +34,15 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 CLUSTER = os.path.join(os.path.dirname(HERE), "cluster")
 sys.path.insert(0, CLUSTER)
 import rs_extract as R            # noqa: E402
+import rs_sample as P             # noqa: E402
 import rs_scene as S              # noqa: E402
 
 
 def sessions(root):
-    for sdir in sorted(glob.glob(os.path.join(root, "*"))):
-        if not os.path.isdir(sdir):
-            continue
-        disp = R.read_display(os.path.join(sdir, "display.txt"))
-        if not os.path.exists(os.path.join(sdir, "display.txt")):
-            disp = R.read_display(os.path.join(root, "display.txt"))
-        for tf in sorted(glob.glob(os.path.join(sdir, "*.rstree.txt"))):
-            stem = os.path.basename(tf).split(".")[0]
-            cf = os.path.join(sdir, stem + ".client.txt")
-            if os.path.exists(cf):
-                yield sdir, stem, tf, cf, disp
+    """The scenes rs_pattern.py measures (rs_sample.scenes), with the
+    session's directory first."""
+    for ses, sample, tf, cf, disp in P.scenes(root):
+        yield os.path.join(root, ses), sample, tf, cf, disp
 
 
 def check_first_pass(dumps):
@@ -187,7 +181,7 @@ def main():
     a = ap.parse_args()
 
     dumps, passes = [], []
-    for sdir, stem, tf, cf, disp in sessions(a.root):
+    for sdir, sample, tf, cf, disp in sessions(a.root):
         lines = open(tf, encoding="utf-8", errors="replace").read().splitlines()
         client = open(cf, encoding="utf-8", errors="replace").read().splitlines()
         dumps.append((tf, lines, R.parse_tree(lines)))

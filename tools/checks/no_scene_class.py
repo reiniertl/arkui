@@ -79,7 +79,7 @@ ENUM_IDENT = re.compile(r"\bark_scene_class_t\b|\bARK_SCENE_[A-Z_]+\b")
 SOURCE_EXT = {".py", ".ps1", ".sh", ".c", ".h", ".cpp", ".hpp", ".js", ".ts"}
 
 # IF-PATTERNS-ROW declares these as strings. Everything else is a number.
-STRING_COLUMNS = {"session", "stem", "shot"}
+STRING_COLUMNS = {"session", "sample", "shot"}
 
 
 def tracked_sources(root):

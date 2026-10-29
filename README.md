@@ -26,7 +26,8 @@ clusters the scenes once over the motif vector.
 rs_capture.ps1          device  ->  *.rstree.txt, *.client.txt, display.txt
   rs_extract.py                     index the dump, parse a node when it is reached
   rs_scene.py                       the scene in one pass, and the motif vector on it
-  rs_pattern.py                     run the pass on every dump  -> patterns.csv
+  rs_sample.py                      a picture and its own sample's render tree
+  rs_pattern.py                     run the pass on every paired sample -> patterns.csv
   vectors_build.py                  motif groups, one clustering -> two_payload.json
   vectors_page.py                   the viewer, three tabs -> scene_feature_reference.html
 ```
@@ -75,7 +76,8 @@ the tiles by a person looking at them.
 | `tools/rs_capture.ps1` | the device side. Pulls dumps, computes nothing |
 | `tools/cluster/rs_extract.py` | parse a RenderService dump into a tree, with each node's rectangle |
 | `tools/cluster/rs_scene.py` | the scene in one pass, and the motif vector on it |
-| `tools/cluster/rs_pattern.py` | run the pass on every dump of a capture |
+| `tools/cluster/rs_sample.py` | pair each picture with the render tree of its own sample |
+| `tools/cluster/rs_pattern.py` | run the pass on every paired sample of a capture |
 | `tools/cluster/vectors_build.py` | cluster each vector, build the page payload |
 | `tools/cluster/vectors_page.py` | render the payload |
 | `tools/deck/` | the slides describing data, origin and results |

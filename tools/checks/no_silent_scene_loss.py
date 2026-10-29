@@ -1,167 +1,108 @@
 #!/usr/bin/env python3
-"""INV-NO-SILENT-SCENE-LOSS — the check, and the reproduction it came from.
+"""INV-NO-SILENT-SCENE-LOSS — every picture is a scene or is reported.
 
-    ./no_silent_scene_loss.py --patterns patterns.csv --payload two_payload.json
+    ./no_silent_scene_loss.py <capture-root> --patterns patterns.csv --payload two_payload.json
 
-Every row measured into patterns.csv either reaches the payload or is
-reported there with a reason. The arithmetic is the whole invariant:
+A scene is a photographed sample. Every picture a session's samples.csv
+names either became a scene - a row of patterns.csv - or is in
+patterns.lost.csv with its reason; and every row reaches the payload with
+its own picture. The arithmetic is the whole invariant:
 
-    rows in the csv  ==  scenes in the payload  +  scenes reported missing
+    pictures named  ==  rows  +  lost
+    rows            ==  scenes in the payload, each with its picture
 
-It is written as a check rather than as prose because it failed silently
-for as long as it existed. vectors_build.py resolved each screenshot from
-a flat directory named <session>__<stem>.jpeg that no code in this
-repository builds - it was made by hand, once, and was incomplete - and
-dropped every row whose file it could not find, with no count and no list.
-On the capture this was written against that was 71 of 250 scenes, and the
-cluster count, the outlier rate and the silhouette the page published were
-all computed over the remaining 179 without saying so.
+The pictures are counted here from samples.csv itself, not from either
+output, so a picture both outputs forgot is still found.
 
-With --captures it also audits the premise directly: how many of the rows
-have a picture in the capture tree at <captures>/<shot>, and how many have
-one only under the flat form. Those two numbers are what showed the loss
-was an addressing mistake rather than missing data.
-
-It also reports where each shown picture came from. A tile can hold a
-frame taken for its own scene or a backstop frame taken on arrival while
-that scene was on the display, and those are not the same evidence.
-The split is checked against the payload's audit so the two cannot drift:
-a page that fills a tile from a backstop frame and does not say so is
-showing something it did not measure.
+It is written as a check because the rule it replaces failed silently for
+as long as it existed: vectors_build.py once resolved screenshots from a
+directory no code built and dropped 71 of 250 scenes uncounted.
 
 Exit 0 when the invariant holds, 1 when it does not.
 """
-import argparse, csv, json, os, sys
+import argparse, csv, glob, json, os, sys
+
+REASONS = {"missing on disk", "no earlier client dump", "no next sample",
+           "no display node", "display changed"}
 
 
-def payload_scenes(path):
-    """Every scene the page will show, and every one it reports missing."""
-    d = json.load(open(path, encoding="utf-8"))
-    shown, missing = set(), set()
-    audit = d.get("_audit") or {}
-    anonymous = 0
-    for key, v in d.items():
-        if key.startswith("_"):
-            continue
-        # A top-level key that is not a vector block is skipped, not
-        # assumed. The convention is that an underscore marks those, and
-        # when `pattern_cells` was added without one this reached for
-        # .groups on a list and took the whole check down with an
-        # AttributeError. A check that dies on an unfamiliar key cannot
-        # report on the invariant it exists for, which is worse than a
-        # check that ignores one.
-        if not isinstance(v, dict) or "groups" not in v:
-            continue
-        for g in v.get("groups", []):
-            for r in g.get("reps", []):
-                sid = r.get("scene")
-                if sid:
-                    shown.add(sid)
-                else:
-                    anonymous += 1
-    # The cell groups show scenes too, by id (IF-PAGE-PAYLOAD).
-    for key in ("_patterns",):
-        for c in d.get(key) or []:
-            for sid in c.get("members", []):
-                if sid:
-                    shown.add(sid)
-                else:
-                    anonymous += 1
-    for m in audit.get("missing", []):
-        missing.add(m)
-    return shown, missing, audit, anonymous
+def named(root):
+    """session/sample -> session/picture, for every picture samples.csv names."""
+    out = {}
+    for idx in sorted(glob.glob(os.path.join(root, "*", "samples.csv"))):
+        ses = os.path.basename(os.path.dirname(idx))
+        with open(idx, encoding="utf-8-sig", newline="") as fh:
+            for r in csv.DictReader(fh):
+                if (r.get("shot") or "").strip():
+                    out["%s/%s" % (ses, r["raw"].strip())] = ses + "/" + r["shot"].strip()
+    return out
 
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap.add_argument("root", help="the capture tree")
     ap.add_argument("--patterns", required=True)
-    ap.add_argument("--payload", default="",
-                    help="vectors_build.py's json; omit to audit the premise only")
-    ap.add_argument("--captures", default="",
-                    help="the capture tree, to audit where the pictures are")
-    ap.add_argument("--reps", default="",
-                    help="the flat <session>__<stem>.jpeg directory, if one exists")
+    ap.add_argument("--payload", required=True)
     a = ap.parse_args()
 
-    rows = list(csv.DictReader(open(a.patterns, encoding="utf-8-sig")))
-    print("INV-NO-SILENT-SCENE-LOSS")
-    print("  rows in %s: %d" % (os.path.basename(a.patterns), len(rows)))
+    pictures = named(a.root)
+    rows = {"%s/%s" % (r["session"], r["sample"]): r
+            for r in csv.DictReader(open(a.patterns, encoding="utf-8-sig"))}
+    lp = os.path.splitext(a.patterns)[0] + ".lost.csv"
+    lost = ({"%s/%s" % (x["session"], x["sample"]): x
+             for x in csv.DictReader(open(lp, encoding="utf-8-sig"))}
+            if os.path.exists(lp) else None)
+    d = json.load(open(a.payload, encoding="utf-8"))
+    scenes = d.get("_scenes") or {}
 
-    # The premise. Where are the pictures actually?
-    if a.captures or a.reps:
-        in_tree = in_flat = 0
-        for r in rows:
-            shot = (r.get("shot") or "").strip()
-            if not shot:
-                continue
-            if a.captures and os.path.exists(os.path.join(a.captures, *shot.split("/"))):
-                in_tree += 1
-            if a.reps and os.path.exists(os.path.join(a.reps, shot.replace("/", "__"))):
-                in_flat += 1
-        if a.captures:
-            print("  with a picture at <captures>/<shot>      : %d" % in_tree)
-        if a.reps:
-            print("  with a picture under the flat form       : %d" % in_flat)
-
-    if not a.payload:
-        print("  payload not given; premise audited only, invariant not checked")
-        return 0
-
-    shown, missing, audit, anonymous = payload_scenes(a.payload)
-    if anonymous:
-        print("  %d tile(s) in the payload identify no scene" % anonymous)
-        print("  a page that cannot name what it shows cannot be reconciled")
-        print("  with what was measured, so no row can be accounted for.")
-        print("  ERR-SCENE-WITHOUT-REP\n  VIOLATED")
-        return 1
-    print("  scenes in the payload   : %d" % len(shown))
-    print("  reported missing        : %d" % len(missing))
-
-    # Where the shown pictures came from, and whether the tiles agree with
-    # the audit. A backstop frame that is not marked is the failure this
-    # reports: the page would be showing another sample as if it were this
-    # scene's own.
-    own, per = audit.get("own"), audit.get("backstop")
-    if own is not None or per is not None:
-        print("  of those shown          : %s taken for the scene, %s from a "
-              "backstop frame" % (own, per))
-        d = json.load(open(a.payload, encoding="utf-8"))
-        marked, unmarked = set(), set()
-        # Every scene's tile is stored once, in _scenes; the tabs refer to it.
-        for sid, s in (d.get("_scenes") or {}).items():
-            if not s.get("img"):
-                continue
-            (marked if s.get("imgsrc") == "backstop" else unmarked).add(sid)
-        print("  tiles marked backstop   : %d" % len(marked))
-        if per is not None and len(marked) != per:
-            print("  the audit says %s from a backstop but %d tile(s) say so"
-                  % (per, len(marked)))
-            print("  ERR-SCENE-WITHOUT-REP\n  VIOLATED")
-            return 1
-    if audit.get("rows") is not None:
-        print("  payload says it measured: %d" % audit["rows"])
-
-    # Shown and reported are not disjoint: a scene with no picture still gets
-    # a tile and is also listed in the audit. The invariant is that the union
-    # covers everything measured, not that the counts sum to it.
-    measured = {"%s/%s" % (r.get("session", ""), r.get("stem", "")) for r in rows}
-    accounted = shown | missing
-    lost = measured - accounted
-    if lost:
-        print("  %d row(s) measured, %d accounted for - %d vanished with no reason:"
-              % (len(measured), len(accounted & measured), len(lost)))
-        for sid in sorted(lost)[:10]:
-            print("    %s" % sid)
-        print("  ERR-SCENE-WITHOUT-REP\n  VIOLATED")
-        return 1
-    stray = accounted - measured
+    bad = []
+    if lost is None:
+        bad.append("%s is not there: no lost picture can be accounted for" % lp)
+        lost = {}
+    both = set(rows) & set(lost)
+    if both:
+        bad.append("%d picture(s) are both a scene and lost, e.g. %s" % (len(both), sorted(both)[0]))
+    unaccounted = set(pictures) - set(rows) - set(lost)
+    if unaccounted:
+        bad.append("%d picture(s) named in samples.csv are neither a scene nor lost, e.g. %s"
+                   % (len(unaccounted), ", ".join(sorted(unaccounted)[:5])))
+    stray = (set(rows) | set(lost)) - set(pictures)
     if stray:
-        print("  %d scene(s) in the payload were never measured: %s"
-              % (len(stray), ", ".join(sorted(stray)[:5])))
-        print("  ERR-SCENE-WITHOUT-REP\n  VIOLATED")
+        bad.append("%d row(s) name a sample with no picture in samples.csv, e.g. %s"
+                   % (len(stray), sorted(stray)[0]))
+    for k, r in rows.items():
+        if k in pictures and r["shot"] != pictures[k]:
+            bad.append("%s carries %s, its sample's picture is %s" % (k, r["shot"], pictures[k]))
+    odd = sorted({x["reason"] for x in lost.values()} - REASONS)
+    if odd:
+        bad.append("lost pictures with no recognised reason: %s" % odd)
+    no_tile = sorted(k for k in rows if not (scenes.get(k) or {}).get("img"))
+    if no_tile:
+        bad.append("%d scene(s) reach the payload without their picture, e.g. %s"
+                   % (len(no_tile), ", ".join(no_tile[:5])))
+    extra = sorted(set(scenes) - set(rows))
+    if extra:
+        bad.append("%d scene(s) in the payload were never measured, e.g. %s"
+                   % (len(extra), extra[0]))
+
+    by = {}
+    for x in lost.values():
+        by[x["reason"]] = by.get(x["reason"], 0) + 1
+    print("INV-NO-SILENT-SCENE-LOSS")
+    print("  pictures named in samples.csv: %d; scenes: %d; lost: %d%s"
+          % (len(pictures), len(rows), len(lost),
+             "".join(" - %d %s" % (n, w) for w, n in sorted(by.items()))))
+    print("  scenes in the payload with their own picture: %d"
+          % sum(1 for k in rows if (scenes.get(k) or {}).get("img")))
+    for b in bad[:8]:
+        print("    " + b)
+    if lost:
+        print("  ERR-PICTURE-LOST: %d picture(s) became no scene, each named with its reason"
+              % len(lost))
+    if bad:
+        print("  ERR-PICTURE-LOST\n  VIOLATED")
         return 1
-    print("  every measured row is shown or reported")
     print("  holds")
     return 0
 

@@ -138,7 +138,7 @@ def main():
 
     D = json.load(open(a.payload, encoding="utf-8"))
     rows = list(csv.DictReader(open(a.patterns, encoding="utf-8-sig")))
-    measured = ["%s/%s" % (r.get("session", ""), r.get("stem", "")) for r in rows]
+    measured = ["%s/%s" % (r.get("session", ""), r.get("sample", "")) for r in rows]
     src = open(a.build, encoding="utf-8").read()
     failed = []
 

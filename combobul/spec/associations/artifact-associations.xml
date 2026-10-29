@@ -38,4 +38,12 @@
   <associate source="tools/rs_capture.ps1" kind="function" name="Get-RsQuickSig" scope="">
     <link to="ALG-QUICK-SIG" relation="implements"/>
   </associate>
+
+  <associate source="tools/cluster/rs_sample.py" kind="function" name="pair" scope="">
+    <link to="ALG-PICTURE-PAIR" relation="implements"/>
+  </associate>
+
+  <associate source="tools/cluster/rs_sample.py" kind="function" name="tag_source" scope="">
+    <link to="ALG-TAG-BORROW" relation="implements"/>
+  </associate>
 </artifact-associations>
