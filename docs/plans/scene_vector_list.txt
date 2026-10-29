@@ -54,9 +54,8 @@ vectors_build.py, vectors_page.py, and the checks under tools/checks/.
 ORDER
 ===============================================================================
 
-  1. /cb-green — visibility in one pass
+  1. /cb-green — the scene in one pass: visibility and patterns
   2. /cb-green — a sound specification for the feature module
-  3. /cb-green — the pattern dictionary and the matcher
 
 
 ===============================================================================
@@ -99,179 +98,64 @@ DEFERRED
 PROMPTS
 ===============================================================================
 
-/cb-green — visibility in one pass
-  - What: what is on the display is decided in one pass over the dump, and
-    nothing that is not on the display is parsed, composed or tested.
-    STARTING STATE. The working tree and the DAG hold an unfinished run:
+/cb-green — the scene in one pass: visibility and patterns
+  - What: the scene is the display's kept tree, built in one pass over the
+    dump, and the pattern vector is matched inside that pass. Containment
+    of the nodes actually on the display is the structure: neither the
+    display nor a window is ever flattened into a set of nodes. It replaces
+    the per-window walk, the owner window and the repeating-group detector.
+    TERMS ON THE TREE, measured on the capture of 2026-10-28: every dump is
+    RS_NODE / SCREEN_NODE / LOGICAL_DISPLAY_NODE / ...; the display is the
+    one LOGICAL_DISPLAY_NODE, SCREEN_NODE's only child; a window is a
+    top-level SURFACE_NODE under it, and a node belongs to a window by
+    position, nothing else records it; no window owns the display. The
+    display tree is not pre-clipped: of its 135,423 nodes 74 percent lie
+    wholly on the display, 10 percent partly, 6 percent wholly off, 10
+    percent have no area. Detached CANVAS_NODE subtrees hang at root level,
+    outside it - 4,835 roots, a median of 9 percent of a dump's nodes - and
+    are never read.
+    STARTING STATE. The working tree and the DAG hold an unfinished run.
     rs_extract.py carries a broken split into index_dump, parse_node and
-    parse_surface, which is reverted first; rs_visibility.py, rs_pattern.py
-    and tools/checks/geometry_visibility.py carry clipping, rotation as a
-    quadrilateral, visible-cell areas, owner selection after the walk, and
-    the removal of surf_cover and surf_over, verified on one session of 40
-    scenes only; the DAG holds two batches not yet coalesced - the clipping,
-    rotation, visible-area and owner batch, and the pruning batch
-    (INV-PRUNED-NOT-PARSED, ALG-VISIBILITY, ALG-PARSE-RSTREE) - which this
-    item reviews node by node and keeps, amends or reverts.
-    INDEX. One match per line gives each node's id, kind, line and parent
-    by indentation. Nothing else is read.
-    WINDOWS. Only top-level surface lines are parsed. A window that is not
-    Visible, at alpha 0, or with an empty VisibleRegion is dropped and its
-    tree is never read - 29 percent of every dump's nodes on the capture of
-    2026-10-28.
-    THE PASS. Per remaining window, one descent: parent first, children in
-    reverse paint order (ReverseChildren, PositionZ), so the topmost sibling
-    is entered first. On the way down, at each node, the cheapest test
-    first, stopping at the first that fails: effective alpha 0 drops the
-    node and its subtree; the transform is the parent's times the node's
-    own, giving its box or its quadrilateral; the clip it inherits - the
-    display, the window's VisibleRegion, every clipping ancestor - leaves
-    nothing for a clipping node, which drops its subtree; the inherited
-    clip region is already wholly covered by occluders written so far,
-    which drops the subtree; the node is tested against the occluders
-    written so far, which are exactly those painted above it outside its
-    branch. On the way up, after its children, an occluding node writes its
-    cells, and a mark claims its free cells for the surface vector, which
-    is topmost-first order. A container's rectangle does not bound its
-    children unless it clips, so the region a subtree can occupy is its
-    inherited clip, never the container's rectangle. A node off the display
-    that does not clip is kept only as the way to its children. Each node is
-    visited once. Its children are read only when it is kept.
-    AFTER THE PASS. ALG-BRANCH-GROUP runs over the kept tree only, the one
-    step outside the pass. Owner selection: put to the human whether the
-    owner is chosen from every window's pass, or after clipping and before
-    occlusion so that occlusion runs on the owner alone.
-    MEASURED on the capture of 2026-10-28, 155,840 nodes in 300 dumps,
-    before occlusion: 49.9 percent on the display, 13.2 percent kept only
-    as a path, 29.1 percent in invisible windows, 5.9 percent outside the
-    display or a clipping ancestor, 1.9 percent at alpha 0.
-  - Read: rs_extract.py, rs_visibility.py, rs_pattern.py (Scene, analyse,
-    owner_of, visible_surface, media_surface), tools/checks/
-    geometry_visibility.py and parsing_rules.py; the DAG nodes below.
-  - Spec work:
-      modify ALG-VISIBILITY: the pass above; it no longer calls
-        ALG-PAINT-ORDER.
-      add invariant INV-SINGLE-PASS (SUB-FEATURE-RESEARCH, runtime): each
-        node is visited at most once, and alpha, geometry, clip and
-        occlusion are decided in that visit; checked-at AUT-PIPELINE-RUN.
-      modify INV-PRUNED-NOT-PARSED: a subtree whose inherited clip region is
-        wholly covered by occluders above it is also not read; the region
-        tested is the inherited clip, never the container's rectangle.
-      modify INV-OCCLUSION-PAINT-ORDER: restated for the descent - children
-        are entered topmost first, so every occluder above a node and
-        outside its branch is written before the node is tested.
-      modify INV-FIRST-PASS-COUNTS: the index, not the parser's return,
-        holds exactly the ids before the first repetition.
-      modify INV-OPACITY: visibility is defined on the on-display region
-        (shape, clipping ancestors, display, VisibleRegion), as in
-        INV-VISIBLE-ONLY.
-      modify INV-VISIBLE-ONLY: only the index and ALG-VISIBILITY read nodes
-        that are not on the display.
-      modify INV-OWN-RECT-BOUNDS: the occluder clause is removed; alpha
-        alone decides an occluder (INV-OPACITY).
-      modify ALG-VISIBLE-SURFACE: claims are made on the way up of the
-        pass.
-      modify ALG-OWNER-SELECT: as the human decides; its precondition no
-        longer requires ownership assigned over the whole tree.
-      modify ALG-MEDIA-SURFACE: its COINCIDENT and OVERSIZE occluder
-        preconditions are removed; its satisfies edges to
-        INV-OCCLUDER-PAINTS and INV-OWN-RECT-BOUNDS are removed.
-      modify IF-PATTERNS-ROW: surf_cover and surf_over removed, the column
-        count corrected.
-      remove ALG-PAINT-ORDER and its calls edges, and ALG-OWNERSHIP and its
-        calls edge: the descent gives paint order and ownership. Each
-        removal is confirmed by the human, node by node, before the
-        envelope.
-  - Code path: rs_extract.py (index, per-node parsing), rs_visibility.py
-    (the pass), rs_pattern.py, tools/checks/geometry_visibility.py,
-    tools/checks/parsing_rules.py.
-  - Check: geometry_visibility.py keeps its exact, raster-free recomputation
-    of the display from a full parse - the one place a full parse remains -
-    and adds INV-PRUNED-NOT-PARSED and INV-SINGLE-PASS: the set of nodes
-    parsed against the set kept, and the count of visits per node.
-  - Test, on the real capture: the seven confirmed video rectangles whole
-    and wholly visible; the 0192 GridItems at y 2070 visible; nodes parsed
-    per dump before and after; milliseconds per dump for the pass alone,
-    median and maximum, taken inside Python; visible nodes, pat1_cover and
-    overlay_frac before and after; geometry_visibility.py and
-    parsing_rules.py hold over all 300 dumps; npm run spec:check, no
-    violations.
-  - BOUNDARY: as in RULES FOR EVERY ITEM.
-
-  - IMPORTANT: Every figure is measured in this session against a real capture and written into the report.
-  - INVIOLABLE: SPECIFICATION SURFACE IS AUTHORITATIVE. Every node above exists before the code it governs.
-  - INVIOLABLE: DO NOT EMIT P3_SKIPPED.
-  - FORBIDDEN: MULTI-AGENT execution is not allowed. DO NOT SPAWN MULTIPLE AGENTS.
-  - WHEN TO COMMIT: Before "silk run finalize", after `npm run ril -- journal coalesce`.
-  - AFTER COMMIT: end FINAL_STATUS with an explicit NOT PUSHED line naming /cb-ops.
-  - DECISION PROTOCOL: If a decision must be made, ask for direct feedback. DO NOT DECIDE ALONE.
-  - AT THE END: update this list as HOW THE LIST WORKS states.
-
-/cb-green — a sound specification for the feature module
-  - What: SUB-FEATURE-RESEARCH is made sound: every algorithm bound to the
-    code that implements it, every invariant bound to what holds it and to
-    a check that tests it, no edge claiming what the code does not do, and
-    no two nodes contradicting each other. Audited on 2026-10-29 over the
-    module's 75 nodes:
-      - no node carries an artifact association or a location;
-      - INV-DETERMINISTIC-MEASUREMENT, INV-UNIT-COLUMNS-BOUNDED,
-        INV-GENERATED-HAS-TRACKED-PRODUCER, INV-NO-CAPTURES-TRACKED and
-        INV-TEXT-STORED-LF have no satisfier;
-      - INV-BACKGROUND-NOT-CONTENT and INV-UNNAMED-CONTENT-REPORTED are
-        tested by no check;
-      - ALG-VISIBLE-SURFACE claims INV-OCCLUDER-PAINTS while vis_kind
-        admits a claim only for a node carrying the content slot 28;
-      - INV-CLIENT-TAG-COVERAGE counts every canvas node of a window, on
-        the display or not, against INV-VISIBLE-ONLY;
-      - ALG-VISIBILITY, ALG-OWNER-SELECT and ALG-PARSE-RSTREE produce into
-        no interface - nothing describes the pruned tree or its visible
-        cells; ALG-MEDIA-SURFACE writes IF-PATTERNS-ROW columns with no
-        output-of edge; ALG-QUICK-SIG satisfies nothing;
-      - INV-GEOMETRY-FROM-TREE, INV-OPACITY, INV-CLIP-TO-BOUNDS,
-        INV-VISIBLE-ONLY, INV-VISIBLE-AREA-ONLY and INV-PRUNED-NOT-PARSED
-        emit no error code.
-    Each finding is re-measured at the start of the item, after item 1.
-  - Read: every node of SUB-FEATURE-RESEARCH through ril query-multi;
-    tools/cluster/*.py and tools/checks/*.py; ril associate.
-  - Spec work:
-      every algorithm: ril associate with the file and function that
-        implement it.
-      the five invariants without a satisfier: the satisfies edge from the
-        algorithm or check that holds each, or, where one is enforced by
-        construction, verified-by structural with the construction named.
-      INV-OCCLUDER-PAINTS and vis_kind: the kind of a claim may depend on
-        draw slot 28 or not - put to the human; the spec is written to the
-        answer.
-      modify INV-CLIENT-TAG-COVERAGE: coverage counts the nodes
-        ALG-VISIBILITY finds visible.
-      add interface IF-VISIBLE-TREE (SUB-FEATURE-RESEARCH): the kept nodes,
-        their state, shape, visible cells and window; output-of
-        ALG-VISIBILITY, input-of ALG-OWNER-SELECT, ALG-BRANCH-GROUP,
-        ALG-VISIBLE-SURFACE and ALG-MEDIA-SURFACE.
-      ALG-MEDIA-SURFACE output-of IF-PATTERNS-ROW.
-      one error code per invariant above that emits none, each emitted by
-        the check that tests it.
-  - Code path: tools/checks/ - every check prints the id of every invariant
-    it tests, and its error code when one is violated; the checks for
-    INV-BACKGROUND-NOT-CONTENT and INV-UNNAMED-CONTENT-REPORTED.
-  - Test: the audit above re-run at the end, every line of it empty; every
-    check under tools/checks/ run on the real capture and named with its
-    result; npm run spec:check, no violations.
-  - BOUNDARY: as in RULES FOR EVERY ITEM.
-
-  - IMPORTANT: Every figure is measured in this session against a real capture and written into the report.
-  - INVIOLABLE: SPECIFICATION SURFACE IS AUTHORITATIVE. Every node above exists before the code it governs.
-  - INVIOLABLE: DO NOT EMIT P3_SKIPPED.
-  - FORBIDDEN: MULTI-AGENT execution is not allowed. DO NOT SPAWN MULTIPLE AGENTS.
-  - WHEN TO COMMIT: Before "silk run finalize", after `npm run ril -- journal coalesce`.
-  - AFTER COMMIT: end FINAL_STATUS with an explicit NOT PUSHED line naming /cb-ops.
-  - DECISION PROTOCOL: If a decision must be made, ask for direct feedback. DO NOT DECIDE ALONE.
-  - AT THE END: update this list as HOW THE LIST WORKS states.
-
-/cb-green — the pattern dictionary and the matcher
-  - What: the pattern vector, built from a designed dictionary of
-    structural patterns matched against the visible components of each
-    window. It replaces the repeating-group detector and the pattern
-    columns entirely.
+    parse_surface; rs_visibility.py, rs_pattern.py and tools/checks/
+    geometry_visibility.py carry clipping, rotation as a quadrilateral,
+    visible-cell areas and an owner selection; two spec batches are in the
+    DAG and not coalesced. The batches are kept and amended as below; the
+    code is rewritten to this design.
+    THE SCENE. A node is in the scene if and only if it has visible cells
+    of its own on the display, or a descendant in the scene. A kept node's
+    children are exactly its kept children: a Column of 20 rows with 3 on
+    the display is a Column of 3 rows. A node partly on the display is
+    kept, and contributes only the cells that are visible. Every node
+    wholly off the display, wholly occluded or at effective alpha 0 goes,
+    with its branch, unless a descendant has visible cells of its own.
+    Visibility is alpha alone (INV-OPACITY): at alpha 0 invisible; at alpha
+    1 with a background alpha FF occluding; otherwise visible however
+    transparent. No draw state - shouldPaint_, drawable slots,
+    IsSubTreeSkipped - and no size threshold decides anything.
+    THE PASS. The dump is indexed: one match per line gives each node's id,
+    kind, line and parent. Then one descent from LOGICAL_DISPLAY_NODE,
+    parent first, children topmost first (ReverseChildren, PositionZ).
+      Down, inherited: effective alpha; the transform (Bounds, Translate,
+        Rotation and Scale about the Pivot; a rotated node is a
+        quadrilateral); the clip - the display, every clipping ancestor,
+        and at a window node its VisibleRegion; the meaningful parent, the
+        nearest kept ancestor whose tag is not pass-through; the window.
+        A branch is dropped on the way down only when its region is
+        provably empty: alpha 0, a clip with nothing left, or a clip
+        region already wholly covered by occluders. A container that does
+        not clip is descended even when its own box is off the display or
+        occluded, because only its children decide whether it stays.
+      At the node: its visible cells, against the occluders written so
+        far - exactly those painted above it outside its branch.
+      Up, returned to the parent: kept or not; its kept children; its
+        element set to the dictionary's depth; the area of its branch's
+        visible cells, each cell counted once; its pattern matches. An
+        occluding node then writes its cells, and a mark claims its free
+        cells for the surface vector. At a window node, its tag coverage
+        over its kept nodes; a window under half tagged
+        (ERR-PATTERN-ROOT-UNTAGGED) discards its matches and is named.
+    Each node is visited once; a node's line is parsed only when the pass
+    reaches it.
     VOCABULARY. Elements are written over meaningful component tags.
       - Pass-through, collapsed: __Common__, Custom, Stack, NodeContainer,
         RelativeContainer, and untagged nodes.
@@ -281,8 +165,8 @@ PROMPTS
         is 0.7 to 1.4; thumb under 0.15 of the display; image_large
         otherwise.
       - Element forms: Tag; parent/child, the parent being the nearest
-        meaningful ancestor; parent/child* when that child kind occurs two
-        or more times.
+        kept meaningful ancestor; parent/child* when two or more kept
+        children are of that kind.
     DICTIONARY. Designed, not derived from any capture. Each pattern is a
     root and an element set:
       video_large    XComponent:large   {XComponent:large}
@@ -297,26 +181,21 @@ PROMPTS
       icon_row       Row                {Row, Row/icon*}
       icon_grid      composed: Column   {Column, Column/icon_row*}
                                or Grid  {Grid, Grid/GridItem*, GridItem/icon}
-    MATCHING. A window with under half of its nodes tagged
-    (ERR-PATTERN-ROOT-UNTAGGED, INV-CLIENT-TAG-COVERAGE) is not matched; it
-    is named, and counts as untagged rather than as having no pattern.
-    Per window, for each pattern, at every node ALG-VISIBILITY finds
-    visible whose label is the pattern's root: the element set of its subtree down to the
-    pattern's depth, through pass-through nodes; d = 1 - Jaccard(subtree
-    set, pattern set). The pattern's distance in the window is the minimum
-    over those nodes, and 1 when no node carries the root. Found when
-    d <= 0.2. Matches of one pattern never overlap: only the outermost
-    counts. Matching is bottom-up: a matched node becomes its pattern's
-    token for the patterns above it, and parts consumed by a composed
-    pattern are not counted on their own.
-    VECTOR. Per pattern: d, the minimum over the windows on the display;
-    share, the visible display area of the union of its matches, summed
-    over the windows; count, the number of its matches summed over the
-    windows, written n/(n+1). Every value lies in [0, 1].
+    MATCHING, on the way up. At a kept node whose label is a pattern's
+    root: d = 1 - Jaccard(its element set, the pattern's set). Found when
+    d <= 0.2. A found match is passed up as its pattern's token, so a parent
+    can compose it; the parts it consumed, and inner matches of the same
+    pattern, are dropped, so only the outermost counts.
+    VECTOR, per display, at LOGICAL_DISPLAY_NODE. Per pattern: d, the
+    minimum over its roots on the display, 1 when none; share, the area of
+    its outermost matches' visible cells over the display area; count, its
+    outermost matches, written n/(n+1). Every value lies in [0, 1] by
+    construction, defined for every display, with no weight, no imputation
+    and no normalisation across displays.
     VIEWER. The pattern tab holds one group per dictionary pattern: its
-    picture, its definition, its count, and every window it was found in.
-    A window appears under every pattern it matches, and in a "no pattern
-    found" group when it matches none. The picture is a schematic generated
+    picture, its definition, its count, and every scene it was found in.
+    A scene appears under every pattern found on its display, and in a "no
+    pattern found" group when none is. The picture is a schematic generated
     from the pattern's definition alone: the root a labelled box; children
     laid out by container kind - Row across, Column and List down, Grid and
     WaterFlow in two columns; a repeated child drawn three times with an
@@ -327,60 +206,124 @@ PROMPTS
     its own and the reason is named.
     CLUSTERING. Runs on the pattern vector alone while the surface item is
     deferred.
-  - Read: rs_pattern.py, vectors_build.py, vectors_page.py in full;
-    tools/checks/viewer_renders.py, psi_rules.py, unplaced_rules.py,
-    no_silent_scene_loss.py; the spec nodes below.
-  - Spec work:
-      add interface IF-PATTERN-VOCABULARY: the vocabulary above.
-      add interface IF-PATTERN-DICTIONARY: the dictionary above.
-      add interface IF-PATTERN-VECTOR: the vector above.
-      add algorithm ALG-PATTERN-MATCH: the matching above; input-of
-        IF-PATTERN-DICTIONARY and IF-PATTERN-VOCABULARY; output-of
-        IF-PATTERN-VECTOR.
+    REMOVED AS DECIDED: the owner window; the media surface, which the
+    video patterns cover; the OVERSIZE rule; the draw-state columns, which
+    describe rendering, not the scene.
+  - Read: rs_extract.py, rs_visibility.py, rs_pattern.py, vectors_build.py,
+    vectors_page.py in full; tools/checks/geometry_visibility.py,
+    parsing_rules.py, viewer_renders.py, psi_rules.py, unplaced_rules.py,
+    no_silent_scene_loss.py, tag_coverage.py; every node named below.
+  - Spec work, relative to the DAG with the two uncoalesced batches:
+      remove, each confirmed by the human node by node before the envelope:
+        ALG-OWNER-SELECT, ERR-NO-OWNER-WINDOW, ALG-OWNERSHIP,
+        ALG-PAINT-ORDER, ALG-BRANCH-GROUP, INV-TIEBREAK-NOT-ON-AREA,
+        INV-ABSENT-NOT-ZERO, IF-PATTERN-SPACE, ALG-PSI-PATTERN,
+        ALG-MEDIA-SURFACE, INV-OWN-RECT-BOUNDS; and the edge
+        ALG-PARSE-RSTREE satisfies INV-CLIENT-TAG-COVERAGE.
+      modify ANN-DISPLAY-WINDOW-SCREEN: display = LOGICAL_DISPLAY_NODE,
+        window = a top-level SURFACE_NODE under it, screen = SCREEN_NODE,
+        scene = the display's kept tree.
+      modify ALG-VISIBILITY: the pass above; it calls ALG-PATTERN-MATCH and
+        ALG-VISIBLE-SURFACE per node on the way up; IF-CAPTURE-SESSION
+        input-of it; output-of IF-PATTERNS-ROW.
+      modify ALG-PARSE-RSTREE: the index and parsing on demand; the full
+        parse remains only for the checks' oracles.
+      modify ALG-VISIBLE-SURFACE: a per-node claim on the way up, over the
+        whole display.
+      modify ALG-MOTIF-SCHEMATIC: drawn from a pattern's definition alone;
+        IF-PATTERN-DICTIONARY input-of it.
+      modify ALG-DESCRIBE-CELL: surface cells only.
+      modify ALG-VECTOR-CLUSTER: input is the pattern vector.
+      modify ALG-VIEWER-RENDER, IF-VIEWER, IF-PAGE-PAYLOAD: the pattern tab
+        above.
+      modify IF-PATTERNS-ROW: owner, pat1_*, pat2_*, pat_*, has_slot2,
+        overlay_*, every surf_* and the draw_* columns removed; d, share
+        and count per dictionary pattern added; the column count
+        corrected.
+      modify INV-OPACITY: visibility on the on-display region.
+      modify INV-OCCLUSION-PAINT-ORDER: the descent, topmost child first.
+      modify INV-FIRST-PASS-COUNTS: the index holds exactly the first-pass
+        ids.
+      modify INV-VISIBLE-ONLY: only the index and the pass read nodes
+        outside the scene.
+      modify INV-VISIBLE-AREA-ONLY: every area is the union of kept nodes'
+        visible cells.
+      modify INV-PRUNED-NOT-PARSED: the occluded clip added; a container
+        that does not clip is descended by design.
+      modify INV-GEOMETRY-FROM-TREE: for every node the pass reaches.
+      modify INV-CLIENT-TAG-COVERAGE: over kept nodes, at the window node;
+        ALG-VISIBILITY satisfies it.
+      modify INV-UNIT-COLUMNS-BOUNDED: in [0, 1] by construction, with no
+        clamping.
+      modify INV-NO-SCENE-CLASS: a pattern name names a structure and is
+        permitted; a scene, app or use name is not.
+      modify INV-DESCRIPTION-FROM-MEASUREMENT: the new columns.
+      modify INV-EVERY-SCENE-IN-EVERY-TAB: in the pattern tab every scene
+        appears at least once, the "no pattern found" group counted.
+      modify INV-UNPLACED-SCENES-NAMED: unplaced in the pattern tab is no
+        pattern found on the display.
+      modify INV-PSI-TOTAL, INV-PSI-DISJOINT, INV-PSI-MINIMAL,
+        INV-PSI-ORTHOGONAL: the pattern space removed from each.
+      add interface IF-PATTERN-VOCABULARY, IF-PATTERN-DICTIONARY,
+        IF-PATTERN-VECTOR: as above.
+      add algorithm ALG-PATTERN-MATCH: the matching above;
+        IF-PATTERN-VOCABULARY and IF-PATTERN-DICTIONARY input-of it;
+        output-of IF-PATTERN-VECTOR; IF-PATTERN-VECTOR input-of
+        ALG-VECTOR-CLUSTER.
+      add invariant INV-DISPLAY-ROOT: the pass starts at the single
+        LOGICAL_DISPLAY_NODE; detached subtrees are never read.
+      add invariant INV-SINGLE-PASS: each node is visited at most once.
+      add invariant INV-SCENE-PRUNED: the scene rule above.
       add invariant INV-DICTIONARY-DESIGNED: no pattern is computed from a
         capture.
-      ALG-PATTERN-MATCH satisfies INV-VISIBLE-ONLY and
-        INV-VISIBLE-AREA-ONLY: it reads only visible nodes, and a pattern's
-        share is the union of its matches' visible cells.
       add invariant INV-STRUCTURE-NOT-DRAW-STATE: no element depends on
-        shouldPaint or draw slots.
+        shouldPaint_ or draw slots.
       add invariant INV-DISTANCE-ORDER-FREE: the distance is unchanged
         under any permutation of its inputs.
       add invariant INV-MATCHES-OUTERMOST: matches of one pattern never
         overlap.
       add invariant INV-COMPOSITION-CONSUMES: a part of a composed match is
         not counted on its own.
-      add invariant INV-FEATURE-FIXED-MAP: every value of the vector is a
-        fixed function of one display's own measurements; checked by
-        computing a display's vector alone and inside the capture.
-      add invariant INV-FEATURE-UNIT-RANGE: every value lies in [0, 1] by
-        construction, with no clamping.
+      add invariant INV-FEATURE-FIXED-MAP: every value is a fixed function
+        of one display's own measurements.
       add invariant INV-FEATURE-TOTAL: every value is defined for every
         display; nothing is imputed.
       add invariant INV-NO-FEATURE-WEIGHTS: no weight is applied to any
         value.
-      add invariant INV-PICTURE-SAME-MOMENT: the timing rule above.
+      add invariant INV-PICTURE-SAME-MOMENT: a scene's picture is accepted
+        only if no sample with a different signature lies between the
+        dump's sample and the picture's in samples.csv; otherwise the scene
+        has no picture of its own and the reason is named.
       add invariant INV-NO-FILE-TIME: no code orders or pairs samples by
         file time.
-      add error-code ERR-PICTURE-NOT-SAME-MOMENT (WARN, py).
-      add error-code ERR-FEATURE-OUT-OF-RANGE (ERROR, py).
-      add error-code ERR-FEATURE-UNDEFINED (ERROR, py).
-      modify INV-NO-SCENE-CLASS: a pattern name names a structure and is
-        permitted; a scene, app or use name is not.
-      modify IF-VIEWER: the pattern tab as above.
-      modify INV-EVERY-SCENE-IN-EVERY-TAB: in the pattern tab every scene
-        appears at least once, the "no pattern found" group counted.
-      modify INV-UNPLACED-SCENES-NAMED: in the pattern space, unplaced is
-        no pattern found in any window.
-      modify ALG-VECTOR-CLUSTER: input is the pattern vector.
-      modify IF-PAGE-PAYLOAD and IF-PATTERNS-ROW: the pattern vector and
-        the per-window matches in place of the pat1_*, pat2_*, pat_* and
-        overlay_* columns.
-      remove, each confirmed by the human first: ALG-PSI-PATTERN,
-        IF-PATTERN-SPACE, the pattern-space part of INV-PSI-TOTAL,
-        INV-PSI-DISJOINT, INV-PSI-MINIMAL and INV-PSI-ORTHOGONAL,
-        ALG-MOTIF-SCHEMATIC, INV-ABSENT-NOT-ZERO, and the pattern branch of
-        ALG-DESCRIBE-CELL.
+      every new invariant: contains from SUB-FEATURE-RESEARCH, checked-at
+        AUT-PIPELINE-RUN.
+      ALG-VISIBILITY satisfies INV-DISPLAY-ROOT, INV-SINGLE-PASS,
+        INV-SCENE-PRUNED, INV-PRUNED-NOT-PARSED, INV-GEOMETRY-FROM-TREE,
+        INV-OPACITY, INV-CLIP-TO-BOUNDS, INV-OCCLUSION-PAINT-ORDER,
+        INV-OCCLUDER-PAINTS, INV-VISIBLE-ONLY, INV-CLIENT-TAG-COVERAGE.
+      ALG-PATTERN-MATCH satisfies INV-DICTIONARY-DESIGNED,
+        INV-STRUCTURE-NOT-DRAW-STATE, INV-DISTANCE-ORDER-FREE,
+        INV-MATCHES-OUTERMOST, INV-COMPOSITION-CONSUMES,
+        INV-FEATURE-FIXED-MAP, INV-FEATURE-TOTAL, INV-NO-FEATURE-WEIGHTS,
+        INV-UNIT-COLUMNS-BOUNDED, INV-VISIBLE-ONLY, INV-VISIBLE-AREA-ONLY,
+        INV-NO-SCENE-CLASS.
+      ALG-VECTOR-CLUSTER satisfies INV-PICTURE-SAME-MOMENT and
+        INV-NO-FILE-TIME.
+      add error codes, each emitted by the invariants named and raised by
+        the check that tests them: ERR-NO-DISPLAY-NODE (INV-DISPLAY-ROOT);
+        ERR-NOT-ON-DISPLAY (INV-VISIBLE-ONLY, INV-SCENE-PRUNED,
+        INV-OPACITY, INV-CLIP-TO-BOUNDS); ERR-AREA-NOT-VISIBLE
+        (INV-VISIBLE-AREA-ONLY); ERR-GEOMETRY-MISMATCH
+        (INV-GEOMETRY-FROM-TREE); ERR-PASS-REVISIT (INV-SINGLE-PASS,
+        INV-PRUNED-NOT-PARSED); ERR-PATTERN-ORACLE-MISMATCH (the pattern
+        invariants); ERR-FEATURE-OUT-OF-RANGE (INV-UNIT-COLUMNS-BOUNDED);
+        ERR-FEATURE-UNDEFINED (INV-FEATURE-TOTAL);
+        ERR-PICTURE-NOT-SAME-MOMENT (INV-PICTURE-SAME-MOMENT).
+      ril associate: ALG-VISIBILITY, ALG-PATTERN-MATCH,
+        ALG-VISIBLE-SURFACE, ALG-PARSE-RSTREE, ALG-MOTIF-SCHEMATIC,
+        ALG-DESCRIBE-CELL, ALG-VECTOR-CLUSTER and ALG-VIEWER-RENDER, each
+        with the file and function that implement it.
   - Open point, for the human: the system UI's components have no source
     on this device build. The client dump gives a fixed subset of them and
     the window manager, ability manager and RenderService dumps give none,
@@ -388,35 +331,114 @@ PROMPTS
     stay outside the patterns. Whether to look for another source, and
     where, is open.
   - Code that goes:
-      rs_pattern.py: Scene.pattern, Scene.arrangement, Scene._split, the
-        grouping in analyse, fullbleed, leaf_kind, owner_of's choice of one
-        window, and every pat*, pat1_*, pat2_* and overlay_* column.
+      rs_pattern.py: Scene and everything under it (collapse, split,
+        pattern, arrangement, overlay), the grouping in analyse, owner_of,
+        media_surface, draw_state, mark_kind, leaf_kind, TAG_KIND,
+        paints_behind, the constants COINCIDENT, OVERLAY_IN, OVERLAY_MAX,
+        POS_TOL, BUDGET, OVERSIZE, FULLBLEED_H, SURF_MIN, SURF_BANDS, and
+        the dead "if False" block.
+      rs_visibility.py: walk, area and window_weight, replaced by the pass.
+      rs_extract.py: set_ownership, paint_order and window_tag_coverage
+        leave the pipeline; the full parse_tree and compose_geometry remain
+        for the oracles only.
       vectors_build.py: transform, the weights, the standardisation and
         block scaling, the mean fill, psi_pattern, psi_pattern_cells,
         schematic, the pattern branch of describe_cell, and the pattern
         columns of VECTORS.
-      tools/checks/: the pattern parts of psi_rules.py and
-        unplaced_rules.py, and every read of the pat1_* columns.
-  - Code path: a pattern module under tools/cluster/, rs_pattern.py,
-    vectors_build.py, vectors_page.py, tools/checks/ (a matcher check and
-    a timing check).
+      tools/checks/: check_paint_order and check_own_rect in
+        parsing_rules.py; the tiebreak check in measurement_rules.py; the
+        absent-not-zero check in vector_rules.py; the pattern parts of
+        psi_rules.py and unplaced_rules.py; every read of the pat1_*
+        columns.
+  - Code path: rs_extract.py (index, parsing on demand), a pass module
+    under tools/cluster/ holding the descent, the matcher and the claim,
+    rs_pattern.py (the row), vectors_build.py, vectors_page.py,
+    tools/checks/.
+  - Check:
+      - a display oracle: a full parse and exact polygon arithmetic, no
+        raster, recomputing the scene - the kept tree node for node, each
+        kept node's visible region and each branch's visible area - held
+        against the pass;
+      - a pattern oracle: a deliberately naive implementation of the
+        definitions, plain recursion per root over the oracle's scene,
+        recomputing element sets, d, outermost and composition; d, share
+        and count per display equal to the pass's;
+      - counters in the pass: visits per node at most one; the parsed set
+        within the kept nodes, their children and the ancestors of the
+        display node;
+      - the distance unchanged when children are shuffled; every display's
+        vector identical computed alone and inside the capture; every value
+        in [0, 1] with no clamping;
+      - a timing check for INV-PICTURE-SAME-MOMENT and INV-NO-FILE-TIME;
+      - every check prints the id of each invariant it tests and the error
+        code of each violation.
   - Test, on the real capture:
-      - 20261022_123014/0102, 0049, 0179, 0027, 20261022_110104/0002 and
-        20261027_102041/0010: video_medium and gallery_flow found at d = 0,
+      - the seven confirmed video rectangles whole and wholly visible;
+        20261022_123014/0102, 0049, 0179, 0027, 20261022_110104/0002 and
+        20261027_102041/0010: video_medium and gallery_flow found at d = 0
         and no other pattern; 20261022_123014/0192: video_medium and
-        gallery_grid at d = 0;
-      - icon_grid: the number of displays where it is found, reported;
-      - the share of displays with at least one pattern found, and the
-        count per pattern, reported;
-      - the distance unchanged when the inputs are shuffled;
-      - every display's vector identical computed alone and in the capture;
-      - viewer_renders.py holds on the rebuilt viewer;
-      - npm run spec:check, no violations.
+        gallery_grid at d = 0, its GridItems at y 2070 kept and the rows
+        at y 3117 and 4163 removed;
+      - icon_grid: the number of displays where it is found;
+      - the share of displays with at least one pattern, and the count per
+        pattern;
+      - nodes parsed and nodes kept per dump, before and after; milliseconds
+        per dump for the pass alone, median and maximum, taken inside
+        Python;
+      - both oracles, the counters and the property checks hold over all
+        300 dumps; viewer_renders.py holds on the rebuilt viewer;
+        npm run spec:check, no violations.
   - BOUNDARY: as in RULES FOR EVERY ITEM.
 
   - IMPORTANT: Every figure is measured in this session against a real capture and written into the report.
   - INVIOLABLE: SPECIFICATION SURFACE IS AUTHORITATIVE. Every node above exists before the code it governs.
   - INVIOLABLE: NO SCENE CLASSES. A pattern names a structure of components.
+  - INVIOLABLE: DO NOT EMIT P3_SKIPPED.
+  - FORBIDDEN: MULTI-AGENT execution is not allowed. DO NOT SPAWN MULTIPLE AGENTS.
+  - WHEN TO COMMIT: Before "silk run finalize", after `npm run ril -- journal coalesce`.
+  - AFTER COMMIT: end FINAL_STATUS with an explicit NOT PUSHED line naming /cb-ops.
+  - DECISION PROTOCOL: If a decision must be made, ask for direct feedback. DO NOT DECIDE ALONE.
+  - AT THE END: update this list as HOW THE LIST WORKS states.
+/cb-green — a sound specification for the feature module
+  - What: SUB-FEATURE-RESEARCH is made sound after item 1: every algorithm
+    bound to the code that implements it, every invariant bound to what
+    holds it and to a check that tests it, no edge claiming what the code
+    does not do, and no two nodes contradicting each other. From the audit
+    of 2026-10-29, what item 1 does not already clear:
+      - no algorithm outside item 1 carries an artifact association;
+      - INV-DETERMINISTIC-MEASUREMENT, INV-UNIT-COLUMNS-BOUNDED,
+        INV-GENERATED-HAS-TRACKED-PRODUCER, INV-NO-CAPTURES-TRACKED and
+        INV-TEXT-STORED-LF have no satisfier;
+      - INV-BACKGROUND-NOT-CONTENT and INV-UNNAMED-CONTENT-REPORTED are
+        tested by no check;
+      - ALG-VISIBLE-SURFACE claims INV-OCCLUDER-PAINTS while vis_kind
+        admits a claim only for a node carrying the content slot 28;
+      - ALG-QUICK-SIG satisfies nothing.
+    The audit is re-run at the start of the item, after item 1, and every
+    finding is taken from that run.
+  - Read: every node of SUB-FEATURE-RESEARCH through ril query-multi;
+    tools/cluster/*.py and tools/checks/*.py; ril associate.
+  - Spec work:
+      every algorithm without one: ril associate with the file and
+        function that implement it.
+      the invariants without a satisfier: the satisfies edge from the
+        algorithm that holds each, or, where one is enforced by
+        construction, verified-by structural with the construction named.
+      INV-OCCLUDER-PAINTS and vis_kind: whether the kind of a claim may
+        depend on draw slot 28 - put to the human; the spec is written to
+        the answer.
+      every invariant without an error code: one, emitted by it and raised
+        by the check that tests it.
+  - Code path: tools/checks/ - the checks for INV-BACKGROUND-NOT-CONTENT
+    and INV-UNNAMED-CONTENT-REPORTED; every check prints the id of each
+    invariant it tests and the error code of each violation.
+  - Test: the audit re-run at the end, every line of it empty; every check
+    under tools/checks/ run on the real capture and named with its result;
+    npm run spec:check, no violations.
+  - BOUNDARY: as in RULES FOR EVERY ITEM.
+
+  - IMPORTANT: Every figure is measured in this session against a real capture and written into the report.
+  - INVIOLABLE: SPECIFICATION SURFACE IS AUTHORITATIVE. Every node above exists before the code it governs.
   - INVIOLABLE: DO NOT EMIT P3_SKIPPED.
   - FORBIDDEN: MULTI-AGENT execution is not allowed. DO NOT SPAWN MULTIPLE AGENTS.
   - WHEN TO COMMIT: Before "silk run finalize", after `npm run ril -- journal coalesce`.
