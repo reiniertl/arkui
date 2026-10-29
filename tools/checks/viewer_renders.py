@@ -212,7 +212,13 @@ def main():
         cols = [c["name"] for c in C.get("cols", [])]
         expect = vector_columns(src)
         if cols != expect:
-            probs.append("columns %s, the two vectors are %s" % (cols, expect))
+            probs.append("columns %s, the motif vector is %s" % (cols, expect))
+        if len(cols) != 3 * len(VB.SC.MOTIFS):
+            probs.append("%d columns, 3 per motif is %d" % (len(cols), 3 * len(VB.SC.MOTIFS)))
+        fn = next(n for n in ast.parse(src).body
+                  if isinstance(n, ast.FunctionDef) and n.name == "build_clustering")
+        if re.search(r"X\[:,\s*\w+\]", ast.get_source_segment(src, fn)):
+            probs.append("build_clustering selects columns out of the matrix")
         for g in C.get("groups", []):
             if not isinstance(g.get("id"), int):
                 probs.append("cluster id %r is not an integer" % g.get("id"))
@@ -223,14 +229,14 @@ def main():
         probs.append("per-vector blocks remain: %s"
                      % [k for k in D if not k.startswith("_") and k != "clustering"])
     report("INV-CLUSTERING-MATCHES-NO-PATTERN", probs,
-           "the clustering reads the %d vector columns and names clusters by id"
+           "the clustering reads all %d motif vector columns, drops none, and names clusters by id"
            % len(vector_columns(src)))
 
 
     probs = []
     check_no_weights(src, probs)
     report("INV-NO-FEATURE-WEIGHTS", probs,
-           "build_clustering uses the pattern vector as measured", "ERR-FEATURE-WEIGHTED")
+           "build_clustering uses the motif vector as measured", "ERR-FEATURE-WEIGHTED")
 
     return 1 if failed else 0
 

@@ -4,13 +4,13 @@
     ./vectors_build.py patterns.csv --captures captures --out two_payload.json
     ./vectors_page.py  two_payload.json --out scene_feature_reference.html
 
-The pattern vector holds, per dictionary pattern, its distance, share and
-count on the display (IF-PATTERN-VECTOR); the viewer shows one group per
-dictionary pattern with every scene it was found in. Separately, one
-clustering runs over the pattern vector and matches no pattern
+The motif vector holds, per dictionary motif, its distance, share and
+count on the display (IF-MOTIF-VECTOR): 21 motifs, 63 columns. The viewer
+shows one group per dictionary motif with every scene it was found in.
+Separately, one clustering runs over all 63 columns and matches no motif
 (ALG-VECTOR-CLUSTER).
 
-Nothing here names a scene. A pattern names a structure of components and a
+Nothing here names a scene. A motif names a structure of components and a
 cluster is named by its id.
 
 This script was an inline fragment for one session and the page it produced
@@ -36,7 +36,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import rs_scene as SC                           # noqa: E402
 
 
-# The pattern vector's columns, in dictionary order: per pattern its
+# The motif vector's columns (IF-MOTIF-VECTOR), in dictionary order: per motif its
 # distance, its share of the display and its count written n/(n+1). Each is
 # in [0, 1] by construction and is used as measured - no transform, no
 # weight, no standardisation and no imputation (INV-NO-FEATURE-WEIGHTS,
@@ -47,7 +47,7 @@ PATTERN_COLS = [(p + suf, what % p) for p in SC.PATTERNS for suf, what in (
     ("_n", "%s: matches n, as n/(n+1)"))]
 
 def found(row):
-    """The dictionary patterns found on this scene's display, in order."""
+    """The dictionary motifs found on this scene's display, in order."""
     return [p for p in SC.PATTERNS if float(row.get(p + "_d") or 1.0) <= SC.FOUND]
 
 
@@ -106,19 +106,21 @@ DW_REF, DH_REF = 1316.0, 2832.0      # the captured display; a frame, not a clai
 
 
 def definition(name):
-    """A pattern's definition as text, from IF-PATTERN-DICTIONARY alone."""
-    return " or ".join("%s {%s}" % (root, ", ".join(sorted(shape)))
-                       for n, root, shape, _ in SC.SHAPES if n == name)
+    """A motif's definition as text, from IF-MOTIF-DICTIONARY alone: every
+    variant's element set and the contract it comes from."""
+    return "; or ".join("%s {%s} (%s)" % (root, ", ".join(sorted(shape)), src)
+                        for n, root, shape, src in SC.DICTIONARY if n == name)
 
 
 def schematic(name):
-    """Draw a dictionary pattern from its definition alone (ALG-MOTIF-SCHEMATIC).
+    """Draw a dictionary motif from its definition alone (ALG-MOTIF-SCHEMATIC).
 
     The root is a labelled box. Its children are laid out by what the root
     is: across for a Row, down for a Column or a List, in two columns for a
     Grid or a WaterFlow. A repeated child (`*`) is drawn three times with an
     ellipsis; a single one once. A child that is itself a pattern is drawn
-    as its own small schematic. Sizes come from the size labels. Nothing
+    as its own small schematic. A leaf motif is its root alone. Sizes come
+    from the size labels. Nothing
     here reads a capture: the drawing is the definition, not a scene.
     """
     shape = next(s for n, r, s, _ in SC.SHAPES if n == name)
@@ -272,8 +274,10 @@ def build_clustering(rows, mcs):
 
     The columns as measured: each already lies in [0, 1], so nothing is
     transformed, weighted, standardised or filled (INV-NO-FEATURE-WEIGHTS,
-    INV-FEATURE-TOTAL). A column with no variance measured nothing on this
-    capture and is reported and left out. HDBSCAN on that. A scene it
+    INV-FEATURE-TOTAL). All 63 columns, on every capture: a column with no
+    variance changes no distance and no PCA component, so it is reported
+    and kept, and the column set never depends on the capture. HDBSCAN on
+    that. A scene it
     cannot place is reported in the unclustered group, never forced into the
     nearest cluster.
     """
@@ -282,11 +286,10 @@ def build_clustering(rows, mcs):
     sd = X.std(0)
     flat = [F[j][0] for j in range(X.shape[1]) if sd[j] < 1e-9]
     if flat:
-        print("ERR-COLUMN-CONSTANT: %d column(s) measured nothing on this capture "
-              "- no variance - and are left out of the clustering: %s"
+        print("ERR-COLUMN-CONSTANT: %d column(s) have no variance on this capture "
+              "and change no distance; they stay in the clustering: %s"
               % (len(flat), ", ".join(flat)))
-    keep = sd >= 1e-9
-    Z = X[:, keep]
+    Z = X
 
     lab = HDBSCAN(min_cluster_size=mcs).fit_predict(Z)
     m = lab >= 0
@@ -327,11 +330,12 @@ def build_clustering(rows, mcs):
         })
     groups.sort(key=lambda g: (g["id"] < 0, -g["n"]))
 
-    return {"title": "Clustering over the pattern vector",
-            "blurb": ("Every scene clustered on the pattern vector's columns as "
-                      "measured. It matches no pattern: a cluster is where scenes "
-                      "sit relative to each other, named only by its id."),
+    return {"title": "Clustering over the motif vector",
+            "blurb": ("Every scene clustered on all %d of the motif vector's columns "
+                      "as measured. It matches no motif: a cluster is where scenes "
+                      "sit relative to each other, named only by its id." % len(F)),
             "cols": [{"name": n, "what": d} for n, d in F],
+            "constant": flat,
             "n": len(rows), "k": len(set(lab) - {-1}),
             "outliers": int((lab < 0).sum()),
             "silhouette": (round(sil, 3) if sil is not None else None),
@@ -454,10 +458,10 @@ def main():
     no_pattern = [row_identity(r) for r in none if _f(r, "read_windows")]
     untagged = [row_identity(r) for r in none if not _f(r, "read_windows")]
     patterns.append({"cell": "none", "n": len(no_pattern), "svg": None,
-                     "desc": "No dictionary pattern was found on the display.",
+                     "desc": "No dictionary motif was found on the display.",
                      "members": no_pattern})
     patterns.append({"cell": "untagged", "n": len(untagged), "svg": None,
-                     "desc": ("No pattern was found, and no window on the display "
+                     "desc": ("No motif was found, and no window on the display "
                               "had half of its kept nodes tagged, so no structure "
                               "could be read."),
                      "members": untagged})
@@ -468,7 +472,7 @@ def main():
         "pattern": {
             "undescribed": untagged,
             "unplaced": no_pattern,
-            "note": ("unplaced: no dictionary pattern found where a window "
+            "note": ("unplaced: no dictionary motif found where a window "
                      "could be read; undescribed: none found, and no window on "
                      "the display was tagged enough to be read"),
         },
@@ -484,7 +488,7 @@ def main():
               "could not place or could not describe; each is named in the "
               "payload" % tot_un)
 
-    print("\npatterns: %d scenes" % len(rows))
+    print("\nmotifs: %d scenes" % len(rows))
     for c in patterns:
         print("  %-14s %4d" % (c["cell"], c["n"]))
     # The leading underscore is the payload's own convention for a block

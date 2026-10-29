@@ -10,7 +10,7 @@ the window node, so the coverage is of what is shown.
 Reported per window, summarised by window name with the trailing number
 dropped, so the launcher across its scenes reads as one line.
 
-ERR-PATTERN-ROOT-UNTAGGED names every visible window under half: no
+ERR-MOTIF-ROOT-UNTAGGED names every visible window under half: no
 structure can be read from it, and a pattern result that included it would
 stand on nothing. The client dump covers app processes almost completely
 and the system UI only in part, and no other dump on this device build
@@ -83,7 +83,7 @@ def main():
         names = defaultdict(int)
         for _, _, w in low:
             names[re.sub(r"\d+$", "", w["window"])] += 1
-        print("ERR-PATTERN-ROOT-UNTAGGED: %d visible window(s) in %d scene(s) have "
+        print("ERR-MOTIF-ROOT-UNTAGGED: %d visible window(s) in %d scene(s) have "
               "under half of their nodes tagged - %s"
               % (len(low), len({(s, t) for s, t, _ in low}),
                  ", ".join("%s x%d" % kv for kv in sorted(names.items(), key=lambda kv: -kv[1]))))

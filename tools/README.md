@@ -5,7 +5,7 @@ Two steps. The device side pulls files; everything after that is Python.
 | | Runs on | Purpose |
 |---|---|---|
 | `rs_capture.ps1` | host | Pull RenderService dumps and screenshots. Computes nothing |
-| `cluster/` | anywhere | Measure the pattern vector, cluster it, build the page |
+| `cluster/` | anywhere | Measure the motif vector, cluster it, build the page |
 | `deck/` | — | Slides: what the data is, where it comes from, what came out |
 
 ## Prerequisites

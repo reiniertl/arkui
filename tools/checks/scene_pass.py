@@ -245,6 +245,7 @@ def oracle_patterns(tree, tags, sc, dw, dh, density):
     nodes = tree["nodes"]
     memo = functools.lru_cache(maxsize=None)
     O = pass_scene(sc, tree)
+    up = {k: i for i in O for k in O[i]["kids"]}       # the kept tree's parent
 
     def branch(nid):
         acc = [nid]
@@ -267,9 +268,11 @@ def oracle_patterns(tree, tags, sc, dw, dh, density):
         t = tags.get(nid, "")
         if t in S.PASS_THROUGH:
             return None
-        if t == "XComponent":
+        if t in ("XComponent", "Video"):
             a = cells(branch(nid)) / (dw * dh)
-            return "XComponent:" + ("small" if a < S.SMALL else "medium" if a <= S.MEDIUM else "large")
+            return "video:" + ("small" if a < S.SMALL else "medium" if a <= S.MEDIUM else "large")
+        if t in ("TextInput", "TextArea", "Search"):
+            return "text_input"
         if t in ("Image", "SymbolGlyph"):
             w, h = n["abs"][2] / density, n["abs"][3] / density
             if max(w, h) <= S.ICON_DP and S.ICON_AR[0] <= w / max(h, 1e-9) <= S.ICON_AR[1]:
@@ -289,8 +292,14 @@ def oracle_patterns(tree, tags, sc, dw, dh, density):
     def pairs(nid):
         L = label(nid)
         cnt = {}
-        for h in heads(nid):
-            p = present(h)
+        hs = heads(nid)
+        # two or more children of a repeating container, or the one child of
+        # a single-child container, are items
+        items = ((L in ("List", "ListItemGroup", "Grid", "WaterFlow", "Swiper",
+                        "SideBarContainer") and len(hs) >= 2)
+                 or (L in ("Scroll", "Refresh") and len(hs) == 1))
+        for h in hs:
+            p = "item" if items else present(h)
             cnt[p] = cnt.get(p, 0) + 1
         return {"%s/%s%s" % (L, h, "*" if c >= 2 else "") for h, c in cnt.items()}
 
@@ -302,9 +311,10 @@ def oracle_patterns(tree, tags, sc, dw, dh, density):
         for h in heads(nid):
             S2 |= pairs(h)
         ds = {}
+        under_tabs = tags.get(up.get(nid), "") == "Tabs"
         for name, root, shp, depth in S.SHAPES:
-            if root == L:
-                X = S1 if depth == 1 else S2
+            if root == L and not (name == "carousel" and under_tabs):
+                X = {L} if depth == 0 else S1 if depth == 1 else S2
                 ds[name] = min(1.0 - len(X & shp) / len(X | shp), ds.get(name, 1.0))
         return ds
 
@@ -453,10 +463,10 @@ def same(a, b):
 class Shuffled(S.Scene):
     """The pass with each node's kept children summarised in a random order.
     Occlusion is decided before _up runs, so only the element sets see it."""
-    def _up(self, n, nid, v, kids, window, free):
+    def _up(self, n, nid, v, kids, window, free, ptag):
         kids = list(kids)
         random.Random(nid).shuffle(kids)
-        return S.Scene._up(self, n, nid, v, kids, window, free)
+        return S.Scene._up(self, n, nid, v, kids, window, free, ptag)
 
 
 def same(a, b):
@@ -621,7 +631,7 @@ def main():
         # the confirmed scenes
         for x, k in sc.kept.items():
             nd = sc.N[x]
-            if sid in VIDEO and nd["tag"] == "XComponent" and same(nd["abs"], VIDEO[sid]):
+            if sid in VIDEO and nd["tag"] in ("XComponent", "Video") and same(nd["abs"], VIDEO[sid]):
                 found_video[sid] = k["cells"] / k["on"] if k["on"] else 0.0
         if sid == GRID[0]:
             for x, nd in nodes.items():
@@ -686,10 +696,10 @@ def main():
            "INV-MATCHES-OUTERMOST, INV-COMPOSITION-CONSUMES", bad["pattern"],
            "d and count equal the pattern oracle's on every display; %d match(es); shuffling "
            "changes nothing" % n["matches"],
-           "ERR-PATTERN-ORACLE-MISMATCH")
+           "ERR-MOTIF-ORACLE-MISMATCH")
     report("INV-FEATURE-FIXED-MAP", bad["fixed"],
            "%d row(s) computed alone equal their row in the capture" % n["compared"]
-           if a.patterns else "not checked (pass --patterns)", "ERR-PATTERN-ORACLE-MISMATCH")
+           if a.patterns else "not checked (pass --patterns)", "ERR-MOTIF-ORACLE-MISMATCH")
     return 1 if any(bad.values()) else 0
 
 

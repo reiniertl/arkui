@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""The scene in one pass: ALG-VISIBILITY and ALG-PATTERN-MATCH.
+"""The scene in one pass: ALG-VISIBILITY and ALG-MOTIF-MATCH.
 
     Scene(lines, client_lines, disp).run()   -> the row of IF-PATTERNS-ROW
 
@@ -43,47 +43,106 @@ import rs_extract as R                   # noqa: E402
 STEP = 4          # px; a cell belongs to a shape when its centre lies inside it
 INVISIBLE, OCCLUDING, TRANSLUCENT = "invisible", "occluding", "translucent"
 
-# ---- IF-PATTERN-VOCABULARY --------------------------------------------------
-PASS_THROUGH = {"__Common__", "Custom", "Stack", "NodeContainer", "RelativeContainer", ""}
-SMALL, MEDIUM = 0.15, 0.5          # XComponent:small under, :medium up to
+# ---- IF-MOTIF-VOCABULARY -----------------------------------------------------
+# Collapsed into the nearest meaningful parent: layout wrappers whose contract
+# carries no structure, the page frame, and the navigation shell every app has.
+PASS_THROUGH = {"__Common__", "Custom", "Stack", "NodeContainer", "RelativeContainer",
+                "Flex", "BuilderProxyNode", "CustomFrameNode", "JsView", "RenderNode",
+                "root", "stage", "page", "UIExtensionSurface", "metaballNode",
+                "Navigation", "NavigationContent", "NavDestination",
+                "NavDestinationContent", "NavBar", ""}
+SMALL, MEDIUM = 0.15, 0.5          # video:small under, :medium up to
 ICON_DP, ICON_AR = 56.0, (0.7, 1.4)
 THUMB = 0.15
+VIDEO_TAGS = {"XComponent", "Video"}
+TEXT_INPUT_TAGS = {"TextInput", "TextArea", "Search"}
+# Containers whose children are items, whatever the item's own tag: a custom
+# component has no node of its own (CustomNode derives from UINode, not
+# FrameNode - arkui_ace_engine pattern/custom/custom_node.h), so its root
+# stands in the item's place. Two or more children of a repeating container
+# are parent/item*; the one child of a single-child container is parent/item.
+REPEATING = {"List", "ListItemGroup", "Grid", "WaterFlow", "Swiper", "SideBarContainer"}
+SINGLE_CHILD = {"Scroll", "Refresh"}
 
-# ---- IF-PATTERN-DICTIONARY (INV-DICTIONARY-DESIGNED) -----------------------
-# (name, root, element set). Written from the list, never from a capture.
+# ---- IF-MOTIF-DICTIONARY (INV-DICTIONARY-DESIGNED, INV-DICTIONARY-COMPLETE) ---
+# (name, root, element set, source). Each motif comes from an ArkUI component
+# contract - the "Child Components" section of the OpenHarmony ArkUI reference,
+# docs/en/application-dev/reference/apis-arkui/arkui-ts - and, where the engine
+# builds the component differently, from its runtime form in arkui_ace_engine.
+# Never from a capture.
 DICTIONARY = (
-    ("video_large",  "XComponent:large",  {"XComponent:large"}),
-    ("video_medium", "XComponent:medium", {"XComponent:medium"}),
-    ("video_small",  "XComponent:small",  {"XComponent:small"}),
-    ("web",          "Web",               {"Web"}),
-    ("gallery_flow", "WaterFlow",         {"WaterFlow", "WaterFlow/FlowItem*"}),
-    ("gallery_grid", "Grid",              {"Grid", "Grid/GridItem*"}),
-    ("list",         "List",              {"List", "List/ListItem*"}),
-    ("tab_bar",      "Tabs",              {"Tabs", "Tabs/TabBar"}),
-    ("text_input",   "TextInput",         {"TextInput"}),
-    ("icon_row",     "Row",               {"Row", "Row/icon*"}),
-    ("icon_grid",    "Column",            {"Column", "Column/icon_row*"}),
-    ("icon_grid",    "Grid",              {"Grid", "Grid/GridItem*", "GridItem/icon"}),
+    ("list", "List", {"List", "List/item*"},
+     "ts-container-list: only ListItem and ListItemGroup, custom components supported"),
+    ("list", "ListItemGroup", {"ListItemGroup", "ListItemGroup/item*"},
+     "ts-container-listitemgroup: ListItem"),
+    ("grid", "Grid", {"Grid", "Grid/item*"},
+     "ts-container-grid: GridItem and custom components"),
+    ("waterflow", "WaterFlow", {"WaterFlow", "WaterFlow/item*"},
+     "ts-container-waterflow: FlowItem and custom components"),
+    ("tabs", "Tabs", {"Tabs", "Tabs/Swiper", "Tabs/TabBar"},
+     "ts-container-tabs: only TabContent; tabs_model_ng InitTabsNode mounts Swiper, Divider, TabBar"),
+    ("carousel", "Swiper", {"Swiper", "Swiper/item*"},
+     "ts-container-swiper: built-in and custom components; not the Swiper of a Tabs"),
+    ("stepper", "Stepper", {"Stepper", "Stepper/StepperItem*"},
+     "ts-basic-components-stepper: only StepperItem"),
+    ("menu", "Menu", {"Menu", "Menu/MenuItem*"},
+     "ts-basic-components-menu: MenuItem and MenuItemGroup"),
+    ("grid_row", "GridRow", {"GridRow", "GridRow/GridCol*"},
+     "ts-container-gridrow: GridCol"),
+    ("scroll_page", "Scroll", {"Scroll", "Scroll/item"},
+     "ts-container-scroll: only one child"),
+    ("refresh", "Refresh", {"Refresh", "Refresh/item"},
+     "ts-container-refresh: only one child"),
+    ("sidebar", "SideBarContainer", {"SideBarContainer", "SideBarContainer/item*"},
+     "ts-container-sidebarcontainer: two children, sidebar and content"),
+    ("video_large", "video:large", {"video:large"},
+     "ts-basic-components-xcomponent, ts-media-components-video: no children"),
+    ("video_medium", "video:medium", {"video:medium"},
+     "ts-basic-components-xcomponent, ts-media-components-video: no children"),
+    ("video_small", "video:small", {"video:small"},
+     "ts-basic-components-xcomponent, ts-media-components-video: no children"),
+    ("web", "Web", {"Web"}, "ArkWeb Web: no children"),
+    ("text_input", "text_input", {"text_input"},
+     "TextInput, TextArea, ts-basic-components-search: no children"),
+    ("button", "Button", {"Button"}, "ts-basic-components-button: a leaf of the scene"),
+    ("slider", "Slider", {"Slider"}, "ts-basic-components-slider: no children"),
+    ("index_bar", "AlphabetIndexer", {"AlphabetIndexer"},
+     "ts-container-alphabet-indexer: no children"),
+    ("icon_row", "Row", {"Row", "Row/icon*"}, "kept from the designed dictionary: a Row of icons"),
+    ("icon_grid", "Column", {"Column", "Column/icon_row*"}, "composed: a Column of icon rows"),
+    ("icon_grid", "Grid", {"Grid", "Grid/item*", "GridItem/icon"}, "composed: a Grid of icon items"),
 )
-PATTERNS = tuple(dict.fromkeys(p[0] for p in DICTIONARY))        # in order
+MOTIFS = tuple(dict.fromkeys(p[0] for p in DICTIONARY))          # in order
+PATTERNS = MOTIFS                 # the name the row's columns were written under
+# Every catalogue container with a typed or fixed child contract, and every
+# leaf label, must root a motif (INV-DICTIONARY-COMPLETE).
+CATALOGUE = ("List", "ListItemGroup", "Grid", "WaterFlow", "Tabs", "Swiper", "Stepper",
+             "Menu", "GridRow", "Scroll", "Refresh", "SideBarContainer",
+             "video:large", "video:medium", "video:small", "Web", "text_input",
+             "Button", "Slider", "AlphabetIndexer")
 FOUND = 0.2       # d at or under this is a match; set by the human 2026-10-28
 
 
 def _depth(root, elems):
-    """1 when every pair hangs from the root, 2 when one hangs below it."""
+    """0 for a leaf, 1 when every pair hangs from the root, 2 when one hangs
+    below it."""
+    if not any("/" in e for e in elems):
+        return 0
     return 2 if any("/" in e and e.split("/")[0] != root for e in elems) else 1
 
 
-SHAPES = tuple((n, r, frozenset(s), _depth(r, s)) for n, r, s in DICTIONARY)
+SHAPES = tuple((n, r, frozenset(s), _depth(r, s)) for n, r, s, _ in DICTIONARY)
 BY_ROOT = {}
 for _s in SHAPES:
     BY_ROOT.setdefault(_s[1], []).append(_s)
-# a pattern that appears as a child in another's set is presented by its
-# name when matched, so the composed pattern above can see it
+# a motif that appears as a child in another's set is presented by its name
+# when matched, so the composed motif above can see it
 TOKENS = {e.split("/")[1].rstrip("*") for _, _, s, _ in SHAPES for e in s
-          if "/" in e} & set(PATTERNS)
-COMPOSED = {n: {e.split("/")[1].rstrip("*") for e in s if "/" in e} & TOKENS
-            for n, _, s, _ in SHAPES}
+          if "/" in e} & set(MOTIFS)
+COMPOSED = {}                     # over every variant of a motif
+for _n, _, _s, _ in SHAPES:
+    COMPOSED.setdefault(_n, set()).update(
+        {e.split("/")[1].rstrip("*") for e in _s if "/" in e} & TOKENS)
 
 def jaccard_distance(a, b):
     """1 - |a & b| / |a | b|. Sets, so the order of either is irrelevant
@@ -141,14 +200,16 @@ class Scene:
             return None
         return (cy0, cy1, cx0, cx1, np.ones((cy1 - cy0, cx1 - cx0), dtype=bool))
 
-    # -- labels (IF-PATTERN-VOCABULARY) ----------------------------------------
+    # -- labels (IF-MOTIF-VOCABULARY) ------------------------------------------
     def label(self, n, area):
         t = n["tag"]
         if t in PASS_THROUGH:
             return None
         a = area / (self.dw * self.dh)
-        if t == "XComponent":
-            return "XComponent:" + ("small" if a < SMALL else "medium" if a <= MEDIUM else "large")
+        if t in VIDEO_TAGS:
+            return "video:" + ("small" if a < SMALL else "medium" if a <= MEDIUM else "large")
+        if t in TEXT_INPUT_TAGS:
+            return "text_input"
         if t in ("Image", "SymbolGlyph"):
             d = self.disp.get("density", 3.5) or 3.5
             w, h = n["abs"][2] / d, n["abs"][3] / d
@@ -171,10 +232,10 @@ class Scene:
             n = self.node(a)
             M = R.affine(M, R.local_transform(n))
             ea *= n["alpha"]
-        top = self.visit(ldn[0], M, ea, (0.0, 0.0, self.dw, self.dh), None, False)
+        top = self.visit(ldn[0], M, ea, (0.0, 0.0, self.dw, self.dh), None, False, "")
         return self.row(top)
 
-    def visit(self, nid, Mp, eap, clip, region, under_surface):
+    def visit(self, nid, Mp, eap, clip, region, under_surface, ptag):
         self.visits[nid] = self.visits.get(nid, 0) + 1
         n = self.node(nid)
         ea = eap * n["alpha"]
@@ -242,7 +303,7 @@ class Scene:
                 ks = list(reversed(ks))
             ks.sort(key=lambda k: self.node(k)["posz"])        # paint order
             for k in reversed(ks):                              # topmost first
-                s = self.visit(k, M, ea, cclip, region, under_surface)
+                s = self.visit(k, M, ea, cclip, region, under_surface, n["tag"])
                 if s is not None:
                     kids.append(s)
 
@@ -258,13 +319,13 @@ class Scene:
         if st == OCCLUDING and c:
             y0, y1, x0, x1, mask = c
             self.cover[y0:y1, x0:x1] |= mask
-        return self._up(n, nid, v, kids, window, free)
+        return self._up(n, nid, v, kids, window, free, ptag)
 
-    # -- ALG-PATTERN-MATCH: the element set and the matches on the way up -------
+    # -- ALG-MOTIF-MATCH: the element set and the matches on the way up ---------
     def _branch_mask(self, v):
         return self.stamp >= v
 
-    def _up(self, n, nid, v, kids, window, free):
+    def _up(self, n, nid, v, kids, window, free, ptag):
         heads, headpairs, matches, dmin, pids = [], set(), [], {}, {}
         canvas = tagged = 0
         for s in kids:
@@ -285,7 +346,7 @@ class Scene:
         mask = None
         if n["tag"] in ("Image", "SymbolGlyph"):
             area = float(free.sum()) * self.step ** 2 if free is not None else 0.0
-        elif n["tag"] == "XComponent":
+        elif n["tag"] in VIDEO_TAGS:
             mask = self._branch_mask(v)
             area = float(mask.sum()) * self.step ** 2
         else:
@@ -294,15 +355,21 @@ class Scene:
         if L is None:
             out_heads, out_pairs = heads, headpairs           # pass-through
         else:
+            items = ((L in REPEATING and len(heads) >= 2)
+                     or (L in SINGLE_CHILD and len(heads) == 1))
             count = {}
             for h, _ in heads:
+                h = "item" if items else h        # whatever each item is
                 count[h] = count.get(h, 0) + 1
             pairs = {"%s/%s%s" % (L, h, "*" if k >= 2 else "") for h, k in count.items()}
-            S1 = {L} | pairs
+            S0 = {L}
+            S1 = S0 | pairs
             S2 = S1 | headpairs
             presented = L
             for name, root, shape, depth in BY_ROOT.get(L, ()):
-                d = jaccard_distance(S1 if depth == 1 else S2, shape)
+                if name == "carousel" and ptag == "Tabs":
+                    continue                  # the Tabs' own Swiper
+                d = jaccard_distance((S0, S1, S2)[depth], shape)
                 dmin[name] = min(d, dmin.get(name, 1.0))
                 if d <= FOUND and not any(m["node"] == nid and m["pattern"] == name for m in matches):
                     if mask is None:
@@ -324,7 +391,7 @@ class Scene:
             window.update(coverage=cov, window=window["name"], nodes=canvas,
                           tagged=tagged, pid=max(pids, key=pids.get) if pids else window["pid"])
             if cov is not None and cov < R.UNTAGGED_BELOW:
-                # ERR-PATTERN-ROOT-UNTAGGED: no structure can be read here
+                # ERR-MOTIF-ROOT-UNTAGGED: no structure can be read here
                 self.untagged.append((window["name"], cov))
                 matches, dmin = [], {}
         return {"heads": out_heads, "pairs": out_pairs, "matches": matches,

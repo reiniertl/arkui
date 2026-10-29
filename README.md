@@ -19,15 +19,15 @@ That component does not exist yet, and this repository is not it.
 ## What is here
 
 A capture that pulls RenderService dumps off a device, and a Python pipeline
-that builds each dump's scene in one pass, measures the pattern vector on it, and
-clusters the scenes once over the pattern vector.
+that builds each dump's scene in one pass, measures the motif vector on it, and
+clusters the scenes once over the motif vector.
 
 ```
 rs_capture.ps1          device  ->  *.rstree.txt, *.client.txt, display.txt
   rs_extract.py                     index the dump, parse a node when it is reached
-  rs_scene.py                       the scene in one pass, and the pattern vector on it
+  rs_scene.py                       the scene in one pass, and the motif vector on it
   rs_pattern.py                     run the pass on every dump  -> patterns.csv
-  vectors_build.py                  pattern groups, one clustering -> two_payload.json
+  vectors_build.py                  motif groups, one clustering -> two_payload.json
   vectors_page.py                   the viewer, three tabs -> scene_feature_reference.html
 ```
 
@@ -37,11 +37,16 @@ display, by alpha alone, and the containers that hold them, in their
 containment. Invisible windows, alpha-0 branches, and branches clipped or
 occluded away are dropped without being read.
 
-**The pattern vector** — a designed dictionary of structures (a video of three
-sizes, a web view, a flow or grid gallery, a list, a tab bar, a text input, a
-row and a grid of icons), matched in the same pass: per pattern its distance
-(1 − Jaccard at its closest root), the share of the display its matches show,
-and their count written n/(n+1).
+**The motif vector** — 21 motifs, each derived from an ArkUI component
+contract (the "Child Components" section of the OpenHarmony ArkUI reference)
+and, where the engine builds the component differently, its runtime form in
+arkui_ace_engine; never from a capture. The repeating containers (list, grid,
+waterflow, tabs, carousel, stepper, menu, grid_row), the fixed-shape ones
+(scroll_page, refresh, sidebar), the leaves (video of three sizes, web,
+text_input, button, slider, index_bar) and two icon structures, matched in the
+same pass: per motif its distance (1 − Jaccard at its closest root), the share
+of the display its matches show, and their count written n/(n+1) - 63 values
+in a fixed order. A motif absent from a capture stays and reads d = 1.
 
 Nothing else is computed: how a node is rendered is not this project's
 question. The vector is a measurement, not a class.
@@ -69,7 +74,7 @@ the tiles by a person looking at them.
 |---|---|
 | `tools/rs_capture.ps1` | the device side. Pulls dumps, computes nothing |
 | `tools/cluster/rs_extract.py` | parse a RenderService dump into a tree, with each node's rectangle |
-| `tools/cluster/rs_scene.py` | the scene in one pass, and the pattern vector on it |
+| `tools/cluster/rs_scene.py` | the scene in one pass, and the motif vector on it |
 | `tools/cluster/rs_pattern.py` | run the pass on every dump of a capture |
 | `tools/cluster/vectors_build.py` | cluster each vector, build the page payload |
 | `tools/cluster/vectors_page.py` | render the payload |

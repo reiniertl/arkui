@@ -5,16 +5,16 @@
 
 One self-contained file, two tabs, in this order:
 
-  PATTERN     one group per dictionary pattern: its schematic drawn from
+  MOTIF       one group per dictionary motif: its schematic drawn from
               its definition, the definition, its count, every scene it was
-              found in; then the scenes with no pattern, and the untagged.
-  CLUSTERING  one clustering over the pattern vector, matched to no pattern: the
+              found in; then the scenes with no motif, and the untagged.
+  CLUSTERING  one clustering over the motif vector, matched to no motif: the
               general stats, a rotatable 3D map of three PCA components,
               then every cluster with its count and scenes, unclustered last.
 
 Inside a group the order is fixed - picture, description, screenshots
-(INV-GROUP-ORDER) - and a pattern or cell nobody reached is drawn empty in
-its place. Nothing on the page names a scene, an app or a use: a pattern
+(INV-GROUP-ORDER) - and a motif or cell nobody reached is drawn empty in
+its place. Nothing on the page names a scene, an app or a use: a motif
 names a structure, a cell is named by its coordinates and a cluster by its id.
 
 vectors.html is retired. This file replaces it, and the 2026-10-26 build of
@@ -150,7 +150,7 @@ var DATA = __DATA__;
       + "<div class='pics'>" + tiles + "</div></div>";
   }
   function noneFig(n) {
-    return "<div class='none'>" + (n ? "no drawing:<br>no pattern"
+    return "<div class='none'>" + (n ? "no drawing:<br>no motif"
       : "no scene<br>reached this cell") + "</div>";
   }
   function unplacedBlock(space) {
@@ -177,22 +177,22 @@ var DATA = __DATA__;
       + "</div><p class='note'>" + blurb + "</p>";
   }
 
-  // ---- PATTERN -----------------------------------------------------------
+  // ---- MOTIF -------------------------------------------------------------
   (function () {
     var groups = DATA._patterns || [];
     var dict = groups.filter(function (g) { return g.svg; });
     var hit = dict.filter(function (g) { return g.n; }).length;
     var lost = (audit.missing || []).length;
-    var h = "<h2>Pattern</h2><div class='meta'><b>" + TOTAL + "</b> scenes · <b>"
-      + dict.length + "</b> dictionary patterns, " + hit + " found"
+    var h = "<h2>Motif</h2><div class='meta'><b>" + TOTAL + "</b> scenes · <b>"
+      + dict.length + "</b> dictionary motifs, " + hit + " found"
       + (lost ? " · <span class='flag'>" + lost + " scenes with no picture</span>" : "")
-      + "</div><p class='note'>One group per pattern of the designed dictionary. A "
-      + "scene appears under every pattern found on its display. The first picture "
-      + "of a group is the pattern drawn from its definition alone.</p>";
+      + "</div><p class='note'>One group per motif of the dictionary, each from an ArkUI component contract. A "
+      + "scene appears under every motif found on its display. The first picture "
+      + "of a group is the motif drawn from its definition alone.</p>";
     groups.forEach(function (g) {
       var tiles = (g.members || []).map(function (sid) {
         var s = S[sid] || {};
-        return tile(sid, esc((s.found || []).join(" · ") || "no pattern"));
+        return tile(sid, esc((s.found || []).join(" · ") || "no motif"));
       }).join("");
       h += group(g.cell, "data-cell", esc(g.cell) + " <span>" + g.n + " scenes</span>",
                  g.svg ? g.svg : noneFig(g.n), g.desc, g.n, tiles);
@@ -222,6 +222,8 @@ var DATA = __DATA__;
           return Math.round(100 * x) + "%"; }).join(" / ")
       + "</b><span>PCA variance, PC1 / PC2 / PC3</span></div>"
       + "<div class='stat'><b>" + (C.mcs || "") + "</b><span>min_cluster_size</span></div>"
+      + "<div class='stat'><b>" + (C.cols || []).length + "</b><span>columns, "
+      + (C.constant || []).length + " constant on this capture and kept</span></div>"
       + "</div>";
     h += "<div class='map'><canvas id='scatter'></canvas><div class='note' style='padding:6px 2px'>"
       + "<b>Drag to rotate · wheel to zoom · shift-drag to pan · click a point "
@@ -253,7 +255,7 @@ var DATA = __DATA__;
         + "</div></div><div class='pics'>"
         + g.reps.map(function (r) {
             var s = S[r.scene] || {};
-            return tile(r.scene, esc((s.found || []).join(" · ") || "no pattern")
+            return tile(r.scene, esc((s.found || []).join(" · ") || "no motif")
               + "<br>sil " + (r.sil == null ? "—" : r.sil));
           }).join("") + "</div></div>";
     });
@@ -383,8 +385,8 @@ var DATA = __DATA__;
 
   // ---- the tabs ----------------------------------------------------------
   var TABS = [
-    ["pattern", "Pattern", (DATA._patterns || []).filter(function (g) { return g.svg; }).length + " patterns"],
-    ["clustering", "Clustering", (C.k || 0) + " clusters over the pattern vector"]];
+    ["pattern", "Motif", (DATA._patterns || []).filter(function (g) { return g.svg; }).length + " motifs"],
+    ["clustering", "Clustering", (C.k || 0) + " clusters over the motif vector"]];
   document.getElementById("menu").innerHTML = TABS.map(function (t) {
     return "<a data-k='" + t[0] + "'>" + t[1] + "<small>" + t[2] + "</small></a>";
   }).join("");

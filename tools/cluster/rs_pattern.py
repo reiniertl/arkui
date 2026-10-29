@@ -4,8 +4,8 @@
     ./rs_pattern.py <capture-root> [--out patterns.csv]
 
 Each scene is measured by rs_scene.Scene in one pass over its dump: the
-scene is the display's kept tree, and the pattern vector and the surface
-vector are read from it as it is built. This file only finds the dumps,
+scene is the display's kept tree, and the motif vector is read from it as
+it is built. This file only finds the dumps,
 runs the pass on each and writes the rows; it measures nothing itself.
 
 The repeating-group detector that lived here is gone. It flattened a single
@@ -42,8 +42,8 @@ def report(fell_back, no_client, no_display, untagged):
               "LOGICAL_DISPLAY_NODE to start from, and yield no row: %s"
               % (len(no_display), listed(no_display)))
     if untagged:
-        print("ERR-PATTERN-ROOT-UNTAGGED: %d window(s) in %d scene(s) have under "
-              "half of their kept canvas nodes tagged; their patterns are not "
+        print("ERR-MOTIF-ROOT-UNTAGGED: %d window(s) in %d scene(s) have under "
+              "half of their kept canvas nodes tagged; their motifs are not "
               "matched" % (sum(len(w) for _, w in untagged), len(untagged)))
 
 

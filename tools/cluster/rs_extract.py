@@ -35,7 +35,7 @@ RX_PALPHA = re.compile(r'\bAlpha\[(-?[\d.]+)\]')
 RX_BG = re.compile(r'\bBackgroundColor\[#([0-9A-Fa-f]{2})[0-9A-Fa-f]{6}\]')
 RX_POSZ = re.compile(r'PositionZ\[(-?[\d.]+)\]')
 
-UNTAGGED_BELOW = 0.5      # ERR-PATTERN-ROOT-UNTAGGED: under half of a window's
+UNTAGGED_BELOW = 0.5      # ERR-MOTIF-ROOT-UNTAGGED: under half of a window's
                           # kept canvas nodes carry a component tag
 
 

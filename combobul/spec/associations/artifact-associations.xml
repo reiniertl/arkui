@@ -6,7 +6,7 @@
   </associate>
 
   <associate source="tools/cluster/rs_scene.py" kind="method" name="_up" scope="Scene">
-    <link to="ALG-PATTERN-MATCH" relation="implements"/>
+    <link to="ALG-MOTIF-MATCH" relation="implements"/>
   </associate>
 
 
