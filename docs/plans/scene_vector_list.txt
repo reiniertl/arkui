@@ -54,8 +54,9 @@ vectors_build.py, vectors_page.py, and the checks under tools/checks/.
 ORDER
 ===============================================================================
 
-  1. /cb-green — only what is on the display: clipping, rotation, visible area, owner
-  2. /cb-green — the pattern dictionary and the matcher
+  1. /cb-green — visibility in one pass
+  2. /cb-green — a sound specification for the feature module
+  3. /cb-green — the pattern dictionary and the matcher
 
 
 ===============================================================================
@@ -98,73 +99,163 @@ DEFERRED
 PROMPTS
 ===============================================================================
 
-/cb-green — only what is on the display: clipping, rotation, visible area, owner
-  - What: every algorithm that reads a node satisfies one invariant: only
-    what is on the display is processed, and of a node only the part that
-    is on the display. Four places break it today, measured on the capture
-    of 2026-10-28 over 64,878 visible nodes in 300 scenes.
-    CLIPPING. A parent with ClipToBounds[True] cuts what its children show
-    to its own rectangle. 1,140 visible nodes lie wholly outside a clipping
-    ancestor, in 298 scenes, and 10,541 partly outside. A node's on-display
-    rectangle is its rectangle intersected with every clipping ancestor's,
-    the display and its window's VisibleRegion; the walk measures that.
-    ROTATION. Rotation, RotationX and RotationY are not composed. 1,889
-    visible nodes in 72 scenes sit under a non-zero rotation. How a rotated
-    rectangle is represented on an axis-aligned raster - its bounding box,
-    or the rotated quadrilateral - is put to the human before the spec.
-    VISIBLE AREA. A visible node enters a feature with its visible cells,
-    never its whole rectangle. ALG-BRANCH-GROUP measures pat1_cover and
-    overlay_frac from each member's rectangle clipped to the display only,
-    so the occluded part of a visible node is counted. Every area any
-    feature reports is a union of cells ALG-VISIBILITY found visible.
-    OWNER. ALG-OWNER-SELECT, through window_weight, reads every node of
-    every window before the walk runs. It runs after the walk instead, on
-    each window's visible nodes and their visible cells.
-  - Read: rs_extract.py (compose_geometry, window_weight),
-    rs_visibility.py, rs_pattern.py (Scene, analyse, owner_of,
-    media_surface, visible_surface), tools/checks/geometry_visibility.py;
-    the property lines of one rstree dump carrying ClipToBounds and a
-    Rotation.
+/cb-green — visibility in one pass
+  - What: what is on the display is decided in one pass over the dump, and
+    nothing that is not on the display is parsed, composed or tested.
+    STARTING STATE. The working tree and the DAG hold an unfinished run:
+    rs_extract.py carries a broken split into index_dump, parse_node and
+    parse_surface, which is reverted first; rs_visibility.py, rs_pattern.py
+    and tools/checks/geometry_visibility.py carry clipping, rotation as a
+    quadrilateral, visible-cell areas, owner selection after the walk, and
+    the removal of surf_cover and surf_over, verified on one session of 40
+    scenes only; the DAG holds two batches not yet coalesced - the clipping,
+    rotation, visible-area and owner batch, and the pruning batch
+    (INV-PRUNED-NOT-PARSED, ALG-VISIBILITY, ALG-PARSE-RSTREE) - which this
+    item reviews node by node and keeps, amends or reverts.
+    INDEX. One match per line gives each node's id, kind, line and parent
+    by indentation. Nothing else is read.
+    WINDOWS. Only top-level surface lines are parsed. A window that is not
+    Visible, at alpha 0, or with an empty VisibleRegion is dropped and its
+    tree is never read - 29 percent of every dump's nodes on the capture of
+    2026-10-28.
+    THE PASS. Per remaining window, one descent: parent first, children in
+    reverse paint order (ReverseChildren, PositionZ), so the topmost sibling
+    is entered first. On the way down, at each node, the cheapest test
+    first, stopping at the first that fails: effective alpha 0 drops the
+    node and its subtree; the transform is the parent's times the node's
+    own, giving its box or its quadrilateral; the clip it inherits - the
+    display, the window's VisibleRegion, every clipping ancestor - leaves
+    nothing for a clipping node, which drops its subtree; the inherited
+    clip region is already wholly covered by occluders written so far,
+    which drops the subtree; the node is tested against the occluders
+    written so far, which are exactly those painted above it outside its
+    branch. On the way up, after its children, an occluding node writes its
+    cells, and a mark claims its free cells for the surface vector, which
+    is topmost-first order. A container's rectangle does not bound its
+    children unless it clips, so the region a subtree can occupy is its
+    inherited clip, never the container's rectangle. A node off the display
+    that does not clip is kept only as the way to its children. Each node is
+    visited once. Its children are read only when it is kept.
+    AFTER THE PASS. ALG-BRANCH-GROUP runs over the kept tree only, the one
+    step outside the pass. Owner selection: put to the human whether the
+    owner is chosen from every window's pass, or after clipping and before
+    occlusion so that occlusion runs on the owner alone.
+    MEASURED on the capture of 2026-10-28, 155,840 nodes in 300 dumps,
+    before occlusion: 49.9 percent on the display, 13.2 percent kept only
+    as a path, 29.1 percent in invisible windows, 5.9 percent outside the
+    display or a clipping ancestor, 1.9 percent at alpha 0.
+  - Read: rs_extract.py, rs_visibility.py, rs_pattern.py (Scene, analyse,
+    owner_of, visible_surface, media_surface), tools/checks/
+    geometry_visibility.py and parsing_rules.py; the DAG nodes below.
   - Spec work:
-      modify INV-VISIBLE-ONLY: no algorithm reads a node that is not on the
-        display - feature columns and owner selection alike; a node is on
-        the display when its on-display rectangle holds a cell no occluder
-        outside its subtree covers.
-      add invariant INV-VISIBLE-AREA-ONLY (SUB-FEATURE-RESEARCH, runtime):
-        every area a feature reports is a union of cells ALG-VISIBILITY
-        found visible, and no node contributes area beyond its own visible
-        cells; checked-at AUT-PIPELINE-RUN.
-      add invariant INV-CLIP-TO-BOUNDS (SUB-FEATURE-RESEARCH, runtime): a
-        node's on-display rectangle lies inside every ancestor's that clips
-        to its bounds; checked-at AUT-PIPELINE-RUN.
-      modify INV-GEOMETRY-FROM-TREE: rotation, as the human decides.
-      modify ALG-VISIBILITY: measures the on-display rectangle; satisfies
-        INV-CLIP-TO-BOUNDS; returns every visible node's visible cells.
-      satisfies INV-VISIBLE-ONLY and INV-VISIBLE-AREA-ONLY, each with the
-        edge added: ALG-BRANCH-GROUP, ALG-VISIBLE-SURFACE,
-        ALG-MEDIA-SURFACE, ALG-OWNER-SELECT. ALG-OWNER-SELECT calls
-        ALG-VISIBILITY.
-  - Code path: rs_extract.py, rs_visibility.py, rs_pattern.py,
-    tools/checks/geometry_visibility.py.
-  - Check: geometry_visibility.py tests the display, not agreement with
-    the walk. It recomputes each admitted node's on-display region
-    independently - exact rectangle arithmetic, no raster: the rectangle,
-    intersected with every clipping ancestor, the display and the
-    VisibleRegion, minus every occluding rectangle outside the node's
-    subtree painted above it - and fails when:
-      - a node any algorithm admits has an empty on-display region;
-      - a node no algorithm admits has a non-empty one and alpha above 0;
-      - a feature's reported area exceeds the union of its contributors'
-        independently computed visible regions by more than the raster
-        error of one 4 px cell per edge;
-      - the owner chosen differs from the one chosen on visible nodes
-        alone.
-  - Test, on the real capture: the seven confirmed video rectangles still
-    whole and wholly visible; the 0192 GridItems at y 2070 still visible;
-    the visible-node count before and after, and how many of the 1,140 are
-    no longer visible; pat1_cover and overlay_frac before and after, and
-    the number of scenes whose owner window changes; geometry_visibility.py
-    and parsing_rules.py hold; npm run spec:check, no violations.
+      modify ALG-VISIBILITY: the pass above; it no longer calls
+        ALG-PAINT-ORDER.
+      add invariant INV-SINGLE-PASS (SUB-FEATURE-RESEARCH, runtime): each
+        node is visited at most once, and alpha, geometry, clip and
+        occlusion are decided in that visit; checked-at AUT-PIPELINE-RUN.
+      modify INV-PRUNED-NOT-PARSED: a subtree whose inherited clip region is
+        wholly covered by occluders above it is also not read; the region
+        tested is the inherited clip, never the container's rectangle.
+      modify INV-OCCLUSION-PAINT-ORDER: restated for the descent - children
+        are entered topmost first, so every occluder above a node and
+        outside its branch is written before the node is tested.
+      modify INV-FIRST-PASS-COUNTS: the index, not the parser's return,
+        holds exactly the ids before the first repetition.
+      modify INV-OPACITY: visibility is defined on the on-display region
+        (shape, clipping ancestors, display, VisibleRegion), as in
+        INV-VISIBLE-ONLY.
+      modify INV-VISIBLE-ONLY: only the index and ALG-VISIBILITY read nodes
+        that are not on the display.
+      modify INV-OWN-RECT-BOUNDS: the occluder clause is removed; alpha
+        alone decides an occluder (INV-OPACITY).
+      modify ALG-VISIBLE-SURFACE: claims are made on the way up of the
+        pass.
+      modify ALG-OWNER-SELECT: as the human decides; its precondition no
+        longer requires ownership assigned over the whole tree.
+      modify ALG-MEDIA-SURFACE: its COINCIDENT and OVERSIZE occluder
+        preconditions are removed; its satisfies edges to
+        INV-OCCLUDER-PAINTS and INV-OWN-RECT-BOUNDS are removed.
+      modify IF-PATTERNS-ROW: surf_cover and surf_over removed, the column
+        count corrected.
+      remove ALG-PAINT-ORDER and its calls edges, and ALG-OWNERSHIP and its
+        calls edge: the descent gives paint order and ownership. Each
+        removal is confirmed by the human, node by node, before the
+        envelope.
+  - Code path: rs_extract.py (index, per-node parsing), rs_visibility.py
+    (the pass), rs_pattern.py, tools/checks/geometry_visibility.py,
+    tools/checks/parsing_rules.py.
+  - Check: geometry_visibility.py keeps its exact, raster-free recomputation
+    of the display from a full parse - the one place a full parse remains -
+    and adds INV-PRUNED-NOT-PARSED and INV-SINGLE-PASS: the set of nodes
+    parsed against the set kept, and the count of visits per node.
+  - Test, on the real capture: the seven confirmed video rectangles whole
+    and wholly visible; the 0192 GridItems at y 2070 visible; nodes parsed
+    per dump before and after; milliseconds per dump for the pass alone,
+    median and maximum, taken inside Python; visible nodes, pat1_cover and
+    overlay_frac before and after; geometry_visibility.py and
+    parsing_rules.py hold over all 300 dumps; npm run spec:check, no
+    violations.
+  - BOUNDARY: as in RULES FOR EVERY ITEM.
+
+  - IMPORTANT: Every figure is measured in this session against a real capture and written into the report.
+  - INVIOLABLE: SPECIFICATION SURFACE IS AUTHORITATIVE. Every node above exists before the code it governs.
+  - INVIOLABLE: DO NOT EMIT P3_SKIPPED.
+  - FORBIDDEN: MULTI-AGENT execution is not allowed. DO NOT SPAWN MULTIPLE AGENTS.
+  - WHEN TO COMMIT: Before "silk run finalize", after `npm run ril -- journal coalesce`.
+  - AFTER COMMIT: end FINAL_STATUS with an explicit NOT PUSHED line naming /cb-ops.
+  - DECISION PROTOCOL: If a decision must be made, ask for direct feedback. DO NOT DECIDE ALONE.
+  - AT THE END: update this list as HOW THE LIST WORKS states.
+
+/cb-green — a sound specification for the feature module
+  - What: SUB-FEATURE-RESEARCH is made sound: every algorithm bound to the
+    code that implements it, every invariant bound to what holds it and to
+    a check that tests it, no edge claiming what the code does not do, and
+    no two nodes contradicting each other. Audited on 2026-10-29 over the
+    module's 75 nodes:
+      - no node carries an artifact association or a location;
+      - INV-DETERMINISTIC-MEASUREMENT, INV-UNIT-COLUMNS-BOUNDED,
+        INV-GENERATED-HAS-TRACKED-PRODUCER, INV-NO-CAPTURES-TRACKED and
+        INV-TEXT-STORED-LF have no satisfier;
+      - INV-BACKGROUND-NOT-CONTENT and INV-UNNAMED-CONTENT-REPORTED are
+        tested by no check;
+      - ALG-VISIBLE-SURFACE claims INV-OCCLUDER-PAINTS while vis_kind
+        admits a claim only for a node carrying the content slot 28;
+      - INV-CLIENT-TAG-COVERAGE counts every canvas node of a window, on
+        the display or not, against INV-VISIBLE-ONLY;
+      - ALG-VISIBILITY, ALG-OWNER-SELECT and ALG-PARSE-RSTREE produce into
+        no interface - nothing describes the pruned tree or its visible
+        cells; ALG-MEDIA-SURFACE writes IF-PATTERNS-ROW columns with no
+        output-of edge; ALG-QUICK-SIG satisfies nothing;
+      - INV-GEOMETRY-FROM-TREE, INV-OPACITY, INV-CLIP-TO-BOUNDS,
+        INV-VISIBLE-ONLY, INV-VISIBLE-AREA-ONLY and INV-PRUNED-NOT-PARSED
+        emit no error code.
+    Each finding is re-measured at the start of the item, after item 1.
+  - Read: every node of SUB-FEATURE-RESEARCH through ril query-multi;
+    tools/cluster/*.py and tools/checks/*.py; ril associate.
+  - Spec work:
+      every algorithm: ril associate with the file and function that
+        implement it.
+      the five invariants without a satisfier: the satisfies edge from the
+        algorithm or check that holds each, or, where one is enforced by
+        construction, verified-by structural with the construction named.
+      INV-OCCLUDER-PAINTS and vis_kind: the kind of a claim may depend on
+        draw slot 28 or not - put to the human; the spec is written to the
+        answer.
+      modify INV-CLIENT-TAG-COVERAGE: coverage counts the nodes
+        ALG-VISIBILITY finds visible.
+      add interface IF-VISIBLE-TREE (SUB-FEATURE-RESEARCH): the kept nodes,
+        their state, shape, visible cells and window; output-of
+        ALG-VISIBILITY, input-of ALG-OWNER-SELECT, ALG-BRANCH-GROUP,
+        ALG-VISIBLE-SURFACE and ALG-MEDIA-SURFACE.
+      ALG-MEDIA-SURFACE output-of IF-PATTERNS-ROW.
+      one error code per invariant above that emits none, each emitted by
+        the check that tests it.
+  - Code path: tools/checks/ - every check prints the id of every invariant
+    it tests, and its error code when one is violated; the checks for
+    INV-BACKGROUND-NOT-CONTENT and INV-UNNAMED-CONTENT-REPORTED.
+  - Test: the audit above re-run at the end, every line of it empty; every
+    check under tools/checks/ run on the real capture and named with its
+    result; npm run spec:check, no violations.
   - BOUNDARY: as in RULES FOR EVERY ITEM.
 
   - IMPORTANT: Every figure is measured in this session against a real capture and written into the report.
