@@ -56,7 +56,7 @@ tools/checks/.
 ORDER
 ===============================================================================
 
-  1. /cb-audit — a component source for the system UI
+  1. /cb-green — the capture: every sample a bracketed bundle
 
 
 ===============================================================================
@@ -66,70 +66,234 @@ DEFERRED
   - an open point, not yet an item: scenes are not deduplicated. Every
     photographed sample accepted by ALG-PICTURE-PAIR is a scene, as the
     human decided on 2026-10-29: on the capture of 2026-10-28 the 342
-    scenes are mostly repeats - one motif vector is shared by 73 of them. An offline deduplication - what makes two photographed samples
-    the same scene, and its invariant - is for the human to specify.
-  - an open point, not yet an item: 201 of the 543 pictures on disk are
-    refused because the display changed across the shot (ALG-PICTURE-PAIR:
-    the next sample's kept tree differs, or a visible box moves more than
-    one cell). Measured before the paint-order fix, on 193 of them: in 176
-    the kept nodes differ - a median 0.13 of them, under 0.02 in 29 - and
-    in 17 the nodes are the same and a box moved. The
-    shot lands about 370 ms after the render tree is read. Whether the
-    capture should read the tree again after the shot, or otherwise bracket
-    it, is for the human; the pairing rule is not changed to fit the data.
-  - an open point, not yet an item: the capture's deduplication is not
-    sound and is not specified. rs_capture.ps1 calls a sample a new scene
-    when its signature - every node's innerAbsDrawRect on a 16 px grid,
-    over the whole dump, off-display and occluded nodes and invisible
-    windows included, plus the window names - shares under 650 permille
-    with every scene seen, first match winning. That is not the
-    extraction's scene, the display's kept tree, and it reads the cached
-    draw rects the extraction refuses. Measured on the capture of
-    2026-10-28: 299 stored scenes give 139 distinct motif vectors, one
-    vector shared by 46. ALG-QUICK-SIG and ALG-CAPTURE-LOOP carry no
-    predicate. The tag coverage of 2026-10-29 shows the cost: 147 of the 342
-    scenes have under half of their visible area owned by a tagged node; the
-    79 whose only motif is a list - TikTok's tab strip over an untagged
-    player created after the last client dump - read 0.09 to 0.13.
-    Between consecutive samples of the same page (212 pairs on 2026-10-28,
-    half their kept nodes shared) 75 motifs flip; the tag source differs
-    in 48 of them (29 tags alone, 19 with a child count), while 14 of the
-    slider's 17 flips are its progress bar shown or hidden on the display.
-    The client dump is fetched only for a sample judged new, so
-    a photographed sample borrows its tags from the last one before it
-    (ALG-TAG-BORROW); where a sample has its own, 52 of the 65 app windows
-    readable with it stay readable with the previous one's. Before the next capture:
-    whether the loop saves the client dump with every picture (about
-    190 ms more a sample; a screenshot costs about 370 ms - 653 ms median
-    for a sample with one, 285 without), and whether deduplication moves
-    offline onto the kept tree, are for the human.
+    scenes are mostly repeats - one motif vector is shared by 73 of them.
+    With a bundle every sample (item 1), every complete and stable sample
+    is a scene - about 460 in a ten-minute session. An offline
+    deduplication - what makes two samples the same scene, and its
+    invariant - is for the human to specify.
+  - an open point, not yet an item: no invariant is linked to its check in
+    the artifact registry. combobul/spec/associations holds 12 links, all
+    "implements" from an algorithm to its function; none of the 40
+    invariants has a "verifies" link, and the check that holds each is
+    named only in its predicateNL. Item 1 links the nodes it touches; the
+    rest are for the human to schedule.
 
 ===============================================================================
 PROMPTS
 ===============================================================================
 
 
-/cb-audit — a component source for the system UI
-  - What: a read-only search for a dump that names the system UI's
-    components. The client dump answers for the system UI (pid 3689,
-    SceneBoard) only in part: on 20261027_102041/s000342 the launcher
-    window SCBDesktop keeps 129 nodes and none is tagged, so the home page
-    reads as no motif; the gesture layers and the wallpaper are untagged
-    on every scene. The system UI is ArkUI, so its components exist; the
-    question is whether any dump on this build gives them.
-  - Already probed and empty (IF-CAPTURE-SESSION): the window manager's
-    -w <id> -element, the ability manager's -element, -inspector and
-    -render, RenderService client with a pid, MultiRSTrees.
-  - Read-only, on the device through hdc from the capture machine: hidumper
-    services and their options that mention ArkUI, the inspector or the
-    component tree; the ArkUI inspector entry points; anything that prints
-    frameNodeTag or a component tree for pid 3689. Never tap inside an app.
-    Nothing is written to the repository; findings go into the report.
-  - Output: for each dump tried, the command, whether it answers for pid
-    3689, and whether it names the launcher's nodes by node id. If one
-    does, the report proposes the spec work it needs (IF-CAPTURE-SESSION,
-    ALG-TAG-BORROW, INV-CLIENT-TAG-COVERAGE and the capture) as a new item
-    for the human; if none does, the list records what was tried.
+/cb-green — the capture: every sample a bracketed bundle
+  - What: rs_capture.ps1 stops judging scenes. Every sample is one bundle,
+    read back to back in this order: the render tree (before), the
+    screenshot, the client dump, the SceneBoard inspector, the render tree
+    again (after). The shot sits next to the tree it is paired with, and
+    both tag dumps sit inside the bracket, so a sample whose before and
+    after trees agree held still across all five. Every attempt writes a
+    row; nothing is compared, deduplicated or skipped live. The pipeline
+    reads only this format: a sample is a scene when its bundle is complete
+    and its before and after trees keep the same display, and its tags
+    come from its own two dumps. The old sessions, and the code that reads
+    them, go.
+  - DECIDED by the human on 2026-10-30: a full bundle every sample (about
+    1.3 s a sample, against 0.3 s now); the tree read again after the
+    shot, the pairing within the sample; only the new format accepted, the
+    old sessions wiped; pictures pulled at the end, in a finally; the
+    confirmed cases of scene_pass.py confirmed again on the new capture.
+  - WHY, from the review of 2026-10-30 (read-only, every session of
+    2026-10-22 to 2026-10-28):
+      the picture rule decides the dataset and rests on an unsound
+        signature: 572 pictures in 7,292 samples, chosen by every node's
+        innerAbsDrawRect over the whole dump, first match at 650 permille;
+        its tuning variables (SigGrid, SigBigArea, ScreenW, ScreenH) are
+        read and never set, so its "big rect" branch never runs;
+      tags are borrowed: the client dump is read only for a sample judged
+        new, and 147 of the 342 scenes are under half tagged, the TikTok
+        clusters at about 0.09;
+      the system UI is untagged: WindowManagerService -w <id> -inspector
+        names SceneBoard's components, and its compid equals the render
+        node's nodeName on 93 of 179 launcher render nodes (cb-audit of
+        2026-10-30); the client dump cannot bridge it;
+      the shot is not bracketed: 201 of 543 pictures refused as "display
+        changed" against the next sample;
+      pictures can be lost: they wait on the device for one transfer after
+        the loop, Ctrl+C skips it, and the next session starts with rm -rf
+        on the folder; 20261027_072726 names 55 and has 26;
+      failures are silent: hdc errors swallowed, a failed sample counted
+        and never written, no dump checked for completeness;
+      timing is coarse and host-side: ts written after the sample, ms the
+        total, no device time;
+      dead and stale: dwell.csv has no reader; comments name -RsRebuildAll
+        and "the two vectors";
+      display.txt is read once a session, and its absence is silently
+        replaced by a default panel (DISPLAY_DEFAULT); ERR-DISPLAY-DUMP-
+        MISSING and ERR-CLIENT-DUMP-MISSING are raised by no code;
+      INV-NO-CAPTURES-TRACKED says .gitignore excludes .rstree.txt,
+        .client.txt, display.txt and samples.csv; it names none of them
+        (captures/ covers the folder), and boundary_rules.py checks only
+        *.jpeg, *.png and captures/.
+  - MEASURE FIRST, read-only on the device, before the envelope; the
+    figures are put to the human:
+      1. the SceneBoard inspector: whether one window's -inspector answers
+         for every SceneBoard window on the display (desktop, status bar,
+         gesture layers) or only its own; whether the window ids hold
+         across a session; the cost of each read. The human decides which
+         inspector reads the bundle makes and how their window ids are
+         found.
+      2. the device clock read in the same hdc shell command as a step:
+         its resolution and what it adds.
+      3. whether the before tree's LOGICAL_DISPLAY_NODE has display.txt's
+         size on every sample of the capture of 2026-10-28.
+  - THE SESSION (IF-CAPTURE-SESSION, rewritten):
+      <session>/display.txt, read once, at the start;
+      <session>/samples.csv, one row per attempt, in order: sample
+        (s000001, ...), status (ok, or the step that failed with hdc's own
+        text), host_start, dev_before, dev_shot, dev_after (the device
+        clock, read in the step's own shell command), ms_before, ms_shot,
+        ms_client, ms_inspector, ms_after;
+      per sample: <sample>.before.rstree.txt, <sample>.jpeg,
+        <sample>.client.txt, <sample>.inspector.txt,
+        <sample>.after.rstree.txt.
+    A failed step ends its sample, and its row is still written. Pictures
+    are written on the device to the session's own folder,
+    /data/local/tmp/arkshots/<session>, pulled in one transfer in a
+    finally (it runs on Ctrl+C), each one an ok row names checked on the
+    host, and the device folder removed only when every one is there.
+    Nothing is wiped at the start; a folder an earlier session left is
+    named.
+  - Spec work (node-info and impact-analysis on every node named, before
+    the envelope; each removal named to the human before the envelope; no
+    invariant is removed):
+      REMOVE
+        ALG-QUICK-SIG - nothing compares samples live.
+        ALG-TAG-BORROW - a sample's tags are its own.
+        ERR-CLIENT-DUMP-MISSING, ERR-DISPLAY-DUMP-MISSING - raised by no
+          code; a missing dump is now an incomplete sample or a malformed
+          session.
+      ADD
+        algorithm ALG-SAMPLE-TAGS (py; runs-at AUT-PIPELINE-RUN; called by
+          ALG-PICTURE-PAIR; IF-CAPTURE-SESSION input-of it): a render
+          node's tag is its frameNodeTag in the sample's own client dump,
+          by node id; a node with none there takes the tag of the component
+          in the sample's own inspector dump whose compid equals its
+          nodeName, when exactly one component has that compid; otherwise
+          it has none. Postcondition: every tag a node carries is read from
+          that sample's client or inspector dump. Artifacts (implements):
+          parse_client, the new parse_inspector, and the function that
+          gives a node its tag.
+        invariant INV-TAGS-FROM-OWN-SAMPLE (enforced; checked-at
+          AUT-PIPELINE-RUN; satisfied by ALG-SAMPLE-TAGS). Predicate: for
+          every scene, every node's tag equals the one an independent
+          reading of that sample's client and inspector dumps gives it by
+          the rule above, and no code tags a sample from another sample's
+          dump. Emits ERR-TAG-NOT-OWN-SAMPLE (new, ERROR). Verified by
+          tag_coverage.py: its own parser of both dumps, and a static scan
+          of rs_sample.py and rs_scene.py.
+        invariant INV-SESSION-COMPLETE (enforced; checked-at
+          AUT-PIPELINE-RUN; satisfied by ALG-CAPTURE-LOOP; assumed by
+          IF-CAPTURE-SESSION). Predicate: every session under the capture
+          root has display.txt and a samples.csv whose header is exactly
+          IF-CAPTURE-SESSION's columns; its samples are s000001..sN in
+          order, each once; each status is ok or names a step of the
+          bundle; an ok row has its five files; in an ok row dev_before <=
+          dev_shot <= dev_after, and dev_before rises from row to row. A
+          session without display.txt or with another header is refused
+          whole, by name, and the pipeline does not run; any other failure
+          names its samples, which ALG-PICTURE-PAIR loses with their
+          reason. Emits ERR-SESSION-MALFORMED (new, ERROR). Verified by a
+          new tools/checks/capture_session.py; enforced by
+          rs_sample.sessions.
+      MODIFY
+        IF-CAPTURE-SESSION - the session above; input-of ALG-SAMPLE-TAGS;
+          assumes INV-SESSION-COMPLETE.
+        ALG-CAPTURE-LOOP - the bundle, the rows, the transfer. Precondition:
+          a shot command answered (ERR-SHOT-COMMAND-ABSENT). Postcondition:
+          when the loop ends, on time or on Ctrl+C, every attempt has its
+          row, and every picture an ok row names is on the host, or named
+          and still in the session's folder on the device.
+        AUT-CAPTURE-RUN and INV-DEVICE-COMPUTES-NOTHING - the device side
+          drives hdc and writes files, and decides nothing about a scene.
+          Predicate: rs_capture.ps1 names no vector column and defines no
+          function that measures, compares, classifies or names a scene -
+          no signature, no tolerance, no index of scenes - and its rows
+          carry exactly IF-CAPTURE-SESSION's columns (boundary_rules.py).
+        ALG-PICTURE-PAIR - every row is a candidate. It is a scene when its
+          status is ok, its five files are there, its before tree has one
+          display node, of display.txt's size, and ALG-VISIBILITY on the
+          before and after trees keeps the same nodes, every visible cell
+          box within one cell per edge; it is measured on the before tree
+          with ALG-SAMPLE-TAGS' tags. Reasons: incomplete sample (the step
+          or the file named), missing on disk (the picture), no display
+          node, display not the session's, display changed; "no next
+          sample" goes. Postcondition: rows of samples.csv == scenes +
+          lost.
+        INV-PICTURE-SAME-MOMENT - a scene's five files are from one sample,
+          in the bundle's order on the device clock, and its before and
+          after trees agree as above (picture_timing.py, rewritten).
+        INV-NO-SILENT-SCENE-LOSS - counted over samples, not pictures: rows
+          of samples.csv == rows of patterns.csv + lost, by reason; rows of
+          patterns.csv == scenes in the payload (no_silent_scene_loss.py).
+        INV-PARSE-ONLY-SELECTION-FIELDS - nodeName is read per node, only
+          as the key into the inspector; the tags come from the sample's
+          own client and inspector dumps (parsing_rules.py).
+        ALG-PARSE-RSTREE - reads the render tree alone; the two removed
+          error codes go; the display is the session's display.txt, with no
+          default panel.
+        INV-CLIENT-TAG-COVERAGE - the owner's tag is ALG-SAMPLE-TAGS'; the
+          report gives the share of tagged cells from each dump.
+        INV-NO-CAPTURES-TRACKED - .inspector.txt among the names; .gitignore
+          names each of them, and boundary_rules.py checks each.
+        IF-PATTERNS-ROW, ERR-PICTURE-LOST, ERR-PICTURE-NOT-SAME-MOMENT - the
+          reasons above.
+      ARTIFACT REGISTRY (ril associate): every algorithm added or modified
+        is linked to its function (implements); every invariant added or
+        modified is linked to the function of the check that holds it
+        (verifies), and to the runtime code that refuses (enforces) where
+        there is one.
+  - Code path: tools/rs_capture.ps1 (the bundle, the rows, the device
+    clock, the transfer in a finally; Get-RsQuickSig, Get-SetHold, -Tol,
+    dwell.csv and the stale comments removed); tools/cluster/rs_extract.py
+    (parse_inspector; nodeName in parse_node; the default panel removed);
+    rs_sample.py (sessions, candidates, pair on the bundle; tag_source
+    removed); rs_scene.py (a node's tag from ALG-SAMPLE-TAGS);
+    rs_pattern.py (stops on a malformed session); tools/checks/
+    capture_session.py (new), picture_timing.py, no_silent_scene_loss.py,
+    tag_coverage.py, parsing_rules.py, boundary_rules.py, scene_pass.py
+    (its confirmed cases on the new capture); .gitignore; README.md and
+    tools/README.md (the capture); docs/design/on_device_options.md (the
+    confirmed cases' new samples).
+  - Verification, on a real capture:
+      1. the human takes a new capture of ordinary use (the human holds the
+         phone; nothing is tapped from here), and a short one interrupted
+         with Ctrl+C: in both, every picture an ok row names is on disk and
+         the session's device folder is gone; nothing else on the device
+         was removed.
+      2. capture_session.py holds on every new session; run on an old
+         session, it refuses it by name.
+      3. per step: median and p90 of each ms column; the before-to-shot and
+         shot-to-after gaps on the device clock; seconds per sample.
+      4. the pairing: samples, scenes, lost by reason; the share lost as
+         "display changed" against 201 of 543 before.
+      5. tag coverage: median, scenes under one half, the share of tagged
+         cells from the inspector; launcher scenes named, with their
+         coverage.
+      6. the confirmed cases: the human names new samples for the keyboard,
+         the videos, a grid, a one-page Swiper and the launcher's windows,
+         and confirms each before scene_pass.py reads it.
+      7. rs_pattern, vectors_build and vectors_page rerun; every check under
+         tools/checks/ named with its result, measurement_rules included;
+         npm run spec:check, no violations.
+      8. then, once the human confirms: the old sessions under
+         ~\ark_work\captures, and the outputs built from them, deleted.
+  - BOUNDARY: as in RULES FOR EVERY ITEM.
+
+  - IMPORTANT: Every figure is measured in this session against a real capture and written into the report.
+  - INVIOLABLE: SPECIFICATION SURFACE IS AUTHORITATIVE. Every node above exists before the code it governs.
+  - INVIOLABLE: NO SCENE CLASSES. A motif names a structure of components.
+  - INVIOLABLE: NEVER TAP INSIDE AN APP. The human operates the phone.
+  - INVIOLABLE: DO NOT EMIT P3_SKIPPED.
   - FORBIDDEN: MULTI-AGENT execution is not allowed. DO NOT SPAWN MULTIPLE AGENTS.
+  - WHEN TO COMMIT: Before "silk run finalize", after `npm run ril -- journal coalesce`.
+  - AFTER COMMIT: end FINAL_STATUS with an explicit NOT PUSHED line naming /cb-ops.
   - DECISION PROTOCOL: If a decision must be made, ask for direct feedback. DO NOT DECIDE ALONE.
   - AT THE END: update this list as HOW THE LIST WORKS states.
