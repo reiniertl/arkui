@@ -56,13 +56,14 @@ ICON_DP, ICON_AR = 56.0, (0.7, 1.4)
 THUMB = 0.15
 VIDEO_TAGS = {"XComponent", "Video"}
 TEXT_INPUT_TAGS = {"TextInput", "TextArea", "Search"}
-# Containers whose children are items, whatever the item's own tag: a custom
-# component has no node of its own (CustomNode derives from UINode, not
-# FrameNode - arkui_ace_engine pattern/custom/custom_node.h), so its root
-# stands in the item's place. Two or more children of a repeating container
-# are parent/item*; the one child of a single-child container is parent/item.
-REPEATING = {"List", "ListItemGroup", "Grid", "WaterFlow", "Swiper", "SideBarContainer"}
-SINGLE_CHILD = {"Scroll", "Refresh"}
+# Containers whose direct kept children are their items, whatever each one's
+# tag, pass-through included: a custom component has no node of its own
+# (CustomNode derives from UINode, not FrameNode - arkui_ace_engine
+# pattern/custom/custom_node.h), so its root stands in the item's place. Two
+# or more give parent/item*, one gives parent/item; what is lifted out of an
+# item through pass-through is never an item (INV-ITEMS-ARE-CHILDREN).
+ITEM_CONTAINERS = {"List", "ListItemGroup", "Grid", "WaterFlow", "Swiper", "SideBarContainer",
+                   "Scroll", "Refresh"}
 
 # ---- IF-MOTIF-DICTIONARY (INV-DICTIONARY-DESIGNED, INV-DICTIONARY-COMPLETE) ---
 # (name, root, element set, source). Each motif comes from an ArkUI component
@@ -355,13 +356,14 @@ class Scene:
         if L is None:
             out_heads, out_pairs = heads, headpairs           # pass-through
         else:
-            items = ((L in REPEATING and len(heads) >= 2)
-                     or (L in SINGLE_CHILD and len(heads) == 1))
-            count = {}
-            for h, _ in heads:
-                h = "item" if items else h        # whatever each item is
-                count[h] = count.get(h, 0) + 1
-            pairs = {"%s/%s%s" % (L, h, "*" if k >= 2 else "") for h, k in count.items()}
+            if L in ITEM_CONTAINERS:
+                # its items are its kept children, not what they lift
+                pairs = {"%s/item%s" % (L, "*" if len(kids) >= 2 else "")} if kids else set()
+            else:
+                count = {}
+                for h, _ in heads:
+                    count[h] = count.get(h, 0) + 1
+                pairs = {"%s/%s%s" % (L, h, "*" if k >= 2 else "") for h, k in count.items()}
             S0 = {L}
             S1 = S0 | pairs
             S2 = S1 | headpairs

@@ -55,14 +55,27 @@ tools/checks/.
 ORDER
 ===============================================================================
 
-  1. /cb-fix — an item is a kept child of its container
-  2. /cb-green — no wrappers and no alias for the old pattern names
+  1. /cb-green — no wrappers and no alias for the old pattern names
 
 
 ===============================================================================
 DEFERRED
 ===============================================================================
 
+  - an open point, not yet an item: a container keeps an empty child as
+    an item. After INV-ITEMS-ARE-CHILDREN, 16 of the 34 video_large scenes of
+    2026-10-28 still carry carousel. In 15 (e.g. 20261022_123014/s000001)
+    the Swiper keeps two full-screen children at the same place: the video
+    page, and an empty Stack - no background, alpha 1, nothing kept inside -
+    which the rules keep (a visible node with area) and count as an item.
+    Whether a node with no kept content is an item is for the human.
+  - an open point, not yet an item: a custom component has no node of its
+    own (CustomNode), so when one is a container's item its root-level
+    nodes sit directly under the container and each counts as an item.
+    20261022_123014/s003479: one video page's six layers (the player, a
+    Row, a Column, a Stack, two __Common__) are six Swiper items, and the
+    Swiper matches carousel. Whether, and from what, the item boundary is
+    recovered is for the human.
   - an open point, not yet an item: tag coverage is one small line on
     each tile ("tagged N%"); a scene under one half (147 of 342) is not
     marked at a glance. Whether the viewer marks it - a badge, a dimmed
@@ -119,78 +132,6 @@ DEFERRED
 PROMPTS
 ===============================================================================
 
-
-
-/cb-fix — an item is a kept child of its container
-  - Bug: ALG-MOTIF-MATCH and IF-MOTIF-VOCABULARY write parent/item* for "two
-    or more kept children" of a List, ListItemGroup, Grid, WaterFlow, Swiper
-    or SideBarContainer, and parent/item for the one kept child of a Scroll
-    or Refresh. rs_scene.Scene._up counts the HEADS instead - the meaningful
-    nodes lifted up through pass-through children - so the contents of one
-    page are counted as the container's items. The scene_pass oracle counts
-    heads too, so the checks agreed with the bug.
-    Reproduced on 20261022_110104/s000552: the Swiper has one kept child, a
-    full-screen page; through its pass-through wrapper 14 heads are lifted
-    (the XComponent, Rows, Images, Texts, a Scroll), so the Swiper reads
-    Swiper/item* and matches carousel at d = 0. Every full-screen video page
-    in a paged Swiper does the same: all 34 video_large scenes of the
-    capture of 2026-10-28 carry carousel.
-    Measured on every third photographed scene (nothing changed):
-      Swiper: 31 with one kept child and two or more heads (a false
-        carousel), 25 with two or more kept children and at most one head
-        (a carousel missed);
-      Scroll: 2 with one kept child and two or more heads (scroll_page
-        missed);
-      List, Grid, WaterFlow: kept children and heads agree - their children
-        are ListItem, GridItem, FlowItem.
-  - Spec work (node-info and impact-analysis on ALG-MOTIF-MATCH and
-    IF-MOTIF-VOCABULARY before the envelope):
-      modify ALG-MOTIF-MATCH and IF-MOTIF-VOCABULARY - the item form: an
-        item container's items are its direct kept children in the render
-        tree, each one item whether its own label is pass-through or not;
-        what is lifted out of an item through pass-through is never an item
-        of the container; parent/item* for two or more, parent/item for the
-        one child of a Scroll or Refresh; the deeper pairs (GridItem/icon of
-        icon_grid) still come from what is lifted.
-      add invariant INV-ITEMS-ARE-CHILDREN (SUB-FEATURE-RESEARCH): for every
-        kept List, ListItemGroup, Grid, WaterFlow, Swiper, SideBarContainer,
-        Scroll and Refresh, the item element of its set follows the number
-        of its kept children - item* for two or more, item for one;
-        checked-at AUT-PIPELINE-RUN; emits ERR-MOTIF-ORACLE-MISMATCH;
-        satisfied by ALG-MOTIF-MATCH; predicateNL naming scene_pass.py (its
-        motif oracle counts children with code of its own) and the
-        confirmed case below.
-      nothing removed; the dictionary and its motifs unchanged. Artifact:
-        Scene._up, already associated with ALG-MOTIF-MATCH.
-  - Code path: rs_scene.py Scene._up (count the kept children, not the
-    heads); tools/checks/scene_pass.py (the oracle's pairs from the kept
-    children; the confirmed case).
-  - Verification of the specification: npm run spec:check, no violations
-    (this setup has no semantic validator - ril offers validate-delta and
-    check-conflicts); node-info on every new or modified node shows its
-    checked-at, its emits, its check and its artifact.
-  - Verification of the code, on the real capture:
-      1. scene_pass.py: the oracle, counting children, equals the pass on
-         every scene; every line holds.
-      2. confirmed: in 20261022_110104/s000552 the Swiper's set holds
-         Swiper/item, and carousel is not found.
-      3. the scenes per motif before and after, and every scene whose
-         motif set changes, named; the video_large scenes that still carry
-         carousel, each looked at.
-      4. clusters before and after; s000552's cluster.
-      5. rs_pattern, vectors_build, vectors_page rerun; every check under
-         tools/checks/ named with its result, measurement_rules included.
-  - BOUNDARY: as in RULES FOR EVERY ITEM.
-
-  - IMPORTANT: Every figure is measured in this session against a real capture and written into the report.
-  - INVIOLABLE: SPECIFICATION SURFACE IS AUTHORITATIVE. Every node above exists before the code it governs.
-  - INVIOLABLE: NO SCENE CLASSES. A motif names a structure of components.
-  - INVIOLABLE: DO NOT EMIT P3_SKIPPED.
-  - FORBIDDEN: MULTI-AGENT execution is not allowed. DO NOT SPAWN MULTIPLE AGENTS.
-  - WHEN TO COMMIT: Before "silk run finalize", after `npm run ril -- journal coalesce`.
-  - AFTER COMMIT: end FINAL_STATUS with an explicit NOT PUSHED line naming /cb-ops.
-  - DECISION PROTOCOL: If a decision must be made, ask for direct feedback. DO NOT DECIDE ALONE.
-  - AT THE END: update this list as HOW THE LIST WORKS states.
 
 
 /cb-green — no wrappers and no alias for the old pattern names

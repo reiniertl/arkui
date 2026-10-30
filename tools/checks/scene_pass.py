@@ -71,6 +71,9 @@ GRID = ("20261022_123014/0192", {2070: True, 3117: False, 4163: False})
 # on top in both pictures: a panel painted after TikTok's content in its
 # window container, at the same PositionZ (INV-OCCLUSION-PAINT-ORDER).
 KEYBOARD = ("20261022_110104/s000308", "20261022_110104/s000328")
+# A Swiper showing one full-screen video page: one kept child, so one item
+# and no carousel (INV-ITEMS-ARE-CHILDREN); its page's wrapper lifted 14 nodes.
+ONE_PAGE = "20261022_110104/s000552"
 # The launcher: its five windows, topmost first.
 WINDOWS = ("20261027_102041/s000342", ("SCBGestureBack", "SCBStatusBar",
                                       "SCBGestureNavBar", "SCBDesktop", "SCBWallpaper"))
@@ -372,15 +375,15 @@ def oracle_patterns(tree, tags, sc, dw, dh, density):
     @memo
     def pairs(nid):
         L = label(nid)
+        # an item container's items are its kept children, each one item,
+        # never what is lifted out of them (INV-ITEMS-ARE-CHILDREN)
+        if L in ("List", "ListItemGroup", "Grid", "WaterFlow", "Swiper",
+                 "SideBarContainer", "Scroll", "Refresh"):
+            n_items = len(O[nid]["kids"])
+            return {"%s/item%s" % (L, "*" if n_items >= 2 else "")} if n_items else set()
         cnt = {}
-        hs = heads(nid)
-        # two or more children of a repeating container, or the one child of
-        # a single-child container, are items
-        items = ((L in ("List", "ListItemGroup", "Grid", "WaterFlow", "Swiper",
-                        "SideBarContainer") and len(hs) >= 2)
-                 or (L in ("Scroll", "Refresh") and len(hs) == 1))
-        for h in hs:
-            p = "item" if items else present(h)
+        for h in heads(nid):
+            p = present(h)
             cnt[p] = cnt.get(p, 0) + 1
         return {"%s/%s%s" % (L, h, "*" if c >= 2 else "") for h, c in cnt.items()}
 
@@ -776,6 +779,17 @@ def main():
         if not kb_cells[sid][1]:
             bad["scene"].append("%s: the keyboard is on top in its picture and the pass "
                                 "keeps none of it" % sid)
+    one_page = None
+    if not a.session or ONE_PAGE.startswith(a.session + "/"):
+        sc, _ = photographed(ONE_PAGE)
+        if sc is None:
+            bad["pattern"].append("%s: the confirmed sample is not in the capture" % ONE_PAGE)
+        else:
+            sw = [x for x in sc.kept if sc.N[x]["tag"] == "Swiper"]
+            one_page = [len([c for c in sc.N[x]["kids"] if c in sc.kept]) for x in sw]
+            if any(m["pattern"] == "carousel" for m in sc.matches):
+                bad["pattern"].append("%s: carousel found, its Swipers keep %s child(ren)"
+                                      % (ONE_PAGE, one_page))
     win_order = None
     if not a.session or WINDOWS[0].startswith(a.session + "/"):
         sc, _ = photographed(WINDOWS[0])
@@ -847,9 +861,10 @@ def main():
            "every pattern share within one cell per edge of its matches' exact visible area",
            "ERR-AREA-NOT-VISIBLE")
     report("INV-DICTIONARY-DESIGNED, INV-DISTANCE-ORDER-FREE, "
-           "INV-MATCHES-OUTERMOST, INV-COMPOSITION-CONSUMES", bad["pattern"],
+           "INV-MATCHES-OUTERMOST, INV-COMPOSITION-CONSUMES, INV-ITEMS-ARE-CHILDREN", bad["pattern"],
            "d and count equal the pattern oracle's on every display; %d match(es); shuffling "
-           "changes nothing" % n["matches"],
+           "changes nothing; %s: Swipers keep %s kept child(ren), no carousel"
+           % (n["matches"], ONE_PAGE.split("/")[1], one_page),
            "ERR-MOTIF-ORACLE-MISMATCH")
     report("INV-CLIENT-TAG-COVERAGE", bad["coverage"],
            "every scene's tag coverage equals the oracle's exact one within one cell per "
