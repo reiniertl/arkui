@@ -25,8 +25,8 @@ import vectors_build as VB            # noqa: E402
 
 
 def vector_columns():
-    """Every column of the pattern vector."""
-    return [n for n, _ in VB.MOTIF_COLS]
+    """Every column of the motif vector and the scene stats."""
+    return [n for n, _ in VB.MOTIF_COLS + VB.STAT_COLS]
 
 
 def clamps():
@@ -35,10 +35,12 @@ def clamps():
     Searched in rs_scene.row, where every column is written. A clamp there
     would hide an area computed against the wrong denominator."""
     src = open(os.path.join(CLUSTER, "rs_scene.py"), encoding="utf-8").read()
-    fn = next(n for n in ast.walk(ast.parse(src))
-              if isinstance(n, ast.FunctionDef) and n.name == "row")
-    seg = ast.get_source_segment(src, fn)
-    return [m.group(0) for m in re.finditer(r"\b(min|max|np\.clip|clip)\(", seg)]
+    out = []
+    for fn in ast.walk(ast.parse(src)):
+        if isinstance(fn, ast.FunctionDef) and fn.name in ("row", "stats"):
+            seg = ast.get_source_segment(src, fn)
+            out += [m.group(0) for m in re.finditer(r"\b(min|max|np\.clip|clip)\(", seg)]
+    return out
 
 
 def check_bounded(rows):

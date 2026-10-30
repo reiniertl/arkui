@@ -56,7 +56,17 @@ CONTAINERS = ("List", "ListItemGroup", "Grid", "WaterFlow", "Tabs", "Swiper", "S
 LEAVES = ("video:large", "video:medium", "video:small", "Web", "text_input",
           "Button", "Slider", "AlphabetIndexer")
 MOTIFS, COLUMNS = 21, 63
-FROZEN = ("DICTIONARY", "SHAPES", "BY_ROOT", "TOKENS", "COMPOSED", "MOTIFS",
+# IF-SCENE-STATS: the families of the area columns, in order, and the tree
+# columns' constants (INV-SCENE-STATS-FROM-KEPT-TREE)
+SPEC_FAMILIES = (("text", {"Text", "TextClock", "Span", "RichText", "RichEditor", "Marquee"}),
+                 ("image", {"Image", "SymbolGlyph", "ImageSpan"}),
+                 ("video", {"XComponent", "Video"}),
+                 ("input", {"TextInput", "TextArea", "Search"}),
+                 ("web", {"Web"}),
+                 ("button", {"Button", "Toggle", "Checkbox", "Radio"}))
+SPEC_K = (200, 20)
+FROZEN = ("FAMILIES", "FAMILY_OF", "STATS", "KEPT_K", "DEPTH_K",
+          "DICTIONARY", "SHAPES", "BY_ROOT", "TOKENS", "COMPOSED", "MOTIFS",
           "CATALOGUE", "FOUND")
 
 
@@ -211,6 +221,37 @@ def main():
         print("    " + b)
     if bad:
         print("    ERR-DICTIONARY-INCOMPLETE")
+        failed = True
+    else:
+        print("    holds")
+
+    # -- INV-SCENE-STATS-FROM-KEPT-TREE: the families literal --------------------
+    bad = []
+    fnode, knode = literal(tree, "FAMILIES"), None
+    for n in tree.body:
+        if isinstance(n, ast.Assign) and len(n.targets) == 1 and isinstance(n.targets[0], ast.Tuple) \
+                and [getattr(t, "id", "") for t in n.targets[0].elts] == ["KEPT_K", "DEPTH_K"]:
+            knode = n
+    try:
+        fams = ast.literal_eval(fnode.value) if fnode is not None else None
+    except ValueError:
+        fams = None
+        bad.append("FAMILIES is not a literal")
+    if fnode is None:
+        bad.append("rs_scene.py has no FAMILIES")
+    elif fams is not None and [(f, set(t)) for f, t in fams] != [(f, set(t)) for f, t in SPEC_FAMILIES]:
+        bad.append("the families in code are %s, IF-SCENE-STATS' are %s"
+                   % ([(f, sorted(t)) for f, t in fams], [(f, sorted(t)) for f, t in SPEC_FAMILIES]))
+    ks = ast.literal_eval(knode.value) if knode is not None else None
+    if tuple(ks or ()) != SPEC_K:
+        bad.append("the tree constants are %s, IF-SCENE-STATS' are %s" % (ks, SPEC_K))
+    print("  INV-SCENE-STATS-FROM-KEPT-TREE, the families and constants")
+    print("    %d famil(ies) in code, %d in the spec; constants %s"
+          % (len(fams or ()), len(SPEC_FAMILIES), ks))
+    for b in bad:
+        print("    " + b)
+    if bad:
+        print("    ERR-SCENE-STATS-MISMATCH")
         failed = True
     else:
         print("    holds")

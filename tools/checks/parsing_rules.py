@@ -163,7 +163,7 @@ def check_selection_only(passes):
     """INV-SELECTION-AND-DISTANCE-ONLY: the row is selection and distance,
     and the pass names nothing about how a node is rendered."""
     bad = []
-    want = {"tag_coverage"} | {
+    want = {"tag_coverage"} | set(S.STATS) | {
         p + x for p in S.MOTIFS for x in ("_d", "_share", "_n")}
     tf, lines, client, disp = passes[0]
     row = S.Scene(lines, client, disp).run()

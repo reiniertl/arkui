@@ -47,6 +47,14 @@ MOTIF_COLS = [(p + suf, what % p) for p in SC.MOTIFS for suf, what in (
     ("_share", "%s: share of the display its matches show"),
     ("_n", "%s: matches n, as n/(n+1)"))]
 
+# The scene stats (IF-SCENE-STATS), after the motif columns: measured in the
+# same pass, each in [0, 1], used as measured like the motif columns.
+STAT_COLS = [(c, w) for c, w in zip(SC.STATS, (
+    "kept nodes n, as n/(n+%d)" % SC.KEPT_K,
+    "depth of the deepest kept node d, as d/(d+%d)" % SC.DEPTH_K))] + [
+    ("%s_area" % f, "share of the display owned by %s components" % f) for f, _ in SC.FAMILIES]
+
+
 def found(row):
     """The dictionary motifs found on this scene's display, in order."""
     return [p for p in SC.MOTIFS if float(row.get(p + "_d") or 1.0) <= SC.FOUND]
@@ -155,14 +163,15 @@ def build_clustering(rows, mcs):
 
     The columns as measured: each already lies in [0, 1], so nothing is
     transformed, weighted, standardised or filled (INV-NO-FEATURE-WEIGHTS,
-    INV-FEATURE-TOTAL). All 63 columns, on every capture: a column with no
+    INV-FEATURE-TOTAL). All 63 motif columns and the 8 scene stats, 71 in
+    that order, on every capture: a column with no
     variance changes no distance and no PCA component, so it is reported
     and kept, and the column set never depends on the capture. HDBSCAN on
     that. A scene it
     cannot place is reported in the unclustered group, never forced into the
     nearest cluster.
     """
-    F = MOTIF_COLS
+    F = MOTIF_COLS + STAT_COLS
     X = np.array([[float(r[n]) for n, _ in F] for r in rows], float)
     sd = X.std(0)
     flat = [F[j][0] for j in range(X.shape[1]) if sd[j] < 1e-9]
@@ -203,6 +212,9 @@ def build_clustering(rows, mcs):
             "cohesion": (None if cid < 0 or not clustered
                          else round(float(np.nanmean([per[i] for i in idx])), 2)),
             "centre": centre,
+            # what describes the cluster beside its motifs
+            "stats": {c: round(float(np.mean([float(rows[i][c]) for i in idx])), 3)
+                      for c, _ in STAT_COLS},
             "reps": [{"scene": row_identity(rows[i]),
                       "sil": (None if np.isnan(per[i]) else round(float(per[i]), 2)),
                       "x": round(float(P[i, 0]), 4), "y": round(float(P[i, 1]), 4),
@@ -211,8 +223,8 @@ def build_clustering(rows, mcs):
         })
     groups.sort(key=lambda g: (g["id"] < 0, -g["n"]))
 
-    return {"title": "Clustering over the motif vector",
-            "blurb": ("Every scene clustered on all %d of the motif vector's columns "
+    return {"title": "Clustering over the motif vector and the scene stats",
+            "blurb": ("Every scene clustered on all %d columns of the motif vector and the scene stats "
                       "as measured. It matches no motif: a cluster is where scenes "
                       "sit relative to each other, named only by its id." % len(F)),
             "cols": [{"name": n, "what": d} for n, d in F],

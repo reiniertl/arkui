@@ -124,6 +124,20 @@ CATALOGUE = ("List", "ListItemGroup", "Grid", "WaterFlow", "Tabs", "Swiper", "St
              "Button", "Slider", "AlphabetIndexer")
 FOUND = 0.2       # d at or under this is a match; set by the human 2026-10-28
 
+# ---- IF-SCENE-STATS (INV-SCENE-STATS-FROM-KEPT-TREE) --------------------------
+# The component families of the area columns, by ArkUI tag, in order, and the
+# constants of the tree columns: set by the human 2026-10-30, by design, never
+# fitted.
+FAMILIES = (("text", {"Text", "TextClock", "Span", "RichText", "RichEditor", "Marquee"}),
+            ("image", {"Image", "SymbolGlyph", "ImageSpan"}),
+            ("video", {"XComponent", "Video"}),
+            ("input", {"TextInput", "TextArea", "Search"}),
+            ("web", {"Web"}),
+            ("button", {"Button", "Toggle", "Checkbox", "Radio"}))
+KEPT_K, DEPTH_K = 200, 20
+STATS = ("kept_nodes", "kept_depth") + tuple(f + "_area" for f, _ in FAMILIES)
+FAMILY_OF = {t: i + 1 for i, (_, ts) in enumerate(FAMILIES) for t in ts}
+
 
 def _depth(root, elems):
     """0 for a leaf, 1 when every pair hangs from the root, 2 when one hangs
@@ -181,6 +195,8 @@ class Scene:
         # kept canvas node showing there; its depth, and whether it is tagged
         self.owner_depth = np.full((self.H, self.W), -1, dtype=np.int32)
         self.owner_tagged = np.zeros((self.H, self.W), dtype=bool)
+        self.owner_family = np.zeros((self.H, self.W), dtype=np.int8)   # FAMILIES, 1-based
+        self.max_depth = 0           # the deepest kept node below the display
         self.state = {}
         self.order = 0
 
@@ -315,6 +331,7 @@ class Scene:
         # UP
         if free is None and not kids:
             return None
+        self.max_depth = max(self.max_depth, depth)
         self.kept[nid] = {"cells": int(free.sum()) if free is not None else 0,
                           "on": int(c[4].sum()) if c else 0,
                           "box": c[:4] if free is not None else None, "free": free}
@@ -326,6 +343,7 @@ class Scene:
             take = free & (od < depth)
             od[take] = depth
             self.owner_tagged[y0:y1, x0:x1][take] = bool(n["tag"])
+            self.owner_family[y0:y1, x0:x1][take] = FAMILY_OF.get(n["tag"], 0)
         if st == OCCLUDING and c:
             y0, y1, x0, x1, mask = c
             self.cover[y0:y1, x0:x1] |= mask
@@ -394,6 +412,17 @@ class Scene:
                 # an item of its container if meaningful or holding a kept node
                 "item": L is not None or bool(kids)}
 
+    # -- ALG-SCENE-STATS: the kept tree's size and depth, the area per family -
+    def stats(self):
+        cell = float(self.step * self.step)
+        tot = self.dw * self.dh
+        n, d = len(self.kept), self.max_depth
+        out = {"kept_nodes": round(n / (n + float(KEPT_K)), 4),
+               "kept_depth": round(d / (d + float(DEPTH_K)), 4)}
+        for i, (f, _) in enumerate(FAMILIES):
+            out[f + "_area"] = round(float((self.owner_family == i + 1).sum()) * cell / tot, 4)
+        return out
+
     # -- the row ---------------------------------------------------------------
     def row(self, top):
         cell = float(self.step * self.step)
@@ -409,7 +438,8 @@ class Scene:
             out[p + "_d"] = round(dmin.get(p, 1.0), 4)
             out[p + "_share"] = round(float(u.sum()) * cell / tot, 4)
             out[p + "_n"] = round(len(ms) / (len(ms) + 1.0), 4)
-        # a confidence, not part of the motif vector (INV-CLIENT-TAG-COVERAGE)
+        out.update(self.stats())
+        # a confidence, part of neither vector (INV-CLIENT-TAG-COVERAGE)
         visible = int((self.owner_depth >= 0).sum())
         out["tag_coverage"] = round(int(self.owner_tagged.sum()) / visible, 4) if visible else 0.0
         self.matches = matches

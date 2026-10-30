@@ -256,7 +256,9 @@ var DATA = __DATA__;
                 : " · cohesion " + g.cohesion) + "</span></div>"
         + "<div class='body'><div class='txt'><div class='note'>"
         + ((g.centre || []).length ? "motifs in at least half: " + g.centre.map(esc).join(" · ")
-                                   : "no motif in at least half") + "</div>" + count(g.n)
+                                   : "no motif in at least half") + "</div>"
+        + "<div class='note sm'>scene stats: " + Object.keys(g.stats || {}).map(function (c) {
+            return esc(c) + " " + g.stats[c]; }).join(" · ") + "</div>" + count(g.n)
         + "</div></div><div class='pics'>"
         + g.reps.map(function (r) {
             var s = S[r.scene] || {};

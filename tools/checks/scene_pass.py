@@ -50,6 +50,7 @@ sys.path.insert(0, CLUSTER)
 import rs_extract as R            # noqa: E402
 import rs_sample as PAIR           # noqa: E402
 import rs_scene as S              # noqa: E402
+import dictionary_rules as DR     # noqa: E402  the spec's families and constants
 
 # Confirmed against the screenshot taken with each dump: the video player's
 # rectangle, which must come out whole and wholly visible.
@@ -289,7 +290,29 @@ def oracle_scene(tree, tags, dw, dh, density):
             so[take] = o
             ot[y0:y1, x0:x1][take] = bool(tags.get(i, ""))
         return float(cell[ot].sum()), float(cell[od >= 0].sum())
-    return out, ldn, area_of, owned
+
+    def owned_by(ids, key):
+        """The area each value of key(node) owns, under the same ownership."""
+        depth = {}
+        for nid in tree["order"]:
+            p = parent.get(nid)
+            depth[nid] = depth.get(p, -1) + 1 if p is not None else 0
+        od = np.full(cell.shape, -1, dtype=np.int64)
+        oo = np.full(cell.shape, -1, dtype=np.int64)
+        ok = np.zeros(cell.shape, dtype=np.int64)
+        for i in ids:
+            c = out.get(i, {}).get("cells")
+            if not c:
+                continue
+            y0, y1, x0, x1, m = c
+            d, o = depth.get(i, 0), order.get(i, 0)
+            sd, so = od[y0:y1, x0:x1], oo[y0:y1, x0:x1]
+            take = m & ((sd < d) | ((sd == d) & (so < o)))
+            sd[take] = d
+            so[take] = o
+            ok[y0:y1, x0:x1][take] = key(i)
+        return {v: float(cell[ok == v].sum()) for v in set(np.unique(ok).tolist())}
+    return out, ldn, area_of, owned, owned_by
 
 
 def _meet(a, b):
@@ -566,7 +589,7 @@ def main():
             csvrows["%s/%s" % (r["session"], r["sample"])] = r
 
     keys = ("root", "single", "pruned", "geo", "scene", "area", "pattern", "fixed", "premise",
-            "coverage")
+            "coverage", "stats")
     bad = {k: [] for k in keys}
     n = dict.fromkeys(("scenes", "nodes", "parsed", "kept", "slivers",
                        "moved", "matches", "nodisplay", "compared", "parents", "coverage"), 0)
@@ -645,7 +668,7 @@ def main():
                 n["moved"] += 1
 
         # the scene, against the display oracle
-        O, _, area_of, owned = oracle_scene(tree, tags, dw, dh, dens)
+        O, _, area_of, owned, owned_by = oracle_scene(tree, tags, dw, dh, dens)
         for x, o in O.items():
             if x in sc.kept and not o["kept"]:
                 bad["scene"].append("%s node %d is kept and is not on the display" % (sid, x))
@@ -695,6 +718,40 @@ def main():
             bad["coverage"].append("%s: tag coverage %.4f, the oracle's %.4f"
                                    % (sid, row["tag_coverage"], num / den if den else 0.0))
         n["coverage"] += 1
+
+        # INV-SCENE-STATS-FROM-KEPT-TREE: the eight stats, recomputed - the
+        # counts over the pass's kept tree, the areas from the exact regions,
+        # with the families of IF-SCENE-STATS as dictionary_rules.py holds them
+        PSk = pass_scene(sc, tree)
+        ldn_ = [i for i, nd in nodes.items() if nd["kind"] == "LOGICAL_DISPLAY_NODE"][0]
+        deep, stack = 0, [(ldn_, 0)]
+        while stack:
+            x, dx = stack.pop()
+            deep = max(deep, dx)
+            stack.extend((k, dx + 1) for k in PSk[x]["kids"])
+        want = {"kept_nodes": round(len(PSk) / (len(PSk) + float(DR.SPEC_K[0])), 4),
+                "kept_depth": round(deep / (deep + float(DR.SPEC_K[1])), 4)}
+        for c in ("kept_nodes", "kept_depth"):
+            if abs(row[c] - want[c]) > 1e-9:
+                bad["stats"].append("%s %s: %s, the oracle's %s" % (sid, c, row[c], want[c]))
+        fam = {t: j + 1 for j, (_, ts) in enumerate(DR.SPEC_FAMILIES) for t in ts}
+        areas = owned_by(canvas, lambda i: fam.get(tags.get(i, ""), 0))
+        cset = set(canvas)
+        for j, (f, _) in enumerate(DR.SPEC_FAMILIES):
+            # this family's nodes and their kept descendants: the only edges
+            # that move cells into or out of its area
+            below, st = set(), [i for i in canvas if fam.get(tags.get(i, ""), 0) == j + 1]
+            while st:
+                x = st.pop()
+                if x not in below:
+                    below.add(x)
+                    st.extend(PSk.get(x, {}).get("kids", []))
+            slack_f = 2 * STEP * sum(O[i]["per"] for i in below & cset) + 0.0001 * tot
+            diff = abs(row[f + "_area"] * tot - areas.get(j + 1, 0.0))
+            n["stats_err"] = max(n.get("stats_err", 0.0), diff / tot)
+            if diff > slack_f:
+                bad["stats"].append("%s %s_area: %.4f, the oracle's %.4f"
+                                    % (sid, f, row[f + "_area"], areas.get(j + 1, 0.0) / tot))
 
         # the properties
         sh = Shuffled(lines, client, disp).run()
@@ -884,6 +941,10 @@ def main():
            "every scene's tag coverage equals the oracle's exact one within one cell per "
            "edge (%d scenes); no window and no match is set aside for it" % n["coverage"],
            "ERR-MOTIF-ROOT-UNTAGGED")
+    report("INV-SCENE-STATS-FROM-KEPT-TREE", bad["stats"],
+           "the eight scene stats equal the oracle's on every scene - counts exactly, areas "
+           "within one cell per edge of their families' nodes (largest difference %.4f of the "
+           "display)" % n.get("stats_err", 0.0), "ERR-SCENE-STATS-MISMATCH")
     report("INV-FEATURE-FIXED-MAP", bad["fixed"],
            "%d row(s) computed alone equal their row in the capture" % n["compared"]
            if a.patterns else "not checked (pass --patterns)", "ERR-MOTIF-ORACLE-MISMATCH")

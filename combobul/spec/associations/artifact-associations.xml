@@ -46,4 +46,8 @@
   <associate source="tools/cluster/rs_sample.py" kind="function" name="tag_source" scope="">
     <link to="ALG-TAG-BORROW" relation="implements"/>
   </associate>
+
+  <associate source="tools/cluster/rs_scene.py" kind="method" name="stats" scope="Scene">
+    <link to="ALG-SCENE-STATS" relation="implements"/>
+  </associate>
 </artifact-associations>

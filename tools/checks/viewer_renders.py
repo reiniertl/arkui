@@ -100,8 +100,9 @@ def groups_of(html):
 
 
 def vector_columns(src):
-    """The clustering's columns as vectors_build.py declares them."""
-    return [n for n, _ in VB.MOTIF_COLS]
+    """The clustering's columns as vectors_build.py declares them: the motif
+    vector, then the scene stats."""
+    return [n for n, _ in VB.MOTIF_COLS + VB.STAT_COLS]
 
 
 def check_no_weights(src, problems):
@@ -240,8 +241,13 @@ def main():
         expect = vector_columns(src)
         if cols != expect:
             probs.append("columns %s, the motif vector is %s" % (cols, expect))
-        if len(cols) != 3 * len(VB.SC.MOTIFS):
-            probs.append("%d columns, 3 per motif is %d" % (len(cols), 3 * len(VB.SC.MOTIFS)))
+        want_n = 3 * len(VB.SC.MOTIFS) + len(VB.SC.STATS)
+        if len(cols) != want_n:
+            probs.append("%d columns, 3 per motif and the %d scene stats is %d"
+                         % (len(cols), len(VB.SC.STATS), want_n))
+        for g in C.get("groups", []):
+            if set((g.get("stats") or {})) != set(VB.SC.STATS):
+                probs.append("cluster %s carries no mean of every scene stat" % g.get("id"))
         fn = next(n for n in ast.parse(src).body
                   if isinstance(n, ast.FunctionDef) and n.name == "build_clustering")
         if re.search(r"X\[:,\s*\w+\]", ast.get_source_segment(src, fn)):
@@ -255,8 +261,14 @@ def main():
     if [k for k in D if not k.startswith("_") and k != "clustering"]:
         probs.append("per-vector blocks remain: %s"
                      % [k for k in D if not k.startswith("_") and k != "clustering"])
+    shown = [k[1] for k, seg in rendered["clustering"] if k[0] == "cluster"
+             and all(st in seg for st in VB.SC.STATS)]
+    if C and len(shown) != len(C.get("groups", [])):
+        probs.append("%d of %d cluster(s) show no mean of every scene stat"
+                     % (len(C.get("groups", [])) - len(shown), len(C.get("groups", []))))
     report("INV-CLUSTERING-MATCHES-NO-PATTERN", probs,
-           "the clustering reads all %d motif vector columns, drops none, and names clusters by id"
+           "the clustering reads all %d columns - the motif vector, then the scene stats - drops "
+           "none, names clusters by id, and every cluster shows its stat means"
            % len(vector_columns(src)))
 
 
