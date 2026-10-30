@@ -71,9 +71,12 @@ GRID = ("20261022_123014/0192", {2070: True, 3117: False, 4163: False})
 # on top in both pictures: a panel painted after TikTok's content in its
 # window container, at the same PositionZ (INV-OCCLUSION-PAINT-ORDER).
 KEYBOARD = ("20261022_110104/s000308", "20261022_110104/s000328")
-# A Swiper showing one full-screen video page: one kept child, so one item
-# and no carousel (INV-ITEMS-ARE-CHILDREN); its page's wrapper lifted 14 nodes.
-ONE_PAGE = "20261022_110104/s000552"
+# Swipers showing one full-screen video page, so one item and no carousel at
+# that Swiper (INV-ITEMS-ARE-CHILDREN): s000552's keeps one child, whose
+# wrapper lifted 14 nodes; s000001's outer one keeps the page and an empty
+# full-screen Stack, not an item. s000001 still matches carousel through an
+# inner Swiper whose layers are its own children, as s003479 does.
+ONE_PAGE = ("20261022_110104/s000552", "20261022_123014/s000001")
 # The launcher: its five windows, topmost first.
 WINDOWS = ("20261027_102041/s000342", ("SCBGestureBack", "SCBStatusBar",
                                       "SCBGestureNavBar", "SCBDesktop", "SCBWallpaper"))
@@ -379,7 +382,8 @@ def oracle_patterns(tree, tags, sc, dw, dh, density):
         # never what is lifted out of them (INV-ITEMS-ARE-CHILDREN)
         if L in ("List", "ListItemGroup", "Grid", "WaterFlow", "Swiper",
                  "SideBarContainer", "Scroll", "Refresh"):
-            n_items = len(O[nid]["kids"])
+            # an empty pass-through child is not an item
+            n_items = len([k for k in O[nid]["kids"] if label(k) is not None or O[k]["kids"]])
             return {"%s/item%s" % (L, "*" if n_items >= 2 else "")} if n_items else set()
         cnt = {}
         for h in heads(nid):
@@ -774,17 +778,31 @@ def main():
         if not kb_cells[sid][1]:
             bad["scene"].append("%s: the keyboard is on top in its picture and the pass "
                                 "keeps none of it" % sid)
-    one_page = None
-    if not a.session or ONE_PAGE.startswith(a.session + "/"):
-        sc, _ = photographed(ONE_PAGE)
+    one_page = {}
+    for sid in ONE_PAGE:
+        if a.session and not sid.startswith(a.session + "/"):
+            continue
+        sc, _ = photographed(sid)
         if sc is None:
-            bad["pattern"].append("%s: the confirmed sample is not in the capture" % ONE_PAGE)
-        else:
-            sw = [x for x in sc.kept if sc.N[x]["tag"] == "Swiper"]
-            one_page = [len([c for c in sc.N[x]["kids"] if c in sc.kept]) for x in sw]
-            if any(m["pattern"] == "carousel" for m in sc.matches):
-                bad["pattern"].append("%s: carousel found, its Swipers keep %s child(ren)"
-                                      % (ONE_PAGE, one_page))
+            bad["pattern"].append("%s: the confirmed sample is not in the capture" % sid)
+            continue
+        def empty(c):
+            return sc.label(sc.N[c], 0) is None and not any(k in sc.kept for k in sc.N[c]["kids"])
+        targets = []
+        for x in sc.kept:
+            if sc.N[x]["tag"] != "Swiper":
+                continue
+            kept = [c for c in sc.N[x]["kids"] if c in sc.kept]
+            items = sum(1 for c in kept if not empty(c))
+            if kept and items <= 1:                 # a Swiper showing one page
+                targets.append((x, len(kept), items))
+        one_page[sid] = ["%d kept, %d item(s)" % (k, i) for _, k, i in targets]
+        if not targets:
+            bad["pattern"].append("%s: no Swiper with one page found" % sid)
+        for x, k, i in targets:
+            if any(m["pattern"] == "carousel" and m["node"] == x for m in sc.matches):
+                bad["pattern"].append("%s: the Swiper %d keeps %d child(ren), %d item(s), and "
+                                      "matches carousel" % (sid, x, k, i))
     win_order = None
     if not a.session or WINDOWS[0].startswith(a.session + "/"):
         sc, _ = photographed(WINDOWS[0])
@@ -858,8 +876,9 @@ def main():
     report("INV-DICTIONARY-DESIGNED, INV-DISTANCE-ORDER-FREE, "
            "INV-MATCHES-OUTERMOST, INV-COMPOSITION-CONSUMES, INV-ITEMS-ARE-CHILDREN", bad["pattern"],
            "d and count equal the pattern oracle's on every display; %d match(es); shuffling "
-           "changes nothing; %s: Swipers keep %s kept child(ren), no carousel"
-           % (n["matches"], ONE_PAGE.split("/")[1], one_page),
+           "changes nothing; no carousel at a Swiper showing one page: %s"
+           % (n["matches"], "; ".join("%s %s" % (k.split("/")[1], ", ".join(v))
+                                      for k, v in one_page.items()) or "-"),
            "ERR-MOTIF-ORACLE-MISMATCH")
     report("INV-CLIENT-TAG-COVERAGE", bad["coverage"],
            "every scene's tag coverage equals the oracle's exact one within one cell per "

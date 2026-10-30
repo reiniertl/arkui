@@ -57,11 +57,13 @@ THUMB = 0.15
 VIDEO_TAGS = {"XComponent", "Video"}
 TEXT_INPUT_TAGS = {"TextInput", "TextArea", "Search"}
 # Containers whose direct kept children are their items, whatever each one's
-# tag, pass-through included: a custom component has no node of its own
-# (CustomNode derives from UINode, not FrameNode - arkui_ace_engine
-# pattern/custom/custom_node.h), so its root stands in the item's place. Two
-# or more give parent/item*, one gives parent/item; what is lifted out of an
-# item through pass-through is never an item (INV-ITEMS-ARE-CHILDREN).
+# tag, when it is meaningful or has a kept descendant: a custom component has
+# no node of its own (CustomNode derives from UINode, not FrameNode -
+# arkui_ace_engine pattern/custom/custom_node.h), so its root stands in the
+# item's place. An empty pass-through child stays in the scene and is not an
+# item. Two or more items give parent/item*, one gives parent/item; what is
+# lifted out of an item through pass-through is never an item
+# (INV-ITEMS-ARE-CHILDREN).
 ITEM_CONTAINERS = {"List", "ListItemGroup", "Grid", "WaterFlow", "Swiper", "SideBarContainer",
                    "Scroll", "Refresh"}
 
@@ -356,8 +358,10 @@ class Scene:
             out_heads, out_pairs = heads, headpairs           # pass-through
         else:
             if L in ITEM_CONTAINERS:
-                # its items are its kept children, not what they lift
-                pairs = {"%s/item%s" % (L, "*" if len(kids) >= 2 else "")} if kids else set()
+                # its items are its kept children that are meaningful or hold
+                # something kept, not what they lift
+                n_items = sum(1 for s in kids if s["item"])
+                pairs = {"%s/item%s" % (L, "*" if n_items >= 2 else "")} if n_items else set()
             else:
                 count = {}
                 for h, _ in heads:
@@ -386,7 +390,9 @@ class Scene:
                         presented = name
             out_heads, out_pairs = [(presented, nid)], pairs
         return {"heads": out_heads, "pairs": out_pairs, "matches": matches,
-                "dmin": dmin}
+                "dmin": dmin,
+                # an item of its container if meaningful or holding a kept node
+                "item": L is not None or bool(kids)}
 
     # -- the row ---------------------------------------------------------------
     def row(self, top):

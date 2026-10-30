@@ -56,9 +56,8 @@ tools/checks/.
 ORDER
 ===============================================================================
 
-  1. /cb-fix — an empty child is not an item
-  2. /cb-green — the viewer marks low tag coverage and names its centre
-  3. /cb-audit — a component source for the system UI
+  1. /cb-green — the viewer marks low tag coverage and names its centre
+  2. /cb-audit — a component source for the system UI
 
 
 ===============================================================================
@@ -109,62 +108,6 @@ DEFERRED
 ===============================================================================
 PROMPTS
 ===============================================================================
-
-
-/cb-fix — an empty child is not an item
-  - Bug: INV-ITEMS-ARE-CHILDREN counts every direct kept child of an item
-    container as an item, pass-through or not. A child kept only for its
-    own visible area, with nothing kept inside it, is counted too. On the
-    capture of 2026-10-28, 15 of the 16 video_large scenes that still carry
-    carousel (e.g. 20261022_123014/s000001) have a Swiper whose two kept
-    children are the video page and an empty full-screen Stack - no
-    background, alpha 1, no kept descendant - so the Swiper reads
-    Swiper/item* and matches carousel; the screen shows one page.
-    Not this bug: 20261022_123014/s003479, whose Swiper keeps six layers of
-    one video page. The client dump gives each of them the Swiper itself as
-    client parent (the client tree holds 22 children of it, the render
-    tree 11): both trees agree they are the Swiper's own children, so the
-    contract reading (carousel) stands and nothing is changed for it.
-  - Spec work (node-info and impact-analysis on INV-ITEMS-ARE-CHILDREN,
-    ALG-MOTIF-MATCH and IF-MOTIF-VOCABULARY before the envelope):
-      modify INV-ITEMS-ARE-CHILDREN - predicate and predicateNL: an item is
-        a direct kept child that is meaningful (its label is not
-        pass-through) or has at least one kept descendant; an empty
-        pass-through child stays in the scene and is not an item; the
-        confirmed cases: 20261022_110104/s000552 (one kept child, no
-        carousel, as before) and 20261022_123014/s000001 (one item, the
-        empty Stack not counted, no carousel). Edges kept: checked-at
-        AUT-PIPELINE-RUN, emits ERR-MOTIF-ORACLE-MISMATCH, satisfied by
-        ALG-MOTIF-MATCH.
-      modify ALG-MOTIF-MATCH and IF-MOTIF-VOCABULARY - the item clause
-        "each one item whether its own label is pass-through or not" goes;
-        the definition above takes its place. Artifact: Scene._up
-        (associated).
-      nothing added or removed.
-  - Code path: rs_scene.py Scene._up (items: kept children that are
-    meaningful or carry kept descendants); tools/checks/scene_pass.py (the
-    oracle's own count, the confirmed case s000001).
-  - Verification of the specification: npm run spec:check, no
-    violations; node-info on every modified node shows its checked-at, its
-    emits, its check and its artifact.
-  - Verification of the code, on the real capture:
-      1. scene_pass.py: the oracle equals the pass on every scene; the two
-         confirmed cases hold; every line holds.
-      2. the scenes whose motif set changes, named; the video_large scenes
-         still carrying carousel, each looked at.
-      3. rs_pattern, vectors_build, vectors_page rerun; every check under
-         tools/checks/ named with its result, measurement_rules included.
-  - BOUNDARY: as in RULES FOR EVERY ITEM.
-
-  - IMPORTANT: Every figure is measured in this session against a real capture and written into the report.
-  - INVIOLABLE: SPECIFICATION SURFACE IS AUTHORITATIVE. Every node above exists before the code it governs.
-  - INVIOLABLE: NO SCENE CLASSES. A motif names a structure of components.
-  - INVIOLABLE: DO NOT EMIT P3_SKIPPED.
-  - FORBIDDEN: MULTI-AGENT execution is not allowed. DO NOT SPAWN MULTIPLE AGENTS.
-  - WHEN TO COMMIT: Before "silk run finalize", after `npm run ril -- journal coalesce`.
-  - AFTER COMMIT: end FINAL_STATUS with an explicit NOT PUSHED line naming /cb-ops.
-  - DECISION PROTOCOL: If a decision must be made, ask for direct feedback. DO NOT DECIDE ALONE.
-  - AT THE END: update this list as HOW THE LIST WORKS states.
 
 
 /cb-green — the viewer marks low tag coverage and names its centre
