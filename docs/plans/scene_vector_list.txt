@@ -56,25 +56,14 @@ tools/checks/.
 ORDER
 ===============================================================================
 
-  1. /cb-audit — a component source for the system UI
+  1. /cb-green — tree shape and component areas beside the motif vector
+  2. /cb-audit — a component source for the system UI
 
 
 ===============================================================================
 DEFERRED
 ===============================================================================
 
-  - an open point, not yet an item: general scene stats beside the motif
-    vector. Dry run of 2026-10-30 on the 342 scenes, each group added
-    unweighted to the 63 columns (baseline 11 clusters, 45 unclustered,
-    silhouette 0.824): window layout (count, largest and second share) ARI
-    0.965; overlay (share where two or more surfaces show) 0.991; tree shape
-    (kept nodes n/(n+200), depth d/(d+20)) 0.896, splitting the no-motif
-    cluster 23/15/8; orientation constant (all portrait); component areas
-    by deepest owner (text, image, video, input, web, button - tagged)
-    0.787, splitting the 80 TikTok pages 49/11/9/11. No tag-free group has a
-    strong effect; whether the component split follows the screen or the
-    tags' staleness is not yet checked. Which stats, if any, enter the
-    clustering is for the human.
   - an open point, not yet an item: scenes are not deduplicated. Every
     photographed sample accepted by ALG-PICTURE-PAIR is a scene, as the
     human decided on 2026-10-29: on the capture of 2026-10-28 the 342
@@ -119,6 +108,109 @@ DEFERRED
 ===============================================================================
 PROMPTS
 ===============================================================================
+
+
+/cb-green — tree shape and component areas beside the motif vector
+  - What: a second vector of scene stats, measured in the same pass on the
+    kept tree, enters the clustering beside the 63 motif columns, and the
+    viewer shows each cluster with the stats that describe it.
+      TREE (tag-free): kept nodes as n/(n+K1); kept depth - the deepest kept
+        node below LOGICAL_DISPLAY_NODE - as d/(d+K2).
+      COMPONENT AREAS (tagged): per family, the share of the display's
+        visible cells whose owner - the deepest kept canvas node showing
+        there, at equal depth the one painted on top, the ownership of
+        INV-CLIENT-TAG-COVERAGE - carries a tag of that family: text
+        (Text, TextClock, Span, RichText, RichEditor, Marquee), image
+        (Image, SymbolGlyph, ImageSpan), video (XComponent, Video), input
+        (TextInput, TextArea, Search), web (Web), button (Button, Toggle,
+        Checkbox, Radio).
+      Eight columns, each in [0, 1], defined for every scene, unweighted,
+      in a fixed order; a constant one is reported and kept, as the motif
+      columns are. tag_coverage stays out of the clustering: it measures
+      the data, not the scene.
+    WHY, measured in a dry run of 2026-10-30 on the 342 scenes (nothing
+    changed): baseline, 63 motif columns - 11 clusters, 45 unclustered,
+    silhouette 0.824. Each group added alone: window layout ARI 0.965,
+    overlay 0.991, orientation constant (all portrait), tree 0.896,
+    component areas 0.787. Tree and component areas together - 12
+    clusters, 53 unclustered, silhouette 0.781, ARI 0.902: the no-motif
+    cluster (46) splits by tree size into 25 scenes with small trees
+    (kept 0.35, coverage median 0.61) and 13 with no tag at all (coverage
+    0.00), 8 unclustered; the 80 untagged TikTok pages stay one cluster
+    (their component areas are about 0 - the split component areas alone
+    gave them was noise); every tagged cluster keeps its members.
+    PUT TO THE HUMAN, before the envelope:
+      1. the constants K1 and K2 (the dry run used 200 and 20), set by
+         design and never fitted;
+      2. the component families and their members (as above, or other);
+      3. whether the input family, constant on this capture (no scene
+         shows a text field), stays - the column rule says yes.
+  - Read: tools/cluster/rs_scene.py (Scene.visit, _up, row), vectors_build.py
+    (build_clustering, MOTIF_COLS), vectors_page.py (the clustering tab);
+    tools/checks/scene_pass.py, vector_rules.py, viewer_renders.py,
+    parsing_rules.py, dictionary_rules.py; the dry-run script's definitions
+    (in the report of 2026-10-30); the nodes below.
+  - Spec work (node-info and impact-analysis on every node named, before
+    the envelope):
+      add interface IF-SCENE-STATS (SUB-FEATURE-RESEARCH): the eight columns
+        above, their definitions, constants and families, in order;
+        output-of ALG-SCENE-STATS; input-of ALG-VECTOR-CLUSTER; referenced
+        by IF-PATTERNS-ROW.
+      add algorithm ALG-SCENE-STATS: computed in the pass from the kept tree
+        - the kept count and depth on the way, the owner of each visible
+        cell as for the coverage - and written in the row; runs-at
+        AUT-PIPELINE-RUN; called by ALG-VISIBILITY; artifact: the function
+        that writes the stats (ril associate).
+      add invariant INV-SCENE-STATS-FROM-KEPT-TREE: every stat is computed
+        from the kept tree alone, nothing about how a node is rendered, each
+        in [0, 1], the families a literal equal to IF-SCENE-STATS'; checked
+        by scene_pass.py, whose oracle computes the eight with code of its
+        own, and by dictionary_rules.py for the families literal; emits a new
+        error code ERR-SCENE-STATS-MISMATCH; satisfied by ALG-SCENE-STATS;
+        checked-at AUT-PIPELINE-RUN.
+      modify IF-PATTERNS-ROW - the eight stat columns after the motif vector.
+      modify ALG-VECTOR-CLUSTER and INV-CLUSTERING-MATCHES-NO-PATTERN - the
+        clustering's columns are exactly the 63 motif columns and the 8 stat
+        columns, in order, on every capture; still no motif, cell, label or
+        name among them, nothing dropped, no weight.
+      modify INV-UNIT-COLUMNS-BOUNDED and INV-FEATURE-TOTAL - they hold for
+        the stat columns too (vector_rules.py).
+      modify IF-PAGE-PAYLOAD and IF-VIEWER - each cluster carries and shows
+        the mean of each stat over its scenes, beside its count, cohesion and
+        motifs in at least half.
+      nothing removed.
+  - Code path: tools/cluster/rs_scene.py (the stats in the pass and the
+    row), vectors_build.py (STAT_COLS beside MOTIF_COLS; the clustering's
+    columns; each cluster's stat means), vectors_page.py (the cluster
+    header); tools/checks/scene_pass.py (the oracle's stats),
+    vector_rules.py, viewer_renders.py (71 columns, the means shown),
+    parsing_rules.py (the row's columns), dictionary_rules.py (the
+    families literal).
+  - Verification, on the real capture:
+      1. scene_pass.py: the oracle's eight stats equal the pass's on every
+         scene (the areas within one cell per edge); every line holds.
+      2. the dry run reproduced: clusters, unclustered, silhouette, ARI
+         against the motif-only clustering; any difference named (the dry
+         run left ties of depth to chance, the pass breaks them by paint
+         order).
+      3. the clusters: for each, its count, its baseline source, its
+         coverage, its motifs in at least half and its stat means; the
+         no-motif split named with sample ids from each side for the human
+         to look at in the viewer.
+      4. rs_pattern, vectors_build, vectors_page rerun; every check under
+         tools/checks/ named with its result, measurement_rules included;
+         npm run spec:check, no violations.
+  - BOUNDARY: as in RULES FOR EVERY ITEM.
+
+  - IMPORTANT: Every figure is measured in this session against a real capture and written into the report.
+  - INVIOLABLE: SPECIFICATION SURFACE IS AUTHORITATIVE. Every node above exists before the code it governs.
+  - INVIOLABLE: NO SCENE CLASSES. A motif names a structure of components.
+  - INVIOLABLE: DO NOT EMIT P3_SKIPPED.
+  - FORBIDDEN: MULTI-AGENT execution is not allowed. DO NOT SPAWN MULTIPLE AGENTS.
+  - WHEN TO COMMIT: Before "silk run finalize", after `npm run ril -- journal coalesce`.
+  - AFTER COMMIT: end FINAL_STATUS with an explicit NOT PUSHED line naming /cb-ops.
+  - DECISION PROTOCOL: If a decision must be made, ask for direct feedback. DO NOT DECIDE ALONE.
+  - AT THE END: update this list as HOW THE LIST WORKS states.
 
 
 /cb-audit — a component source for the system UI
