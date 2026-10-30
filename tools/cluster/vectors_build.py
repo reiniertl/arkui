@@ -42,14 +42,14 @@ import rs_scene as SC                           # noqa: E402
 # in [0, 1] by construction and is used as measured - no transform, no
 # weight, no standardisation and no imputation (INV-NO-FEATURE-WEIGHTS,
 # INV-FEATURE-TOTAL).
-PATTERN_COLS = [(p + suf, what % p) for p in SC.PATTERNS for suf, what in (
+MOTIF_COLS = [(p + suf, what % p) for p in SC.MOTIFS for suf, what in (
     ("_d", "%s: 1 - Jaccard at its closest root"),
     ("_share", "%s: share of the display its matches show"),
     ("_n", "%s: matches n, as n/(n+1)"))]
 
 def found(row):
     """The dictionary motifs found on this scene's display, in order."""
-    return [p for p in SC.PATTERNS if float(row.get(p + "_d") or 1.0) <= SC.FOUND]
+    return [p for p in SC.MOTIFS if float(row.get(p + "_d") or 1.0) <= SC.FOUND]
 
 
 THUMB_W = 320       # the tiles render at 118 px; twice that covers a 2x display
@@ -162,7 +162,7 @@ def build_clustering(rows, mcs):
     cannot place is reported in the unclustered group, never forced into the
     nearest cluster.
     """
-    F = PATTERN_COLS
+    F = MOTIF_COLS
     X = np.array([[float(r[n]) for n, _ in F] for r in rows], float)
     sd = X.std(0)
     flat = [F[j][0] for j in range(X.shape[1]) if sd[j] < 1e-9]
@@ -287,7 +287,7 @@ def main():
     # One group per dictionary pattern, in dictionary order, found or not:
     # a pattern no scene reached is a result and keeps its place.
     patterns = []
-    for name in SC.PATTERNS:
+    for name in SC.MOTIFS:
         mem = [r for r in rows if name in found(r)]
         patterns.append({
             "cell": name,

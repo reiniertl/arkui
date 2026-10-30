@@ -26,7 +26,7 @@ import vectors_build as VB            # noqa: E402
 
 def vector_columns():
     """Every column of the pattern vector."""
-    return [n for n, _ in VB.PATTERN_COLS]
+    return [n for n, _ in VB.MOTIF_COLS]
 
 
 def clamps():

@@ -20,7 +20,7 @@ COLUMNS. No column may hold a string that names a scene. Every column
 rs_pattern.py writes is a number, except the three IF-PATTERNS-ROW declares
 as strings, which identify the scene.
 
-PATTERNS. A dictionary pattern's name names a structure of components - a
+MOTIFS. A dictionary pattern's name names a structure of components - a
 grid of items, a row of icons - and is permitted (INV-NO-SCENE-CLASS). Three
 of them share a word with the deleted taxonomies, gallery_grid, icon_grid
 and list; in the dictionary they name the structure, and nothing maps a
@@ -47,7 +47,7 @@ def dictionary_names():
     return ()
 
 
-PATTERNS = dictionary_names()
+MOTIFS = dictionary_names()
 
 # The vocabularies of the three deleted taxonomies. A name here appearing in
 # tracked source is not proof of a class table on its own - prose mentions
@@ -113,7 +113,7 @@ def check_source(root, verbose=False):
         # Several names standing together, as a list or table would leave
         # them. Prose mentions one or two; a table carries many.
         quoted = re.findall(r"""['"]([a-z][a-z _]{2,24})['"]""", "\n".join(lines))
-        hits = sorted({q for q in quoted if q in SCENE_NAMES} - set(PATTERNS))
+        hits = sorted({q for q in quoted if q in SCENE_NAMES} - set(MOTIFS))
         if len(hits) >= 3:
             bad.append((rel, 0, "%d scene names quoted together (%s)"
                         % (len(hits), ", ".join(hits[:5]))))

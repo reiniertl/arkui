@@ -436,7 +436,7 @@ def oracle_patterns(tree, tags, sc, dw, dh, density):
                 consumed.add((present(h), h))
     fs -= consumed
     return {p: {"d": dmin.get(p, 1.0), "n": len([i for q, i in fs if q == p])}
-            for p in S.PATTERNS}
+            for p in S.MOTIFS}
 
 
 def reads_cached_rects():
@@ -549,12 +549,6 @@ def same(a, b):
     return a is not None and b is not None and all(abs(x - y) <= TOL for x, y in zip(a, b))
 
 
-def scenes(root, only=None):
-    """The scenes rs_pattern.py measures: the photographed samples
-    rs_sample.pair accepts (ALG-PICTURE-PAIR)."""
-    return PAIR.scenes(root, only)
-
-
 def main():
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -573,12 +567,13 @@ def main():
     n = dict.fromkeys(("scenes", "nodes", "parsed", "kept", "slivers",
                        "moved", "matches", "nodisplay", "compared", "parents", "coverage"), 0)
     ms_pass, found_video, grid_seen = [], {}, {}
-    pcols = [p + x for p in S.PATTERNS for x in ("_d", "_share", "_n")]
+    pcols = [p + x for p in S.MOTIFS for x in ("_d", "_share", "_n")]
     for c in reads_cached_rects():
         bad["geo"].append("rs_extract.py reads a cached rectangle: %r" % c)
     bad["pattern"] += dictionary_is_literal()
 
-    for ses, sample, tf, cf, disp in scenes(a.root, a.session or None):
+    # the scenes rs_pattern.py measures (ALG-PICTURE-PAIR)
+    for ses, sample, tf, cf, disp in PAIR.scenes(a.root, a.session or None):
         sid = "%s/%s" % (ses, sample)
         dw, dh, dens = float(disp["w"]), float(disp["h"]), disp.get("density", 3.5) or 3.5
         lines = open(tf, encoding="utf-8", errors="replace").read().splitlines()
@@ -671,7 +666,7 @@ def main():
             for k in PS[i]["kids"]:
                 acc += branch(k)
             return acc
-        for p in S.PATTERNS:
+        for p in S.MOTIFS:
             o, got = P[p], row
             n["matches"] += o["n"]
             if abs(got[p + "_d"] - round(o["d"], 4)) > 1e-4:

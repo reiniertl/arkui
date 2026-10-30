@@ -101,7 +101,7 @@ def groups_of(html):
 
 def vector_columns(src):
     """The clustering's columns as vectors_build.py declares them."""
-    return [n for n, _ in VB.PATTERN_COLS]
+    return [n for n, _ in VB.MOTIF_COLS]
 
 
 def check_no_weights(src, problems):

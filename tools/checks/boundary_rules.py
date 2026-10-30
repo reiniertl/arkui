@@ -34,7 +34,7 @@ def dictionary_names():
     return ()
 
 
-PATTERNS = dictionary_names()
+MOTIFS = dictionary_names()
 
 # Nothing from a capture may be tracked. These are the names a capture
 # produces, not a guess at what an image might be called.
@@ -53,7 +53,7 @@ MEASURING = re.compile(
     r"function\s+(Get-Features|Get-Shape\w*|Get-SceneClass|Measure-\w*Shape"
     r"|Get-Modifiers|Convert-RowToFeatures|Invoke-(Fit|Classify)|Get-RuleMatrix)",
     re.I)
-VECTOR_COLUMNS = ["%s%s" % (p, x) for p in PATTERNS for x in ("_d", "_share", "_n")]
+VECTOR_COLUMNS = ["%s%s" % (p, x) for p in MOTIFS for x in ("_d", "_share", "_n")]
 
 
 def tracked(root):

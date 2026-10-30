@@ -114,7 +114,6 @@ DICTIONARY = (
     ("icon_grid", "Grid", {"Grid", "Grid/item*", "GridItem/icon"}, "composed: a Grid of icon items"),
 )
 MOTIFS = tuple(dict.fromkeys(p[0] for p in DICTIONARY))          # in order
-PATTERNS = MOTIFS                 # the name the row's columns were written under
 # Every catalogue container with a typed or fixed child contract, and every
 # leaf label, must root a motif (INV-DICTIONARY-COMPLETE).
 CATALOGUE = ("List", "ListItemGroup", "Grid", "WaterFlow", "Tabs", "Swiper", "Stepper",
@@ -396,7 +395,7 @@ class Scene:
         out = {}
         matches = top["matches"] if top else []
         dmin = top["dmin"] if top else {}
-        for p in PATTERNS:
+        for p in MOTIFS:
             ms = [m for m in matches if m["pattern"] == p]
             u = np.zeros((self.H, self.W), dtype=bool)
             for m in ms:

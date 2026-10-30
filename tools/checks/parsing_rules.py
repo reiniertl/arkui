@@ -38,13 +38,6 @@ import rs_sample as P             # noqa: E402
 import rs_scene as S              # noqa: E402
 
 
-def sessions(root):
-    """The scenes rs_pattern.py measures (rs_sample.scenes), with the
-    session's directory first."""
-    for ses, sample, tf, cf, disp in P.scenes(root):
-        yield os.path.join(root, ses), sample, tf, cf, disp
-
-
 def check_first_pass(dumps):
     """Properties come from the first pass.
 
@@ -171,7 +164,7 @@ def check_selection_only(passes):
     and the pass names nothing about how a node is rendered."""
     bad = []
     want = {"tag_coverage"} | {
-        p + x for p in S.PATTERNS for x in ("_d", "_share", "_n")}
+        p + x for p in S.MOTIFS for x in ("_d", "_share", "_n")}
     tf, lines, client, disp = passes[0]
     row = S.Scene(lines, client, disp).run()
     if set(row) != want:
@@ -199,7 +192,7 @@ def main():
     a = ap.parse_args()
 
     dumps, passes = [], []
-    for sdir, sample, tf, cf, disp in sessions(a.root):
+    for ses, sample, tf, cf, disp in P.scenes(a.root):     # the scenes rs_pattern.py measures
         lines = open(tf, encoding="utf-8", errors="replace").read().splitlines()
         client = open(cf, encoding="utf-8", errors="replace").read().splitlines() if cf else []
         dumps.append((tf, lines, R.parse_tree(lines)))

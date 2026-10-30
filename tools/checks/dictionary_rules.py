@@ -57,7 +57,7 @@ LEAVES = ("video:large", "video:medium", "video:small", "Web", "text_input",
           "Button", "Slider", "AlphabetIndexer")
 MOTIFS, COLUMNS = 21, 63
 FROZEN = ("DICTIONARY", "SHAPES", "BY_ROOT", "TOKENS", "COMPOSED", "MOTIFS",
-          "PATTERNS", "CATALOGUE", "FOUND")
+          "CATALOGUE", "FOUND")
 
 
 def literal(tree, name):
@@ -106,6 +106,34 @@ def writes(path):
     return out
 
 
+OLD_NAMES = ("PATTERN" + "S", "PATTERN" + "_COLS")    # spelled apart: this file is scanned too
+
+
+def old_names_and_passthroughs(path):
+    """The dictionary is read under its own names only: no alias of the old
+    pattern names is defined or read; and no function in tools/checks
+    only passes a call through to another module (a wrapper kept to spare
+    its callers a new name)."""
+    tree = ast.parse(open(path, encoding="utf-8").read())
+    out, rel = [], os.path.basename(path)
+    for n in ast.walk(tree):
+        name = n.id if isinstance(n, ast.Name) else n.attr if isinstance(n, ast.Attribute) else None
+        if name in OLD_NAMES:
+            out.append("%s:%d names %s" % (rel, n.lineno, name))
+    if os.path.dirname(os.path.abspath(path)) == HERE:
+        modules = {a.asname or a.name for n in ast.walk(tree) if isinstance(n, ast.Import) for a in n.names}
+        for f in ast.walk(tree):
+            if not isinstance(f, ast.FunctionDef):
+                continue
+            body = [b for b in f.body if not (isinstance(b, ast.Expr) and isinstance(b.value, ast.Constant))]
+            if (len(body) == 1 and isinstance(body[0], ast.Return) and isinstance(body[0].value, ast.Call)
+                    and isinstance(body[0].value.func, ast.Attribute)
+                    and getattr(body[0].value.func.value, "id", "") in modules):
+                out.append("%s:%d %s() only returns %s.%s(...)" % (rel, f.lineno, f.name,
+                           body[0].value.func.value.id, body[0].value.func.attr))
+    return out
+
+
 def main():
     src_path = os.path.join(CLUSTER, "rs_scene.py")
     tree = ast.parse(open(src_path, encoding="utf-8").read())
@@ -142,7 +170,13 @@ def main():
                     glob.glob(os.path.join(HERE, "*.py"))):
         if os.path.basename(p) != "dictionary_rules.py":
             bad += writes(p)
+    tools = os.path.dirname(HERE)
+    scanned = sorted(os.path.join(dp, f) for dp, _, fs in os.walk(tools) for f in fs if f.endswith(".py"))
+    names = [b for p in scanned for b in old_names_and_passthroughs(p)]
+    bad += names
     print("  INV-DICTIONARY-DESIGNED")
+    print("    %d file(s) under tools/ read; old pattern names and pass-through "
+          "wrappers: %d" % (len(scanned), len(names)))
     print("    %d variant(s) in the code, %d in the spec; every one with its "
           "source: %s" % (len(got), len(want), "yes" if all(len(e) == 4 and e[3].strip()
                                                          for e in D) else "no"))

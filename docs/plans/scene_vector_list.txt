@@ -55,7 +55,7 @@ tools/checks/.
 ORDER
 ===============================================================================
 
-  1. /cb-green — no wrappers and no alias for the old pattern names
+  (none - the human adds the next item)
 
 
 ===============================================================================
@@ -112,6 +112,10 @@ DEFERRED
     scenes have under half of their visible area owned by a tagged node; the
     79 whose only motif is a list - TikTok's tab strip over an untagged
     player created after the last client dump - read 0.09 to 0.13.
+    Between consecutive samples of the same page (212 pairs on 2026-10-28,
+    half their kept nodes shared) 75 motifs flip; the tag source differs
+    in 48 of them (29 tags alone, 19 with a child count), while 14 of the
+    slider's 17 flips are its progress bar shown or hidden on the display.
     The client dump is fetched only for a sample judged new, so
     a photographed sample borrows its tags from the last one before it
     (ALG-TAG-BORROW); where a sample has its own, 52 of the 65 app windows
@@ -131,44 +135,3 @@ DEFERRED
 ===============================================================================
 PROMPTS
 ===============================================================================
-
-
-
-/cb-green — no wrappers and no alias for the old pattern names
-  - What: code that only keeps an old name alive goes. This is a
-    refactor and runs only with the human's explicit yes (CLAUDE.md rule
-    4), asked at the start of the run.
-      rs_scene.py: `PATTERNS = MOTIFS` is deleted; every reader uses
-        MOTIFS - scene_pass.py, parsing_rules.py, vector_rules.py,
-        vectors_build.py.
-      vectors_build.py: PATTERN_COLS becomes MOTIF_COLS, and every reader
-        with it - vector_rules.py, viewer_renders.py.
-      scene_pass.py and tag_coverage.py: scenes(root, only), which only
-        returns rs_sample.scenes(root, only), is deleted; the callers call
-        rs_sample.scenes. parsing_rules.py: sessions(root), which only
-        reshapes rs_sample.scenes, is deleted the same way.
-      Kept, as decided on 2026-10-28: the payload key _patterns, the file
-        names rs_pattern.py and patterns.csv, the id IF-PATTERNS-ROW.
-  - Spec work: none of these names is in a spec node; the item reads
-    IF-MOTIF-VECTOR, IF-MOTIF-DICTIONARY and IF-PATTERNS-ROW to confirm
-    it, and dictionary_rules.py's FROZEN list loses PATTERNS. If a node is
-    found naming one of them, it is modified in the envelope; otherwise
-    the envelope modifies INV-DICTIONARY-DESIGNED's predicateNL to name
-    the static rule below, so the run carries a real mutation.
-  - Verification:
-      1. a static rule in dictionary_rules.py (INV-DICTIONARY-DESIGNED,
-         ERR-MOTIF-ORACLE-MISMATCH): no name PATTERNS or PATTERN_COLS is
-         defined or read under tools/; no function under tools/checks
-         whose body only returns a call to another module's function.
-      2. every check under tools/checks/ rerun and named with its result;
-         rs_pattern's output byte-identical to before (measurement_rules
-         digest compared); npm run spec:check, no violations.
-  - BOUNDARY: as in RULES FOR EVERY ITEM.
-
-  - IMPORTANT: Every figure is measured in this session against a real capture and written into the report.
-  - INVIOLABLE: DO NOT EMIT P3_SKIPPED.
-  - FORBIDDEN: MULTI-AGENT execution is not allowed. DO NOT SPAWN MULTIPLE AGENTS.
-  - WHEN TO COMMIT: Before "silk run finalize", after `npm run ril -- journal coalesce`.
-  - AFTER COMMIT: end FINAL_STATUS with an explicit NOT PUSHED line naming /cb-ops.
-  - DECISION PROTOCOL: If a decision must be made, ask for direct feedback. DO NOT DECIDE ALONE.
-  - AT THE END: update this list as HOW THE LIST WORKS states.
