@@ -7,8 +7,9 @@ and nothing else. What was done, and why, is in git and in the transcripts.
 HOW THE LIST WORKS
 
 - ORDER holds one line per item, in the order they run.
-- PROMPTS holds each item's full prompt, starting "/cb-green — <title>" or
-  "/cb-fix — <title>" with no prefix, ready to paste.
+- PROMPTS holds each item's full prompt, starting "/cb-green — <title>",
+  "/cb-fix — <title>" or "/cb-audit — <title>" with no prefix, ready to
+  paste.
 - DEFERRED holds items kept for later, with their prompts. They are not run
   until the human moves them into ORDER.
 - Each item is one skill execution.
@@ -55,35 +56,15 @@ tools/checks/.
 ORDER
 ===============================================================================
 
-  (none - the human adds the next item)
+  1. /cb-fix — an empty child is not an item
+  2. /cb-green — the viewer marks low tag coverage and names its centre
+  3. /cb-audit — a component source for the system UI
 
 
 ===============================================================================
 DEFERRED
 ===============================================================================
 
-  - an open point, not yet an item: a container keeps an empty child as
-    an item. After INV-ITEMS-ARE-CHILDREN, 16 of the 34 video_large scenes of
-    2026-10-28 still carry carousel. In 15 (e.g. 20261022_123014/s000001)
-    the Swiper keeps two full-screen children at the same place: the video
-    page, and an empty Stack - no background, alpha 1, nothing kept inside -
-    which the rules keep (a visible node with area) and count as an item.
-    Whether a node with no kept content is an item is for the human.
-  - an open point, not yet an item: a custom component has no node of its
-    own (CustomNode), so when one is a container's item its root-level
-    nodes sit directly under the container and each counts as an item.
-    20261022_123014/s003479: one video page's six layers (the player, a
-    Row, a Column, a Stack, two __Common__) are six Swiper items, and the
-    Swiper matches carousel. Whether, and from what, the item boundary is
-    recovered is for the human.
-  - an open point, not yet an item: tag coverage is one small line on
-    each tile ("tagged N%"); a scene under one half (147 of 342) is not
-    marked at a glance. Whether the viewer marks it - a badge, a dimmed
-    picture - is for the human (a change to IF-VIEWER).
-  - an open point, not yet an item: the clustering tab writes "median"
-    before each cluster's list of the motifs found in at least half of its
-    scenes; nothing there is a median, and an empty list prints the word
-    alone. Whether to relabel it is for the human.
   - an open point, not yet an item: scenes are not deduplicated. Every
     photographed sample accepted by ALG-PICTURE-PAIR is a scene, as the
     human decided on 2026-10-29: on the capture of 2026-10-28 the 342
@@ -124,14 +105,135 @@ DEFERRED
     190 ms more a sample; a screenshot costs about 370 ms - 653 ms median
     for a sample with one, 285 without), and whether deduplication moves
     offline onto the kept tree, are for the human.
-  - an open point, not yet an item: the system UI's components have no
-    source on this device build. The client dump gives a fixed subset of
-    them and the window manager, ability manager and RenderService dumps
-    give none, so the launcher, the gesture layers and the wallpaper are
-    mostly untagged. On 20261027_102041/s000342 SCBDesktop keeps 129 nodes
-    and none is tagged, so the home page reads as no motif. Whether to look
-    for another source, and where, is for the human.
 
 ===============================================================================
 PROMPTS
 ===============================================================================
+
+
+/cb-fix — an empty child is not an item
+  - Bug: INV-ITEMS-ARE-CHILDREN counts every direct kept child of an item
+    container as an item, pass-through or not. A child kept only for its
+    own visible area, with nothing kept inside it, is counted too. On the
+    capture of 2026-10-28, 15 of the 16 video_large scenes that still carry
+    carousel (e.g. 20261022_123014/s000001) have a Swiper whose two kept
+    children are the video page and an empty full-screen Stack - no
+    background, alpha 1, no kept descendant - so the Swiper reads
+    Swiper/item* and matches carousel; the screen shows one page.
+    Not this bug: 20261022_123014/s003479, whose Swiper keeps six layers of
+    one video page. The client dump gives each of them the Swiper itself as
+    client parent (the client tree holds 22 children of it, the render
+    tree 11): both trees agree they are the Swiper's own children, so the
+    contract reading (carousel) stands and nothing is changed for it.
+  - Spec work (node-info and impact-analysis on INV-ITEMS-ARE-CHILDREN,
+    ALG-MOTIF-MATCH and IF-MOTIF-VOCABULARY before the envelope):
+      modify INV-ITEMS-ARE-CHILDREN - predicate and predicateNL: an item is
+        a direct kept child that is meaningful (its label is not
+        pass-through) or has at least one kept descendant; an empty
+        pass-through child stays in the scene and is not an item; the
+        confirmed cases: 20261022_110104/s000552 (one kept child, no
+        carousel, as before) and 20261022_123014/s000001 (one item, the
+        empty Stack not counted, no carousel). Edges kept: checked-at
+        AUT-PIPELINE-RUN, emits ERR-MOTIF-ORACLE-MISMATCH, satisfied by
+        ALG-MOTIF-MATCH.
+      modify ALG-MOTIF-MATCH and IF-MOTIF-VOCABULARY - the item clause
+        "each one item whether its own label is pass-through or not" goes;
+        the definition above takes its place. Artifact: Scene._up
+        (associated).
+      nothing added or removed.
+  - Code path: rs_scene.py Scene._up (items: kept children that are
+    meaningful or carry kept descendants); tools/checks/scene_pass.py (the
+    oracle's own count, the confirmed case s000001).
+  - Verification of the specification: npm run spec:check, no
+    violations; node-info on every modified node shows its checked-at, its
+    emits, its check and its artifact.
+  - Verification of the code, on the real capture:
+      1. scene_pass.py: the oracle equals the pass on every scene; the two
+         confirmed cases hold; every line holds.
+      2. the scenes whose motif set changes, named; the video_large scenes
+         still carrying carousel, each looked at.
+      3. rs_pattern, vectors_build, vectors_page rerun; every check under
+         tools/checks/ named with its result, measurement_rules included.
+  - BOUNDARY: as in RULES FOR EVERY ITEM.
+
+  - IMPORTANT: Every figure is measured in this session against a real capture and written into the report.
+  - INVIOLABLE: SPECIFICATION SURFACE IS AUTHORITATIVE. Every node above exists before the code it governs.
+  - INVIOLABLE: NO SCENE CLASSES. A motif names a structure of components.
+  - INVIOLABLE: DO NOT EMIT P3_SKIPPED.
+  - FORBIDDEN: MULTI-AGENT execution is not allowed. DO NOT SPAWN MULTIPLE AGENTS.
+  - WHEN TO COMMIT: Before "silk run finalize", after `npm run ril -- journal coalesce`.
+  - AFTER COMMIT: end FINAL_STATUS with an explicit NOT PUSHED line naming /cb-ops.
+  - DECISION PROTOCOL: If a decision must be made, ask for direct feedback. DO NOT DECIDE ALONE.
+  - AT THE END: update this list as HOW THE LIST WORKS states.
+
+
+/cb-green — the viewer marks low tag coverage and names its centre
+  - What: two changes to the page, both in what it says, nothing in what is
+    measured.
+      1. Low tag coverage is marked. Every tile carries "tagged N%" as one
+         small line; a scene under one half (147 of 342 on 2026-10-28) is
+         not marked at a glance. A tile whose scene's tag coverage is under
+         one half is dimmed and carries a "low tag coverage" badge.
+      2. The clustering tab writes "median" before each cluster's list of
+         the motifs found in at least half of its scenes; nothing there is a
+         median, and an empty list prints the word alone. The list is
+         labelled "motifs in at least half", and an empty one reads "no
+         motif in at least half".
+  - Spec work (node-info on IF-VIEWER, IF-PAGE-PAYLOAD and
+    INV-VIEWER-RENDERS before the envelope):
+      modify IF-VIEWER - every tile shows its scene's tag coverage; a tile
+        under one half is dimmed and badged "low tag coverage"; each
+        cluster shows "motifs in at least half" with its list, or "no motif
+        in at least half".
+      modify IF-PAGE-PAYLOAD - a cluster's centre field is described as
+        the motifs found in at least half of its scenes, each with its
+        count; the word median is not used.
+      modify INV-VIEWER-RENDERS - predicate: the page renders every tile,
+        the number of tiles marked "low tag coverage" equals the number of
+        scenes whose tag coverage is under one half, no other tile is
+        marked, and no rendered text says "median". Check:
+        viewer_renders.py; error ERR-VIEWER-RENDER-FAILED.
+      nothing added or removed.
+  - Code path: tools/cluster/vectors_page.py (the tile, the cluster's
+    centre label), vectors_build.py only if the centre field is renamed;
+    tools/checks/viewer_renders.py.
+  - Verification: viewer_renders.py: marked tiles equal the scenes under
+    one half, no other marked, no "median"; npm run spec:check, no
+    violations; vectors_build and vectors_page rerun; every check under
+    tools/checks/ named with its result.
+  - BOUNDARY: as in RULES FOR EVERY ITEM.
+
+  - IMPORTANT: Every figure is measured in this session against a real capture and written into the report.
+  - INVIOLABLE: SPECIFICATION SURFACE IS AUTHORITATIVE. Every node above exists before the code it governs.
+  - INVIOLABLE: DO NOT EMIT P3_SKIPPED.
+  - FORBIDDEN: MULTI-AGENT execution is not allowed. DO NOT SPAWN MULTIPLE AGENTS.
+  - WHEN TO COMMIT: Before "silk run finalize", after `npm run ril -- journal coalesce`.
+  - AFTER COMMIT: end FINAL_STATUS with an explicit NOT PUSHED line naming /cb-ops.
+  - DECISION PROTOCOL: If a decision must be made, ask for direct feedback. DO NOT DECIDE ALONE.
+  - AT THE END: update this list as HOW THE LIST WORKS states.
+
+
+/cb-audit — a component source for the system UI
+  - What: a read-only search for a dump that names the system UI's
+    components. The client dump answers for the system UI (pid 3689,
+    SceneBoard) only in part: on 20261027_102041/s000342 the launcher
+    window SCBDesktop keeps 129 nodes and none is tagged, so the home page
+    reads as no motif; the gesture layers and the wallpaper are untagged
+    on every scene. The system UI is ArkUI, so its components exist; the
+    question is whether any dump on this build gives them.
+  - Already probed and empty (IF-CAPTURE-SESSION): the window manager's
+    -w <id> -element, the ability manager's -element, -inspector and
+    -render, RenderService client with a pid, MultiRSTrees.
+  - Read-only, on the device through hdc from the capture machine: hidumper
+    services and their options that mention ArkUI, the inspector or the
+    component tree; the ArkUI inspector entry points; anything that prints
+    frameNodeTag or a component tree for pid 3689. Never tap inside an app.
+    Nothing is written to the repository; findings go into the report.
+  - Output: for each dump tried, the command, whether it answers for pid
+    3689, and whether it names the launcher's nodes by node id. If one
+    does, the report proposes the spec work it needs (IF-CAPTURE-SESSION,
+    ALG-TAG-BORROW, INV-CLIENT-TAG-COVERAGE and the capture) as a new item
+    for the human; if none does, the list records what was tried.
+  - FORBIDDEN: MULTI-AGENT execution is not allowed. DO NOT SPAWN MULTIPLE AGENTS.
+  - DECISION PROTOCOL: If a decision must be made, ask for direct feedback. DO NOT DECIDE ALONE.
+  - AT THE END: update this list as HOW THE LIST WORKS states.
