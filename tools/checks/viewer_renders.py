@@ -176,14 +176,32 @@ def main():
     # untagged, and every tile shows its scene's tag coverage
     if any(k == ("cell", "untagged") for k, _ in rendered["pattern"]):
         probs.append("pattern: an 'untagged' group is still rendered")
-    tiles = sum(len(re.findall(r"<div class='pic' data-scene=", tabs.get(t, ""))) for t in TABS)
-    covered = sum(len(re.findall(r"<div class='pic' data-scene='[^']*'>.*?class='tc'>tagged (?:\d+%|—)",
-                                 tabs.get(t, ""))) for t in TABS)
+    # every tile shows its scene's tag coverage; a tile is marked 'low tag
+    # coverage' - dimmed and badged - exactly when its scene is under one half
+    scov = {sid: sc.get("tag_coverage") for sid, sc in (D.get("_scenes") or {}).items()}
+    tile_rx = re.compile(r"<div class='pic( low)?' data-scene='([^']*)'>(.*?)class='tc'>tagged (\d+%|—)")
+    tiles = sum(len(re.findall(r"<div class='pic(?: low)?' data-scene=", tabs.get(t, ""))) for t in TABS)
+    covered = marked = 0
+    for t in TABS:
+        for m in tile_rx.finditer(tabs.get(t, "")):
+            covered += 1
+            low, sid, body = bool(m.group(1)), m.group(2), m.group(3)
+            want = scov.get(sid) is not None and scov[sid] < 0.5
+            badged = "class='lowcov'>low tag coverage<" in body
+            marked += low
+            if low != want or badged != want:
+                probs.append("%s: tile %s marked %s, badge %s, its tag coverage %s"
+                             % (t, sid, low, badged, scov.get(sid)))
     if covered != tiles:
         probs.append("%d of %d tile(s) show no tag coverage" % (tiles - covered, tiles))
+    said = sorted({t for t in TABS if re.search(r"(?i)\bmedian\b", re.sub(r"<[^>]*>", " ", tabs.get(t, "")))})
+    if said:
+        probs.append("the word median is rendered in: %s" % ", ".join(said))
+    low_scenes = sum(1 for c in scov.values() if c is not None and c < 0.5)
     report("INV-VIEWER-RENDERS", probs,
-           "ran to the end; %s; %d tiles, each with its tag coverage"
-           % (", ".join("%s %d groups" % (t, len(rendered[t])) for t in TABS), tiles))
+           "ran to the end; %s; %d tiles, each with its tag coverage; %d marked 'low tag "
+           "coverage', the tiles of the %d scenes under one half; no 'median'"
+           % (", ".join("%s %d groups" % (t, len(rendered[t])) for t in TABS), tiles, marked, low_scenes))
 
     probs = []
     for t in ("pattern",):

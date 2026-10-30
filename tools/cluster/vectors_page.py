@@ -79,6 +79,9 @@ HTML = r"""<!doctype html>
   .pics { display:flex; gap:9px; padding:10px 13px 13px; overflow-x:auto; }
   .pic { flex:0 0 112px; position:relative; }
   .pic img { width:100%; border-radius:5px; border:1px solid var(--line); display:block; }
+  .pic.low img { opacity:.45; }
+  .pic .lowcov { position:absolute; left:4px; top:4px; padding:1px 4px; border-radius:3px;
+    background:var(--card); border:1px solid var(--line); font-size:8.5px; color:var(--dim); }
   .pic .nopic { width:100%; aspect-ratio:9/19.5; border-radius:5px;
     border:1px dashed var(--line); background:var(--card); display:flex;
     align-items:center; justify-content:center; font-size:10px; color:var(--dim); }
@@ -129,7 +132,11 @@ var DATA = __DATA__;
     var pic = s.img ? "<img loading='lazy' src='" + s.img + "'>"
       : "<div class='nopic'>picture not found</div>";
     var cov = s.tag_coverage == null ? "—" : Math.round(100 * s.tag_coverage) + "%";
-    return "<div class='pic' data-scene='" + esc(sid) + "'>" + pic
+    // under one half: less than half of what it shows could be named
+    // (INV-CLIENT-TAG-COVERAGE), so the motifs it carries say little
+    var low = s.tag_coverage != null && s.tag_coverage < 0.5;
+    return "<div class='pic" + (low ? " low" : "") + "' data-scene='" + esc(sid) + "'>" + pic
+      + (low ? "<div class='lowcov'>low tag coverage</div>" : "")
       + "<div class='cap'>" + esc(sid) + "<br><span class='tc'>tagged " + cov + "</span>"
       + (extra ? "<br>" + extra : "") + "</div></div>";
   }
@@ -247,8 +254,9 @@ var DATA = __DATA__;
         + (none ? "unclustered" : "cluster " + g.id) + " <span>" + g.n + " scenes"
         + (none ? " · reported rather than forced into the nearest cluster"
                 : " · cohesion " + g.cohesion) + "</span></div>"
-        + "<div class='body'><div class='txt'><div class='note'>median "
-        + (g.centre || []).map(esc).join(" · ") + "</div>" + count(g.n)
+        + "<div class='body'><div class='txt'><div class='note'>"
+        + ((g.centre || []).length ? "motifs in at least half: " + g.centre.map(esc).join(" · ")
+                                   : "no motif in at least half") + "</div>" + count(g.n)
         + "</div></div><div class='pics'>"
         + g.reps.map(function (r) {
             var s = S[r.scene] || {};

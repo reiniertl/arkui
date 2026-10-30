@@ -56,14 +56,25 @@ tools/checks/.
 ORDER
 ===============================================================================
 
-  1. /cb-green — the viewer marks low tag coverage and names its centre
-  2. /cb-audit — a component source for the system UI
+  1. /cb-audit — a component source for the system UI
 
 
 ===============================================================================
 DEFERRED
 ===============================================================================
 
+  - an open point, not yet an item: general scene stats beside the motif
+    vector. Dry run of 2026-10-30 on the 342 scenes, each group added
+    unweighted to the 63 columns (baseline 11 clusters, 45 unclustered,
+    silhouette 0.824): window layout (count, largest and second share) ARI
+    0.965; overlay (share where two or more surfaces show) 0.991; tree shape
+    (kept nodes n/(n+200), depth d/(d+20)) 0.896, splitting the no-motif
+    cluster 23/15/8; orientation constant (all portrait); component areas
+    by deepest owner (text, image, video, input, web, button - tagged)
+    0.787, splitting the 80 TikTok pages 49/11/9/11. No tag-free group has a
+    strong effect; whether the component split follows the screen or the
+    tags' staleness is not yet checked. Which stats, if any, enter the
+    clustering is for the human.
   - an open point, not yet an item: scenes are not deduplicated. Every
     photographed sample accepted by ALG-PICTURE-PAIR is a scene, as the
     human decided on 2026-10-29: on the capture of 2026-10-28 the 342
@@ -108,52 +119,6 @@ DEFERRED
 ===============================================================================
 PROMPTS
 ===============================================================================
-
-
-/cb-green — the viewer marks low tag coverage and names its centre
-  - What: two changes to the page, both in what it says, nothing in what is
-    measured.
-      1. Low tag coverage is marked. Every tile carries "tagged N%" as one
-         small line; a scene under one half (147 of 342 on 2026-10-28) is
-         not marked at a glance. A tile whose scene's tag coverage is under
-         one half is dimmed and carries a "low tag coverage" badge.
-      2. The clustering tab writes "median" before each cluster's list of
-         the motifs found in at least half of its scenes; nothing there is a
-         median, and an empty list prints the word alone. The list is
-         labelled "motifs in at least half", and an empty one reads "no
-         motif in at least half".
-  - Spec work (node-info on IF-VIEWER, IF-PAGE-PAYLOAD and
-    INV-VIEWER-RENDERS before the envelope):
-      modify IF-VIEWER - every tile shows its scene's tag coverage; a tile
-        under one half is dimmed and badged "low tag coverage"; each
-        cluster shows "motifs in at least half" with its list, or "no motif
-        in at least half".
-      modify IF-PAGE-PAYLOAD - a cluster's centre field is described as
-        the motifs found in at least half of its scenes, each with its
-        count; the word median is not used.
-      modify INV-VIEWER-RENDERS - predicate: the page renders every tile,
-        the number of tiles marked "low tag coverage" equals the number of
-        scenes whose tag coverage is under one half, no other tile is
-        marked, and no rendered text says "median". Check:
-        viewer_renders.py; error ERR-VIEWER-RENDER-FAILED.
-      nothing added or removed.
-  - Code path: tools/cluster/vectors_page.py (the tile, the cluster's
-    centre label), vectors_build.py only if the centre field is renamed;
-    tools/checks/viewer_renders.py.
-  - Verification: viewer_renders.py: marked tiles equal the scenes under
-    one half, no other marked, no "median"; npm run spec:check, no
-    violations; vectors_build and vectors_page rerun; every check under
-    tools/checks/ named with its result.
-  - BOUNDARY: as in RULES FOR EVERY ITEM.
-
-  - IMPORTANT: Every figure is measured in this session against a real capture and written into the report.
-  - INVIOLABLE: SPECIFICATION SURFACE IS AUTHORITATIVE. Every node above exists before the code it governs.
-  - INVIOLABLE: DO NOT EMIT P3_SKIPPED.
-  - FORBIDDEN: MULTI-AGENT execution is not allowed. DO NOT SPAWN MULTIPLE AGENTS.
-  - WHEN TO COMMIT: Before "silk run finalize", after `npm run ril -- journal coalesce`.
-  - AFTER COMMIT: end FINAL_STATUS with an explicit NOT PUSHED line naming /cb-ops.
-  - DECISION PROTOCOL: If a decision must be made, ask for direct feedback. DO NOT DECIDE ALONE.
-  - AT THE END: update this list as HOW THE LIST WORKS states.
 
 
 /cb-audit — a component source for the system UI
